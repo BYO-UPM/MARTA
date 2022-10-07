@@ -19,7 +19,8 @@ This repository contains the base modules for experimenting with Deep Learning m
     - validation methodologies: cross-validation, uncertainty estimation.
 - Experiments
     - Particular experiment configurations
-main file to launch the experiment
 
+
+main: file to launch the experiment
 
 Directories for saving check point models, data and results are keeping local.
