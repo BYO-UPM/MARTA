@@ -24,3 +24,9 @@ main file to launch the experiment
 
 
 Directories for saving check point models, data and results are keeping local.
+
+root
++-- dir1
+    +--file1
++-- dir2
+    +-- file2
