@@ -25,8 +25,21 @@ main file to launch the experiment
 
 Directories for saving check point models, data and results are keeping local.
 
-root
-+-- dir1
-    +--file1
-+-- dir2
-    +-- file2
+├── src
+│   ├── controller
+│   │   ├── **/*.css
+│   ├── views
+│   ├── model
+│   ├── index.js
+├── public
+│   ├── css
+│   │   ├── **/*.css
+│   ├── images
+│   ├── js
+│   ├── index.html
+├── dist (or build
+├── node_modules
+├── package.json
+├── package-lock.json 
+└── .gitignore
+
