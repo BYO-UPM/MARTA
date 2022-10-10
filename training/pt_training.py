@@ -326,7 +326,7 @@ def Training_model(project_name, dict_generators,args,wandb=[],freeze=False,k=1)
 
     if scheme==1: #Two class from a pretrained-model
         model = Selec_model_two_classes(args.model_name,**params_model)
-        path_save = Training_fine_tunning(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
+        path_save = Training_fine_tunning(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr*10, wandb=wandb)
 
         #load checkpoint model
         model = Selec_model_two_classes(args.model_name,**params_model)
@@ -344,7 +344,7 @@ def Training_model(project_name, dict_generators,args,wandb=[],freeze=False,k=1)
         model_cl.load_state_dict(checkpoint['model_state_dict'])
 
         model = finetuning_model(model_cl.embedding)
-        path_save = Training_fine_tunning(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
+        path_save = Training_fine_tunning(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr*10, wandb=wandb)
 
         #load checkpoint model
         model = finetuning_model(model_cl.embedding)
@@ -360,7 +360,7 @@ def Training_model(project_name, dict_generators,args,wandb=[],freeze=False,k=1)
         model = finetuning_model(model_cl.embedding)
         checkpoint = torch.load(path_save)
         model.load_state_dict(checkpoint['model_state_dict'])
-        
+
     elif scheme==4:#SimCLR from pretrained model and finetuning with ge2e and crossentropy
         model_cl = Selec_embedding(args.model_name,**params_model)
         path_save = Training_CL(model_cl,dict_generators['training_generator_cl'],dict_generators['val_generator_cl'],training_epochs=args.nTraining_epochs_cl,cooldown_epochs=args.nCooldown_epochs_cl,batch_size = args.batch_size, lr_cl=args.lr, project_name=project_name+'_Fold_'+str(k),save_path=args.save,wandb=wandb)

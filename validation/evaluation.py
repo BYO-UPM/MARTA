@@ -98,7 +98,7 @@ def eval_multinstance_biclass(target,predict,patient,print_custom_report=True, p
         print("Precision={}".format(preci))
         print("F1={}".format(f1))
 
-    return acc, sensi, especi, preci, f1, Npatients, target, pre, score
+    return acc, sensi, especi, preci, f1, Npatients, target_p, predict_p, score_p
 
 def joint_prob(target_pat,predict_pat):
     target = target_pat[0]

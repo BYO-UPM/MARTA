@@ -8,6 +8,7 @@ from ..data_loaders.pt_data_loader_frp import Dataset_FPR, Dataset_FPR_CL
 from ..training.pt_training import Training_model
 from ..validation.evaluation import one_run_validate_model_multinstance, multi_run_validate_model_multinstance
 from ..training.pt_training import StratifiedBatchSampler
+from ..utils.utils import StratifiedGroupKFold_local
 import os
 import wandb
 import pickle
@@ -30,6 +31,7 @@ def read_sp(dir_img, groups_df, sp_inc = [1],axis='x'):
     X_sp_ids = []
     label = []
     Participant = []
+    
     for sp in SP_folders:
         #----- fin sp number ---------
         n_sp = int(sp.split('_')[1])
@@ -37,7 +39,7 @@ def read_sp(dir_img, groups_df, sp_inc = [1],axis='x'):
             #----- set axis for each sp according to the sp number -------------
             if axis == 'x':
                 axis = 'Axis_x'
-            else:
+            elif axis=='y':
                 axis = 'Axis_y'
 
             sp_dir = os.path.join(dir_img,sp,axis)
@@ -53,11 +55,10 @@ def read_sp(dir_img, groups_df, sp_inc = [1],axis='x'):
                     print('Participant excluded {}'.format(img))
     return np.stack(X_sp_ids), np.stack(label), np.stack(Participant)
 
-def data_partition(X_sp_ids,label,Participant, dictOfClass, n_splits=10):
+def data_partition(X_sp_ids,label,Participant, n_splits=10):
 
-    label2 = [dictOfClass[i] for i in label]
-
-    train_idx, test_idx = next(StratifiedGroupKFold(n_splits=n_splits,shuffle=True).split(X_sp_ids,label2,Participant))
+    #train_idx, test_idx = next(StratifiedGroupKFold(n_splits=n_splits,shuffle=True).split(X_sp_ids,label,Participant))
+    train_idx, test_idx = StratifiedGroupKFold_local(label,Participant,n_splits=n_splits,shuffle=True)
     X_train = X_sp_ids[train_idx]
     X_test = X_sp_ids[test_idx]
     y_train = label[train_idx]
@@ -122,7 +123,7 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
         training_set_cl = dic_methods['training_set_cl'](dir_img,X_train_r, y_train_r, dictOfClass, multi_instance=True, scale=dic_methods['scale'])
         training_set_ft = dic_methods['training_set'](dir_img,X_train_r, y_train_r, dictOfClass, multi_instance=True, scale=dic_methods['scale'])
         val_set = dic_methods['training_set'](dir_img,X_val_r, y_val_r, dictOfClass, train=False, multi_instance=True)
-        test_set = dic_methods['training_set'](dir_img,X_test, y_test, dictOfClass,train=False, multi_instance=True, noise_level=0.0)
+        test_set = dic_methods['training_set'](dir_img,X_test, y_test, dictOfClass,train=False, multi_instance=True)
 
         training_generator_cl = torch.utils.data.DataLoader(training_set_cl,  
                                                  batch_sampler=StratifiedBatchSampler(y_train_r, batch_size=params_dloader_training['batch_size']),
@@ -144,7 +145,7 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
     else:
         training_set_ft = dic_methods['training_set'](dir_img,X_train_r, y_train_r, dictOfClass, multi_instance=True, scale=dic_methods['scale'])
         val_set = dic_methods['training_set'](dir_img,X_val_r, y_val_r, dictOfClass, train=False, multi_instance=True)
-        test_set = dic_methods['training_set'](dir_img,X_test, y_test, dictOfClass,train=False, multi_instance=True, noise_level=0.0)
+        test_set = dic_methods['training_set'](dir_img,X_test, y_test, dictOfClass,train=False, multi_instance=True)
 
         training_generator_ft = torch.utils.data.DataLoader(training_set_ft,  
                                                  batch_sampler=StratifiedBatchSampler(y_train_r, batch_size=params_dloader_training['batch_size']),
@@ -163,11 +164,11 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
 
 
 def load_data(dir_img,sp_inc = [1],axis='x',scheme=1,repeat=1):
-
+    
     groups_df, dictOfClass = load_patients_sp(group_file='/home/julian/Documents/MATLAB/Oculografia/SP_Groups.csv')
     X_sp_ids, label, Participant = read_sp(dir_img, groups_df, sp_inc = sp_inc,axis=axis)
  
-    X_train, X_test, y_train, y_test, p_train, p_test = data_partition(X_sp_ids,label,Participant, dictOfClass, n_splits=10)
+    X_train, X_test, y_train, y_test, p_train, p_test = data_partition(X_sp_ids,label,Participant, n_splits=13)
 
     dict_generators,  class_weight = Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,batch_size=4, scheme=scheme, repeat = repeat)
     
@@ -190,15 +191,15 @@ def cross_validation_experiment(args):
     std_prob_t = []
     for k in range(args.kfolds):
         #---------------- Training Monitor ---------------------------------------------
-        #wandb.init(project=project_name)
-        #wandb.config = {
-        #    "learning_rate_cl": args.lr,
-        #    "learning_rate_ft": args.lr,
-        #    "epochs_cl": args.nTraining_epochs_cl+args.nCooldown_epochs_cl,
-        #    "epochs_ft": args.nTraining_epochs_ft+args.nCooldown_epochs_ft,
-        #    "batch_size": args.batch_size
-        #    }
-        wandb = []
+        wandb.init(project=project_name)
+        wandb.config = {
+            "learning_rate_cl": args.lr,
+            "learning_rate_ft": args.lr,
+            "epochs_cl": args.nTraining_epochs_cl+args.nCooldown_epochs_cl,
+            "epochs_ft": args.nTraining_epochs_ft+args.nCooldown_epochs_ft,
+            "batch_size": args.batch_size
+            }
+        #wandb = []
     #--------------------------------------------------------------------------------
         acc, sensi, especi, preci, f1, Patients, target, pre, score, std_prob = Fold_Process(args,wandb,project_name,k)
         
@@ -227,7 +228,10 @@ def cross_validation_experiment(args):
     }
 
     filename = os.path.join(args.save, project_name + "_results.pkl")
-
+    
+    if os.path.exists(filename):
+        os.remove(filename)
+        
     with open(filename, 'ab') as f:
         pickle.dump(dictResults,f)
     #-------------------------------------------------------------------------------------
@@ -235,7 +239,7 @@ def cross_validation_experiment(args):
         
 
 def Fold_Process(args, wandb, project_name, k=1):
-   
+    
     dict_generators, class_weight, _ , p_test = load_data(args.dataset,sp_inc = args.sp_inc,axis=args.axis,scheme=args.scheme,repeat=args.repeat_data)
     args.class_weight = class_weight
     model = Training_model(project_name, dict_generators,args,wandb,freeze=False,k=k)
@@ -243,6 +247,6 @@ def Fold_Process(args, wandb, project_name, k=1):
     print(f'Fold {k}')
     one_run_validate_model_multinstance(model, dict_generators['test_generator'],p_test)
 
-    acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_prob  = multi_run_validate_model_multinstance(model, dict_generators['val_generator_ft'], p_test, repeat=10)
+    acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_prob  = multi_run_validate_model_multinstance(model, dict_generators['test_generator'], p_test, repeat=10)
 
     return acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_prob
