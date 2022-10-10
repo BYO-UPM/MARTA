@@ -1,7 +1,7 @@
 import torch
 import numpy as np
-from .models.pt_models import finetuning_model, Selec_embedding, Selec_model_two_classes
-from .losses.pt_losses import SimCLR, GE2E_Loss
+from ..models.pt_models import finetuning_model, Selec_embedding, Selec_model_two_classes
+from ..losses.pt_losses import SimCLR, GE2E_Loss
 import timm
 import timm.scheduler
 import itertools
@@ -76,7 +76,8 @@ def Training_CL(model_cl,training_generator,val_generator,training_epochs=120,co
     scheduler_cl = timm.scheduler.CosineLRScheduler(optimizer_cl, t_initial=training_epochs)
     scheduler_lp = timm.scheduler.CosineLRScheduler(optimizer_lp, t_initial=training_epochs)
 
-    early_stopping = EarlyStopping(patience=patience, min_delta=0.02, path_save=os.path.join(save_path, project_name+'.pt'))
+    path_save=os.path.join(save_path, project_name+'.pt')
+    early_stopping = EarlyStopping(patience=patience, min_delta=0.02, path_save=path_save)
 
     for epoch in range(num_epochs):
 
@@ -137,7 +138,7 @@ def Training_CL(model_cl,training_generator,val_generator,training_epochs=120,co
         scheduler_lp.step(epoch + 1)
         if early_stopping.early_stop(model_cl,optimizer_cl,valid_loss/len(val_generator),epoch):             
             break
-    return model_cl
+    return path_save
 
 def Training_fine_tunning_ge2e(model,training_generator,val_generator,project_name='model',save_path='model_checkpoints',class_weights=[1,1],training_epochs = 30, cooldown_epochs = 10, lr_ft=0.00001, patience=10, wandb=[], lam = 0.6):
     
@@ -152,7 +153,8 @@ def Training_fine_tunning_ge2e(model,training_generator,val_generator,project_na
     optimizer = torch.optim.Adam(model.parameters(), lr=lr_ft)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.9)
 
-    early_stopping = EarlyStopping(patience=patience, min_delta=0.05, path_save=os.path.join(save_path, project_name+'.pt'))
+    path_save = os.path.join(save_path, project_name+'.pt')
+    early_stopping = EarlyStopping(patience=patience, min_delta=0.05, path_save=path_save)
 
     num_epochs = training_epochs + cooldown_epochs
 
@@ -210,7 +212,7 @@ def Training_fine_tunning_ge2e(model,training_generator,val_generator,project_na
             
             if len(pred.shape)==0:
                     pred = np.expand_dims(np.array(pred),axis=0)
-            f1 = f1_score(labels.cpu().detach().numpy(),pred,normalize=True)
+            f1 = f1_score(labels.cpu().detach().numpy(),pred)
             f1_r += f1
         f1_r = f1_r/len(val_generator)
         valid_loss = valid_loss/len(val_generator)
@@ -225,7 +227,7 @@ def Training_fine_tunning_ge2e(model,training_generator,val_generator,project_na
         if early_stopping.early_stop(model,optimizer,-f1_r,epoch):             
             break
     
-    return model
+    return path_save
 
 
 def Training_fine_tunning(model,training_generator,val_generator,project_name='model',save_path='model_checkpoints',class_weights=[1,1],training_epochs = 30, cooldown_epochs = 10, lr_ft=0.00001, patience=10, wandb=[]):
@@ -240,7 +242,8 @@ def Training_fine_tunning(model,training_generator,val_generator,project_name='m
     optimizer = torch.optim.Adam(model.parameters(), lr=lr_ft)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.9)
 
-    early_stopping = EarlyStopping(patience=patience, min_delta=0.05, path_save=os.path.join(save_path, project_name+'.pt'))
+    path_save = os.path.join(save_path, project_name+'.pt')
+    early_stopping = EarlyStopping(patience=patience, min_delta=0.05, path_save=path_save)
 
     num_epochs = training_epochs + cooldown_epochs
 
@@ -295,7 +298,7 @@ def Training_fine_tunning(model,training_generator,val_generator,project_name='m
             
             if len(pred.shape)==0:
                     pred = np.expand_dims(np.array(pred),axis=0)
-            f1 = f1_score(labels.cpu().detach().numpy(),pred,normalize=True)
+            f1 = f1_score(labels.cpu().detach().numpy(),pred)
             f1_r += f1
         f1_r = f1_r/len(val_generator)
         valid_loss = valid_loss/len(val_generator)
@@ -310,37 +313,70 @@ def Training_fine_tunning(model,training_generator,val_generator,project_name='m
         if early_stopping.early_stop(model,optimizer,-f1_r,epoch):             
             break
     
-    return model
+    return path_save
 
-def Training_model(project_name, dict_generators,training_generator,val_generator,training_generator_ft,val_generator_ft,args,scheme=1,wandb=[],freeze=False,k=1):
+def Training_model(project_name, dict_generators,args,wandb=[],freeze=False,k=1):
+
     params_model={
         'freeze':freeze,
         'channels':args.inChannels
     }
+
+    scheme = args.scheme
+
     if scheme==1: #Two class from a pretrained-model
         model = Selec_model_two_classes(args.model_name,**params_model)
-        model = Training_fine_tunning(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
+        path_save = Training_fine_tunning(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
+
+        #load checkpoint model
+        model = Selec_model_two_classes(args.model_name,**params_model)
+        checkpoint = torch.load(path_save)
+        model.load_state_dict(checkpoint['model_state_dict'])
 
     elif scheme==2:#SimCLR from pretrained model and finetuning 
         # defining the model
         model_cl = Selec_embedding(args.model_name,**params_model)
-        model_cl = Training_CL(model_cl,dict_generators['training_generator_cl'],dict_generators['val_generator_cl'],training_epochs=args.nTraining_epochs_cl,cooldown_epochs=args.nCooldown_epochs_cl,batch_size = args.batch_size, lr_cl=args.lr, project_name=project_name+'_Fold_'+str(k),save_path=args.save,wandb=wandb)
+        path_save = Training_CL(model_cl,dict_generators['training_generator_cl'],dict_generators['val_generator_cl'],training_epochs=args.nTraining_epochs_cl,cooldown_epochs=args.nCooldown_epochs_cl,batch_size = args.batch_size, lr_cl=args.lr, project_name=project_name+'_Fold_'+str(k),save_path=args.save,wandb=wandb)
+
+        #load checkpoint model
+        model_cl = Selec_embedding(args.model_name,**params_model)
+        checkpoint = torch.load(path_save)
+        model_cl.load_state_dict(checkpoint['model_state_dict'])
 
         model = finetuning_model(model_cl.embedding)
-        model = Training_fine_tunning(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
+        path_save = Training_fine_tunning(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
+
+        #load checkpoint model
+        model = finetuning_model(model_cl.embedding)
+        checkpoint = torch.load(path_save)
+        model.load_state_dict(checkpoint['model_state_dict'])
 
     elif scheme==3:#Two class from pretrained model and training based on ge2e and crossentropy
         model_cl = Selec_embedding(args.model_name,**params_model)
         model = finetuning_model(model_cl.embedding, freeze=False)
-        model = Training_fine_tunning_ge2e(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
+        path_save = Training_fine_tunning_ge2e(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
 
+        #load checkpoint model
+        model = finetuning_model(model_cl.embedding)
+        checkpoint = torch.load(path_save)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        
     elif scheme==4:#SimCLR from pretrained model and finetuning with ge2e and crossentropy
         model_cl = Selec_embedding(args.model_name,**params_model)
-        model_cl = Training_CL(model_cl,dict_generators['training_generator_cl'],dict_generators['val_generator_cl'],training_epochs=args.nTraining_epochs_cl,cooldown_epochs=args.nCooldown_epochs_cl,batch_size = args.batch_size, lr_cl=args.lr, project_name=project_name+'_Fold_'+str(k),save_path=args.save,wandb=wandb)
+        path_save = Training_CL(model_cl,dict_generators['training_generator_cl'],dict_generators['val_generator_cl'],training_epochs=args.nTraining_epochs_cl,cooldown_epochs=args.nCooldown_epochs_cl,batch_size = args.batch_size, lr_cl=args.lr, project_name=project_name+'_Fold_'+str(k),save_path=args.save,wandb=wandb)
+
+        #load checkpoint model
+        model_cl = Selec_embedding(args.model_name,**params_model)
+        checkpoint = torch.load(path_save)
+        model_cl.load_state_dict(checkpoint['model_state_dict'])
 
         model = finetuning_model(model_cl.embedding, freeze=False)
-        model = Training_fine_tunning_ge2e(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
+        path_save = Training_fine_tunning_ge2e(model,dict_generators['training_generator_ft'],dict_generators['val_generator_ft'],project_name=project_name+'_Fold_'+str(k),save_path=args.save,class_weights=args.class_weights,training_epochs = args.nTraining_epochs_ft, cooldown_epochs = args.nCooldown_epochs_ft, lr_ft=args.lr, wandb=wandb)
 
+        #load checkpoint model
+        model = finetuning_model(model_cl.embedding)
+        checkpoint = torch.load(path_save)
+        model.load_state_dict(checkpoint['model_state_dict'])
     return model
 
 

@@ -70,9 +70,9 @@ class Dataset_Spec_img(torch.utils.data.Dataset):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
         if multi_instance:
             file_exp = ID.split('_')
-            n_sp = int(file_exp[1])
-            axis = file_exp[2]
-            image = cv2.imread(img_path + file_exp[0] + '_' + n_sp + os.sep + axis + os.sep + file_exp[3] + '.png')
+            n_sp = file_exp[1]
+            axis = file_exp[3]
+            image = cv2.imread(img_path + file_exp[0] + '_' + n_sp + os.sep + 'Axis_' + axis + os.sep + file_exp[4] + '.png')
         else:
             image = cv2.imread(img_path + ID + '.png')
         # resize image
@@ -127,9 +127,9 @@ class Dataset_Spec_img_CL(torch.utils.data.Dataset):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
         if multi_instance:
             file_exp = ID.split('_')
-            n_sp = int(file_exp[1])
-            axis = file_exp[2]
-            image = cv2.imread(img_path + file_exp[0] + '_' + n_sp + os.sep + axis + os.sep + file_exp[3] + '.png')
+            n_sp = file_exp[1]
+            axis = file_exp[3]
+            image = cv2.imread(img_path + file_exp[0] + '_' + n_sp + os.sep + 'Axis_' + axis + os.sep + file_exp[4] + '.png')
         else:
             image = cv2.imread(img_path + ID + '.png')
         # resize image
@@ -218,9 +218,9 @@ class Dataset_Spec_txtmat(torch.utils.data.Dataset):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
         if multi_instance:
             file_exp = ID.split('_')
-            n_sp = int(file_exp[1])
-            axis = file_exp[2]
-            img = np.loadtxt(img_path + file_exp[0] + '_' + n_sp + os.sep + axis + os.sep + file_exp[3] + '.txt' , dtype=float, delimiter=',')
+            n_sp = file_exp[1]
+            axis = file_exp[3]
+            img = np.loadtxt(img_path + file_exp[0] + '_' + n_sp + os.sep + 'Axis_' + axis + os.sep + file_exp[4] + '.txt' , dtype=float, delimiter=',')
         else:
             img = np.loadtxt(img_path + ID +'.txt', dtype=float, delimiter=',')
         #---------------------------------------------------------------
@@ -275,9 +275,9 @@ class Dataset_Spec_txtmat_CL(torch.utils.data.Dataset):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
         if multi_instance:
             file_exp = ID.split('_')
-            n_sp = int(file_exp[1])
-            axis = file_exp[2]
-            img = np.loadtxt(img_path + file_exp[0] + '_' + n_sp + os.sep + axis + os.sep + file_exp[3] + '.txt' , dtype=float, delimiter=',')
+            n_sp = file_exp[1]
+            axis = file_exp[3]
+            img = np.loadtxt(img_path + file_exp[0] + '_' + n_sp + os.sep + 'Axis_' + axis + os.sep + file_exp[4] + '.txt' , dtype=float, delimiter=',')
         else:
             img = np.loadtxt(img_path + ID +'.txt', dtype=float, delimiter=',')
 

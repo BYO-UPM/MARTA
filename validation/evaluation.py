@@ -17,7 +17,8 @@ def one_run_validate_model(model, test_generator, multi_instance=False, p_test=[
         output=m(model.forward(sample))
         pred_label.append(np.argmax(output.detach().numpy(),axis=1))
         pred_prob.append(output.detach().numpy()[:,1])
-    pred = np.concatenate(pred)
+    pred_label = np.concatenate(pred_label)
+    pred_prob = np.concatenate(pred_prob)
     target_c = np.concatenate(target_c)
 
     if fPrint:
