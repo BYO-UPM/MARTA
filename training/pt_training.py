@@ -60,6 +60,35 @@ class EarlyStopping():
                 return True
         return False
 
+class EarlyStopping_2metrics():
+    def __init__(self, patience=1, min_delta=0, path_save="model.pt"):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_performance_metric = np.inf
+        self.min_validation_loss = np.inf
+        self.path_save = path_save
+
+    def early_stop(self, model,optimizer,performance_metric,validation_loss,epoch):
+        if (performance_metric < self.min_performance_metric) or ((performance_metric == self.min_performance_metric) and (validation_loss < self.min_validation_loss)):
+            if performance_metric < self.min_performance_metric:
+                self.min_performance_metric = performance_metric
+            if validation_loss < self.min_validation_loss:
+                self.min_validation_loss = validation_loss
+            self.counter = 0
+            #------------------------------------------
+            # Additional information
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': validation_loss,
+                }, self.path_save)
+        elif performance_metric > (self.min_performance_metric + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
 
 def Training_CL(model_cl,training_generator,val_generator,training_epochs=120,cooldown_epochs=30,batch_size = 4, lr_cl=0.00001,project_name='model',save_path='model_checkpoints',patience = 8,wandb=[]):
 
@@ -154,7 +183,7 @@ def Training_fine_tunning_ge2e(model,training_generator,val_generator,project_na
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.9)
 
     path_save = os.path.join(save_path, project_name+'.pt')
-    early_stopping = EarlyStopping(patience=patience, min_delta=0.05, path_save=path_save)
+    early_stopping = EarlyStopping_2metrics(patience=patience, min_delta=0.05, path_save=path_save)
 
     num_epochs = training_epochs + cooldown_epochs
 
@@ -224,7 +253,7 @@ def Training_fine_tunning_ge2e(model,training_generator,val_generator,project_na
         
         scheduler.step()
         
-        if early_stopping.early_stop(model,optimizer,-f1_r,epoch):             
+        if early_stopping.early_stop(model,optimizer,-f1_r,valid_loss,epoch):             
             break
     
     return path_save
@@ -243,7 +272,7 @@ def Training_fine_tunning(model,training_generator,val_generator,project_name='m
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.9)
 
     path_save = os.path.join(save_path, project_name+'.pt')
-    early_stopping = EarlyStopping(patience=patience, min_delta=0.05, path_save=path_save)
+    early_stopping = EarlyStopping_2metrics(patience=patience, min_delta=0.05, path_save=path_save)
 
     num_epochs = training_epochs + cooldown_epochs
 
@@ -310,7 +339,7 @@ def Training_fine_tunning(model,training_generator,val_generator,project_name='m
         
         scheduler.step()
         
-        if early_stopping.early_stop(model,optimizer,-f1_r,epoch):             
+        if early_stopping.early_stop(model,optimizer,-f1_r,valid_loss,epoch):             
             break
     
     return path_save

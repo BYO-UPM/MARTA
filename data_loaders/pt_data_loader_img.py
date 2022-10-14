@@ -34,7 +34,7 @@ class Dataset_Spec_img(torch.utils.data.Dataset):
         ID = self.list_IDs[index]
 
         # Load data and get label
-        X = self.load_image(self.dir, ID, multi_instance = self.multi_instance)
+        X = self.load_image(self.dir, ID)
         y = torch.as_tensor(self.unique_labels.get(self.list_labels[index]))
         y = torch.squeeze(y)
         y = y.type(torch.LongTensor)
@@ -65,10 +65,10 @@ class Dataset_Spec_img(torch.utils.data.Dataset):
         image_tensor = preprocess(img)
         return image_tensor
 
-    def load_image(self, img_path,ID, multi_instance=False):
+    def load_image(self, img_path,ID):
         if not os.path.exists(img_path):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
-        if multi_instance:
+        if self.multi_instance:
             file_exp = ID.split('_')
             n_sp = file_exp[1]
             axis = file_exp[3]
@@ -114,8 +114,8 @@ class Dataset_Spec_img_CL(torch.utils.data.Dataset):
 
         # Load data and get label
 
-        X1 = self.load_image(self.dir, ID, multi_instance = self.multi_instance)
-        X2 = self.load_image(self.dir, ID, multi_instance = self.multi_instance)
+        X1 = self.load_image(self.dir, ID)
+        X2 = self.load_image(self.dir, ID)
         y = torch.as_tensor(self.unique_labels.get(self.list_labels[index]))
         y = torch.squeeze(y)
         y = y.type(torch.LongTensor)
@@ -125,7 +125,7 @@ class Dataset_Spec_img_CL(torch.utils.data.Dataset):
     def load_image(self, img_path,ID, multi_instance=False):
         if not os.path.exists(img_path):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
-        if multi_instance:
+        if self.multi_instance:
             file_exp = ID.split('_')
             n_sp = file_exp[1]
             axis = file_exp[3]
@@ -181,7 +181,7 @@ class Dataset_Spec_txtmat(torch.utils.data.Dataset):
         ID = self.list_IDs[index]
 
         # Load data and get label
-        X = self.load_image(self.dir, ID, multi_instance = self.multi_instance)
+        X = self.load_image(self.dir, ID)
         y = torch.as_tensor(self.unique_labels.get(self.list_labels[index]))
         y = torch.squeeze(y)
         y = y.type(torch.LongTensor)
@@ -213,10 +213,10 @@ class Dataset_Spec_txtmat(torch.utils.data.Dataset):
         return image_tensor
 
 
-    def load_image(self, img_path,ID, multi_instance=False):
+    def load_image(self, img_path,ID):
         if not os.path.exists(img_path):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
-        if multi_instance:
+        if self.multi_instance:
             file_exp = ID.split('_')
             n_sp = file_exp[1]
             axis = file_exp[3]
@@ -262,18 +262,18 @@ class Dataset_Spec_txtmat_CL(torch.utils.data.Dataset):
         ID = self.list_IDs[index]
 
         # Load data and get label
-        X1 = self.load_image(self.dir, ID, multi_instance = self.multi_instance)
-        X2 = self.load_image(self.dir, ID, multi_instance = self.multi_instance)
+        X1 = self.load_image(self.dir, ID)
+        X2 = self.load_image(self.dir, ID)
         y = torch.as_tensor(self.unique_labels.get(self.list_labels[index]))
         y = torch.squeeze(y)
         y = y.type(torch.LongTensor)
 
         return (X1,X2), y
     
-    def load_image(self, img_path,ID, multi_instance=False):
+    def load_image(self, img_path,ID):
         if not os.path.exists(img_path):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
-        if multi_instance:
+        if self.multi_instance:
             file_exp = ID.split('_')
             n_sp = file_exp[1]
             axis = file_exp[3]

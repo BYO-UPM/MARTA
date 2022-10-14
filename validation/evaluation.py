@@ -40,9 +40,10 @@ def multi_run_validate_model_multinstance(model, test_generator, p_test, repeat=
         pred.append(pred_prob)
     pred = np.stack(pred)
     mean_prob = np.mean(pred,axis=0)
-    std_prob = np.std(pred,axis=0)
+    temp = np.log(pred) - np.log(1-pred)
+    std_score = np.std(temp,axis=0)
     acc, sensi, especi, preci, f1, Npatients, target, pre, score = eval_multinstance_biclass(target_c,mean_prob,p_test,print_custom_report=False)
-    return acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_prob
+    return acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_score
 
 
 def eval_multinstance_biclass(target,predict,patient,print_custom_report=True, plot_det=False,plot_roc=False,print_report=False, estimator_name='example estimator'):

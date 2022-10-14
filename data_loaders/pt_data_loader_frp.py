@@ -6,7 +6,7 @@ from torchvision import transforms
 import numpy as np
 import os
 import cv2
-from PIL import Image
+from PIL import Image, ImageOps
 
 image_size = 512
 
@@ -19,6 +19,7 @@ class Dataset_FPR(torch.utils.data.Dataset):
         self.list_IDs = list_IDs
         self.unique_labels = unique_labels
         self.factor = scale
+        self.multi_instance = multi_instance
         self.TrainFlag = train
         self.noise_level = noise_level
         
@@ -66,19 +67,30 @@ class Dataset_FPR(torch.utils.data.Dataset):
     def load_image(self, img_path,ID):
         if not os.path.exists(img_path):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
-        image = cv2.imread(img_path + 'Eye_L/' + ID + '.png')
-        image_y = cv2.imread(img_path + 'Eye_R/' + ID + '.png')
+        if self.multi_instance:
+            file_exp = ID.split('_')
+            n_sp = file_exp[1]
+            axis = file_exp[3]
+            image = cv2.imread(img_path + file_exp[0] + '_' + n_sp + os.sep + 'Axis_' + axis + os.sep + file_exp[4] + '.png')
+        else:
+            image = cv2.imread(img_path + ID + '.png')
         
-        image[:,:,1]=image_y[:,:,1]
-        dsize = (image_size, image_size)
         # resize image
+        dsize = (image_size, image_size)
         image = cv2.resize(image, dsize)
+        #---------------------------------------------
+        image2 = np.copy(image)
+        image2[image2>0]=255
+        image2 = image2[:,:,0]
+        mask = Image.fromarray(image2.astype('uint8'))
+        #---------------------------------------------
         img = Image.fromarray(image.astype('uint8'), 'RGB')
+        img_adapteq = ImageOps.equalize(img,mask=mask)
 
         if self.TrainFlag:
-            return self.Transformations_train(img)
+            return self.Transformations_train(img_adapteq)
         else:
-            return self.Transformations_test(img)
+            return self.Transformations_test(img_adapteq)
 
 class Dataset_FPR_CL(torch.utils.data.Dataset):
     'Characterizes a dataset for PyTorch'
@@ -88,6 +100,7 @@ class Dataset_FPR_CL(torch.utils.data.Dataset):
         self.list_labels = list_labels
         self.list_IDs = list_IDs
         self.unique_labels = unique_labels
+        self.multi_instance = multi_instance
         self.factor = scale
         self.noise_level = noise_level
         
@@ -112,14 +125,25 @@ class Dataset_FPR_CL(torch.utils.data.Dataset):
     def load_image(self, img_path,ID):
         if not os.path.exists(img_path):
             print("IMAGE DOES NOT EXIST {}".format(img_path))
-        image = cv2.imread(img_path + 'Eye_L/' + ID + '.png')
-        image_y = cv2.imread(img_path + 'Eye_R/' + ID + '.png')
+        if self.multi_instance:
+            file_exp = ID.split('_')
+            n_sp = file_exp[1]
+            axis = file_exp[3]
+            image = cv2.imread(img_path + file_exp[0] + '_' + n_sp + os.sep + 'Axis_' + axis + os.sep + file_exp[4] + '.png')
+        else:
+            image = cv2.imread(img_path + ID + '.png')
         
-        image[:,:,1]=image_y[:,:,1]
-        dsize = (image_size, image_size)
         # resize image
+        dsize = (image_size, image_size)
         image = cv2.resize(image, dsize)
+        #---------------------------------------------
+        image2 = np.copy(image)
+        image2[image2>0]=255
+        image2 = image2[:,:,0]
+        mask = Image.fromarray(image2.astype('uint8'))
+        #---------------------------------------------
         img = Image.fromarray(image.astype('uint8'), 'RGB')
+        img_adapteq = ImageOps.equalize(img,mask=mask)
 
         preprocess = transforms.Compose([
             Random_flip_layer(probability=0.5),
@@ -131,7 +155,7 @@ class Dataset_FPR_CL(torch.utils.data.Dataset):
             transforms.ToTensor(),#normaliza a [0,1]
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ])
-        image_tensor = preprocess(img)
+        image_tensor = preprocess(img_adapteq)
         return image_tensor
 
 class FRP_RandomCrop(object):

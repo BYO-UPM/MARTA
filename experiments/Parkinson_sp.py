@@ -99,6 +99,7 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
     print('Class weight = {}'.format(class_weight))
 
     if "FRP" in dir_img:
+        print('Input data: FRP')
         dic_methods={
             'training_set_cl': Dataset_FPR_CL,
             'training_set': Dataset_FPR,
@@ -112,6 +113,7 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
             'scale':(0.2, 0.3) #occlusion scale
             } 
     else:
+        print('Input data: *.png Spec')
         dic_methods={
             'training_set_cl': Dataset_Spec_img_CL,
             'training_set': Dataset_Spec_img,
