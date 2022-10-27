@@ -201,6 +201,7 @@ def Training_fine_tunning_ge2e(model,training_generator,val_generator,project_na
             
             output_train = model(inputs)
             output_emb = model.forward_emb(inputs)
+            
             loss_clasi = loss_function(output_train, targets)
             loss_ge2e = cl_loss(output_emb,targets)
             loss = lam*loss_clasi + (1-lam)*loss_ge2e
@@ -281,7 +282,7 @@ def Training_fine_tunning(model,training_generator,val_generator,project_name='m
         running_loss = 0.0
         acc_r = 0.0
         model.train()     # Optional when not using Model Specific layer
-        for i,batch in enumerate(training_generator):
+        for batch in training_generator:
             inputs, targets = batch
             
             if (torch.cuda.is_available()):

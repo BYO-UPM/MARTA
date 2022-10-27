@@ -55,6 +55,9 @@ class GE2E_Loss(torch.nn.Module):
         for i in classes:
             centroids.append(torch.sum(e[y==i,:],dim=0))
             n_samples.append(e[y==i,:].shape[0])
+
+        if 0 in n_samples:
+            raise('Not enough number of samples per class included in training batch')
         for i in range(batch):
             for k in classes:
                 if k==y[i]:
@@ -96,4 +99,5 @@ class GE2E_Loss(torch.nn.Module):
         Sim = Sim*self.w + self.b
 
         L = self.embed_loss(Sim,y)
+        
         return L.sum() 

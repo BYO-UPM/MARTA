@@ -131,7 +131,7 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
                                                  batch_sampler=StratifiedBatchSampler(y_train_r, batch_size=params_dloader_training['batch_size']),
                                                  num_workers=0)
         training_generator_ft = torch.utils.data.DataLoader(training_set_ft,  
-                                                 batch_sampler=StratifiedBatchSampler(y_train_r, batch_size=params_dloader_training['batch_size']),
+                                                 batch_sampler=StratifiedBatchSampler(y_train_r, batch_size=2*params_dloader_training['batch_size']),
                                                  num_workers=0)
         val_generator_cl = torch.utils.data.DataLoader(val_set, **params_dloader_training)
         val_generator_ft = torch.utils.data.DataLoader(val_set, **params_dloader_test)  
@@ -150,7 +150,7 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
         test_set = dic_methods['training_set'](dir_img,X_test, y_test, dictOfClass,train=False, multi_instance=True)
 
         training_generator_ft = torch.utils.data.DataLoader(training_set_ft,  
-                                                 batch_sampler=StratifiedBatchSampler(y_train_r, batch_size=params_dloader_training['batch_size']),
+                                                 batch_sampler=StratifiedBatchSampler(y_train_r, batch_size=2*params_dloader_training['batch_size']),
                                                  num_workers=0)
         val_generator_ft = torch.utils.data.DataLoader(val_set, **params_dloader_test)  
         test_generator = torch.utils.data.DataLoader(test_set, **params_dloader_test)
