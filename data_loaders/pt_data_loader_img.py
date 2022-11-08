@@ -9,7 +9,7 @@ import cv2
 from PIL import Image, ImageOps
 
 
-image_size = 512
+image_size = 224
 
 class Dataset_Spec_img(torch.utils.data.Dataset):
     'Characterizes a dataset for PyTorch'
@@ -45,7 +45,7 @@ class Dataset_Spec_img(torch.utils.data.Dataset):
         preprocess = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             #transforms.ToPILImage(),
-            transforms.Resize(512),
+            transforms.Resize((image_size,image_size)),
             AddGaussianNoise(std=self.noise_level),
             transforms.ToTensor(),#normaliza a [0,1]
             Time_Masking_layer(p=0.7, scale=self.scale),
@@ -57,7 +57,7 @@ class Dataset_Spec_img(torch.utils.data.Dataset):
 
     def Transformations_test(self,img):
         preprocess = transforms.Compose([
-            transforms.Resize(512),
+            transforms.Resize((image_size,image_size)),
             AddGaussianNoise(std=self.noise_level),
             transforms.ToTensor(),#normaliza a [0,1]
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -147,7 +147,7 @@ class Dataset_Spec_img_CL(torch.utils.data.Dataset):
         preprocess = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             #transforms.ToPILImage(),
-            transforms.Resize(512),
+            transforms.Resize((image_size,image_size)),
             AddGaussianNoise(std=self.noise_level),
             transforms.ToTensor(),#normaliza a [0,1]
             Time_Masking_layer(p=0.7, scale=self.scale),
@@ -192,7 +192,7 @@ class Dataset_Spec_txtmat(torch.utils.data.Dataset):
         preprocess = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             #transforms.ToPILImage(),
-            transforms.Resize(512),
+            transforms.Resize((image_size,image_size)),
             AddGaussianNoise(std=self.noise_level),
             transforms.ToTensor(),#normaliza a [0,1]
             Time_Masking_layer(p=0.7, scale=self.scale),
@@ -204,7 +204,7 @@ class Dataset_Spec_txtmat(torch.utils.data.Dataset):
 
     def Transformations_test(self,img):
         preprocess = transforms.Compose([
-            transforms.Resize(512),
+            transforms.Resize((image_size,image_size)),
             AddGaussianNoise(std=self.noise_level),
             transforms.ToTensor(),#normaliza a [0,1]
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -297,7 +297,7 @@ class Dataset_Spec_txtmat_CL(torch.utils.data.Dataset):
         preprocess = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             #transforms.ToPILImage(),
-            transforms.Resize(512),
+            transforms.Resize((image_size,image_size)),
             AddGaussianNoise(std=self.noise_level),
             transforms.ToTensor(),#normaliza a [0,1]
             Time_Masking_layer(p=0.7, scale=self.scale),

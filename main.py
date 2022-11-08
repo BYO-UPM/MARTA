@@ -12,6 +12,7 @@ def main():
     np.random.seed(SEED)
     if (args.cuda):
         torch.cuda.manual_seed(SEED)
+        print('GPU available: {}'.format(torch.cuda.is_available()))
     
     sp_list = [int(item) for item in args.list.split(',')]
     args.sp_inc = sp_list
@@ -28,13 +29,13 @@ def get_arguments():
     parser.add_argument('--axis', type=str, default='x')        #sp axis
     parser.add_argument('--scheme', type=int, default=1)        #training scheme 1 to 4 (see pt_training.Training_model)
     parser.add_argument('--repeat_data', type=int, default=1)   #pass training data multiple times per epoch
-    parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--class_weights', type=list, default=[1,1])# it is replaced by one estimated to balance the class weights
     parser.add_argument('--nTraining_epochs_cl', type=int, default=10)
     parser.add_argument('--nCooldown_epochs_cl', type=int, default=5)
     parser.add_argument('--nTraining_epochs_ft', type=int, default=40)
     parser.add_argument('--nCooldown_epochs_ft', type=int, default=10)
-    parser.add_argument('--kfolds', type=int, default=5)
+    parser.add_argument('--kfolds', type=int, default=10)
     parser.add_argument('--inChannels', type=int, default=3)
     parser.add_argument('--lr', default=0.00001, type=float,
                         help='learning rate (default: 1e-5)')
@@ -42,7 +43,7 @@ def get_arguments():
                         help='type of embedding')
     parser.add_argument('--save', type=str, default='model_checkpoints',
                         help='path to checkpoint ')
-    parser.add_argument('--cuda', action='store_true', default=True)
+    parser.add_argument('--cuda', type=bool, default=True)
     parser.add_argument('--seed', type=int, default=123)
     args = parser.parse_args()
     return args
