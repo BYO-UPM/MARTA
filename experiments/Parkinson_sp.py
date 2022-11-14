@@ -165,14 +165,14 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
     return dict_generators, class_weight
 
 
-def load_data(dir_img,sp_inc = [1],axis='x',scheme=1,repeat=1):
+def load_data(dir_img,sp_inc = [1],axis='x',batch=4,scheme=1,repeat=1):
     
     groups_df, dictOfClass = load_patients_sp(group_file='/home/julian/Documents/MATLAB/Oculografia/SP_Groups.csv')
     X_sp_ids, label, Participant = read_sp(dir_img, groups_df, sp_inc = sp_inc,axis=axis)
  
     X_train, X_test, y_train, y_test, p_train, p_test = data_partition(X_sp_ids,label,Participant, n_splits=13)
 
-    dict_generators,  class_weight = Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,batch_size=4, scheme=scheme, repeat = repeat)
+    dict_generators,  class_weight = Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,batch_size=batch, scheme=scheme, repeat = repeat)
     
     return dict_generators, class_weight, p_train, p_test
 
@@ -242,7 +242,7 @@ def cross_validation_experiment(args):
 
 def Fold_Process(args, wandb, project_name, k=1):
     
-    dict_generators, class_weight, _ , p_test = load_data(args.dataset,sp_inc = args.sp_inc,axis=args.axis,scheme=args.scheme,repeat=args.repeat_data)
+    dict_generators, class_weight, _ , p_test = load_data(args.dataset,sp_inc = args.sp_inc,axis=args.axis,batch=args.batch_size,scheme=args.scheme,repeat=args.repeat_data)
     args.class_weight = class_weight
     model = Training_model(project_name, dict_generators,args,wandb,freeze=False,k=k)
 

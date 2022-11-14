@@ -40,7 +40,7 @@ def multi_run_validate_model_multinstance(model, test_generator, p_test, repeat=
         pred.append(pred_prob)
     pred = np.stack(pred)
     mean_prob = np.mean(pred,axis=0)
-    temp = np.log(pred) - np.log(1-pred)
+    temp = np.log(pred+np.finfo(np.float32).eps) - np.log(1-pred+np.finfo(np.float32).eps)
     std_score = np.std(temp,axis=0)
     acc, sensi, especi, preci, f1, Npatients, target, pre, score = eval_multinstance_biclass(target_c,mean_prob,p_test,print_custom_report=False)
     return acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_score
@@ -104,7 +104,7 @@ def eval_multinstance_biclass(target,predict,patient,print_custom_report=True, p
 def joint_prob(target_pat,predict_pat):
     target = target_pat[0]
     predict_norm = 1 - predict_pat
-    score = np.sum(np.log(predict_pat) - np.log(predict_norm))
+    score = np.sum(np.log(predict_pat + np.finfo(np.float32).eps) - np.log(predict_norm + np.finfo(np.float32).eps))
     if score >= 0:
         pre = 1
     else:
