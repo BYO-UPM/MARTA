@@ -8,7 +8,7 @@ import os
 import cv2
 from PIL import Image, ImageOps
 
-image_size = 512
+image_size = 224
 
 class Dataset_FPR(torch.utils.data.Dataset):
     'Characterizes a dataset for PyTorch'
@@ -79,18 +79,12 @@ class Dataset_FPR(torch.utils.data.Dataset):
         dsize = (image_size, image_size)
         image = cv2.resize(image, dsize)
         #---------------------------------------------
-        image2 = np.copy(image)
-        image2[image2>0]=255
-        image2 = image2[:,:,0]
-        mask = Image.fromarray(image2.astype('uint8'))
-        #---------------------------------------------
         img = Image.fromarray(image.astype('uint8'), 'RGB')
-        img_adapteq = ImageOps.equalize(img,mask=mask)
-
+       
         if self.TrainFlag:
-            return self.Transformations_train(img_adapteq)
+            return self.Transformations_train(img)
         else:
-            return self.Transformations_test(img_adapteq)
+            return self.Transformations_test(img)
 
 class Dataset_FPR_CL(torch.utils.data.Dataset):
     'Characterizes a dataset for PyTorch'
@@ -137,13 +131,7 @@ class Dataset_FPR_CL(torch.utils.data.Dataset):
         dsize = (image_size, image_size)
         image = cv2.resize(image, dsize)
         #---------------------------------------------
-        image2 = np.copy(image)
-        image2[image2>0]=255
-        image2 = image2[:,:,0]
-        mask = Image.fromarray(image2.astype('uint8'))
-        #---------------------------------------------
         img = Image.fromarray(image.astype('uint8'), 'RGB')
-        img_adapteq = ImageOps.equalize(img,mask=mask)
 
         preprocess = transforms.Compose([
             Random_flip_layer(probability=0.5),
@@ -155,7 +143,7 @@ class Dataset_FPR_CL(torch.utils.data.Dataset):
             transforms.ToTensor(),#normaliza a [0,1]
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ])
-        image_tensor = preprocess(img_adapteq)
+        image_tensor = preprocess(img)
         return image_tensor
 
 class FRP_RandomCrop(object):
