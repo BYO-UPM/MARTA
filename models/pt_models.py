@@ -197,23 +197,23 @@ class VGG_Encoder(torch.nn.Module):
         super(VGG_Encoder, self).__init__()
 
         if num_layers == 11:
-            Rnet = timm.create_model('vgg11_bn', pretrained=True, in_chans=channels, num_classes=0)
+            VGG = timm.create_model('vgg11_bn', pretrained=True, in_chans=channels, num_classes=0)
         elif num_layers == 13:
-            Rnet = timm.create_model('vgg13_bn', pretrained=True, in_chans=channels, num_classes=0)
+            VGG = timm.create_model('vgg13_bn', pretrained=True, in_chans=channels, num_classes=0)
         elif num_layers == 16:
-            Rnet = timm.create_model('vgg16_bn', pretrained=True, in_chans=channels, num_classes=0)
+            VGG = timm.create_model('vgg16_bn', pretrained=True, in_chans=channels, num_classes=0)
         elif num_layers == 19:
-            Rnet = timm.create_model('vgg19_bn', pretrained=True, in_chans=channels, num_classes=0)
+            VGG = timm.create_model('vgg19_bn', pretrained=True, in_chans=channels, num_classes=0)
 
-        for param in Rnet.parameters():
+        for param in VGG.parameters():
             param.requires_grad = not freeze
 
-        Rnet.head.fc = torch.nn.Sequential(
-            torch.nn.Linear(self.Rnet.num_features, 2*width),
+        VGG.head.fc = torch.nn.Sequential(
+            torch.nn.Linear(VGG.num_features, 2*width),
             torch.nn.ReLU(),
             )
 
-        self.embedding = Rnet
+        self.embedding = VGG
 
         self.projection_head = torch.nn.Sequential(
             torch.nn.Linear(in_features=2*width, out_features=width),
