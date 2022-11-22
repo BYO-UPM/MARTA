@@ -127,7 +127,7 @@ class ViT_Encoder(torch.nn.Module):
         )
 
         self.linear_probe = torch.nn.Sequential(
-            torch.nn.Linear(in_features=width, out_features=2)
+            torch.nn.Linear(in_features=2*width, out_features=2)
         )
     
     def calculate_embedding(self, image):
