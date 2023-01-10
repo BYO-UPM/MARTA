@@ -23,7 +23,7 @@ def one_run_validate_model(model, test_generator, multi_instance=False, p_test=[
 
     if fPrint:
         if multi_instance:
-            _,_,_,_,_,_,_,_,_ = eval_multinstance_biclass(target_c,pred_prob,p_test,plot_roc=False)
+            _,_,_,_,_,_,_,_,_,_ = eval_multinstance_biclass(target_c,pred_prob,p_test,np.zeros(len(p_test)),plot_roc=False)
         else:
             print(metrics.classification_report(target_c, pred_label, target_names=['norm','pat']))
     
