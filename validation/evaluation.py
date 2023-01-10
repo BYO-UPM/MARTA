@@ -42,7 +42,7 @@ def multi_run_validate_model_multinstance(model, test_generator, p_test, repeat=
     mean_prob = np.mean(pred,axis=0)
     temp = np.log(pred+np.finfo(np.float32).eps) - np.log(1-pred+np.finfo(np.float32).eps)
     std_score = np.std(temp,axis=0)
-    acc, sensi, especi, preci, f1, Npatients, target, pre, score = eval_multinstance_biclass(target_c,mean_prob,p_test,print_custom_report=False)
+    acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_score = eval_multinstance_biclass(target_c,mean_prob,p_test,std_score,print_custom_report=False)
     return acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_score
 
 
@@ -52,13 +52,16 @@ def eval_multinstance_biclass(target,predict,patient,print_custom_report=True, p
     target_p = []
     predict_p = []
     score_p = []
+    std_score_out = []
     for i in range(len(Npatients)):
         target_pat = target[patient==Npatients[i]]
         predict_pat =  predict[patient==Npatients[i]]
         tar, pre, score = joint_prob(target_pat,predict_pat)
+        std_score_tmp = std_score[patient==Npatients[i]]
         target_p.append(tar)
         predict_p.append(pre)
         score_p.append(score)
+        std_score_out.append(np.mean(std_score_tmp))
 
     target_p = np.stack(target_p)
     print(target_p)
@@ -99,7 +102,7 @@ def eval_multinstance_biclass(target,predict,patient,print_custom_report=True, p
         print("Precision={}".format(preci))
         print("F1={}".format(f1))
 
-    return acc, sensi, especi, preci, f1, Npatients, target_p, predict_p, score_p
+    return acc, sensi, especi, preci, f1, Npatients, target_p, predict_p, score_p, np.array(std_score_out)
 
 def joint_prob(target_pat,predict_pat):
     target = target_pat[0]

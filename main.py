@@ -14,7 +14,7 @@ def main():
         torch.cuda.manual_seed(SEED)
         print('GPU available: {}'.format(torch.cuda.is_available()))
     
-    sp_list = [int(item) for item in args.list.split(',')]
+    sp_list = [int(item) for item in args.list]
     args.sp_inc = sp_list
     cross_validation_experiment(args)
 
@@ -25,7 +25,7 @@ def get_arguments():
                         help='path to dataset ')                #path to the datset (folder with different sp)
     parser.add_argument('--project_name', type=str, default='',
                         help='name for saving models and results')                #path to the datset (folder with different sp)
-    parser.add_argument('-l', '--list', help='list of sps to include', type=str, default='1')
+    parser.add_argument('-l', '--list', nargs='+', help='list of sps to include', type=str, default='1')
     parser.add_argument('--axis', type=str, default='x')        #sp axis
     parser.add_argument('--scheme', type=int, default=1)        #training scheme 1 to 4 (see pt_training.Training_model)
     parser.add_argument('--repeat_data', type=int, default=1)   #pass training data multiple times per epoch
