@@ -46,7 +46,7 @@ def multi_run_validate_model_multinstance(model, test_generator, p_test, repeat=
     return acc, sensi, especi, preci, f1, Npatients, target, pre, score, std_score
 
 
-def eval_multinstance_biclass(target,predict,patient,print_custom_report=True, plot_det=False,plot_roc=False,print_report=False, estimator_name='example estimator'):
+def eval_multinstance_biclass(target,predict,patient,std_score,print_custom_report=True, plot_det=False,plot_roc=False,print_report=False, estimator_name='example estimator'):
 
     Npatients = np.unique(patient)
     target_p = []
