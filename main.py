@@ -35,7 +35,7 @@ def get_arguments():
     parser.add_argument('--nCooldown_epochs_cl', type=int, default=5)
     parser.add_argument('--nTraining_epochs_ft', type=int, default=40)
     parser.add_argument('--nCooldown_epochs_ft', type=int, default=10)
-    parser.add_argument('--kfolds', type=int, default=13)
+    parser.add_argument('--kfolds', type=int, default=10)
     parser.add_argument('--val_type', type=int, default=1) #1:Train/Validation, 2: Train/Validation/Test. Earlystopping is applied over the validation dataset.
     parser.add_argument('--inChannels', type=int, default=3)
     parser.add_argument('--lr', default=0.00001, type=float,
