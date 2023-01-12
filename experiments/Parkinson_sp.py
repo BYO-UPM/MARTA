@@ -55,7 +55,7 @@ def read_sp(dir_img, groups_df, sp_inc = [1],axis='x'):
                     print('Participant excluded {}'.format(img))
     return np.stack(X_sp_ids), np.stack(label), np.stack(Participant)
 
-def data_partition(X_sp_ids,label,Participant, n_splits=10):
+def data_partition(X_sp_ids,label,Participant, n_splits=10, val_type=1):
 
     #train_idx, test_idx = next(StratifiedGroupKFold(n_splits=n_splits,shuffle=True).split(X_sp_ids,label,Participant))
     train_idx, test_idx = StratifiedGroupKFold_local(label,Participant,n_splits=n_splits,shuffle=True)
@@ -66,9 +66,26 @@ def data_partition(X_sp_ids,label,Participant, n_splits=10):
     p_train = Participant[train_idx]
     p_test = Participant[test_idx]
 
-    return X_train, X_test, y_train, y_test, p_train, p_test
+    if val_type == 1: #Train/Test
+        X_val = X_test
+        y_val = y_test
+        p_val = p_test
 
-def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,batch_size=4, scheme=1, repeat = 10):
+    elif val_type == 2: #Train/Validation/Test
+        #Test set obtained in the previous call to StratifiedGroupKFold_local is split into two 
+        # subsets (in 50-50 proportion), one for validation and the other one for testing.
+        val_idx, test_idx = StratifiedGroupKFold_local(y_test,p_test,n_splits=2,shuffle=True)
+        X_val = X_test[val_idx]
+        y_val = y_test[val_idx]
+        p_val = p_test[val_idx]
+        X_test = X_test[test_idx]
+        y_test = y_test[test_idx]
+        p_test = p_test[test_idx]
+
+    return X_train, X_val, X_test, y_train, y_val, y_test, p_train, p_val, p_test
+
+
+def Create_data_loaders( X_train, X_val, X_test, y_train, y_val, y_test,dictOfClass,dir_img,batch_size=4, scheme=1, repeat = 10):
 
     params_dloader_training = {'batch_size': batch_size,
           'shuffle': True,
@@ -80,13 +97,15 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
 
     X_train_r = X_train
     y_train_r = y_train
-    X_val_r = X_test
-    y_val_r = y_test
+    X_val_r = X_val
+    y_val_r = y_val
+    
     for _ in range(2,repeat):
         X_train_r = np.r_[X_train_r,X_train]
         y_train_r = np.r_[y_train_r,y_train]
-        X_val_r = np.r_[X_val_r,X_test]
-        y_val_r = np.r_[y_val_r,y_test]
+        X_val_r = np.r_[X_val_r,X_val]
+        y_val_r = np.r_[y_val_r,y_val]
+
 
     res =  X_train_r.shape[0]%batch_size
     if res > 0:
@@ -165,14 +184,14 @@ def Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,ba
     return dict_generators, class_weight
 
 
-def load_data(dir_img,sp_inc = [1],axis='x',batch=4,scheme=1,repeat=1):
+def load_data(dir_img,sp_inc = [1],axis='x',batch=4,scheme=1,repeat=1,kfolds=13, val_type=1):
     
     groups_df, dictOfClass = load_patients_sp(group_file='/home/julian/Documents/MATLAB/Oculografia/SP_Groups.csv')
     X_sp_ids, label, Participant = read_sp(dir_img, groups_df, sp_inc = sp_inc,axis=axis)
- 
-    X_train, X_test, y_train, y_test, p_train, p_test = data_partition(X_sp_ids,label,Participant, n_splits=13)
+    
+    X_train, X_val, X_test, y_train, y_val, y_test, p_train, _, p_test = data_partition(X_sp_ids,label,Participant, n_splits=kfolds, val_type=val_type)
 
-    dict_generators,  class_weight = Create_data_loaders( X_train, X_test, y_train, y_test,dictOfClass,dir_img,batch_size=batch, scheme=scheme, repeat = repeat)
+    dict_generators,  class_weight = Create_data_loaders( X_train, X_val, X_test, y_train, y_val, y_test,dictOfClass,dir_img,batch_size=batch, scheme=scheme, repeat = repeat)
     
     return dict_generators, class_weight, p_train, p_test
 
@@ -242,7 +261,16 @@ def cross_validation_experiment(args):
 
 def Fold_Process(args, wandb, project_name, k=1):
     
-    dict_generators, class_weight, _ , p_test = load_data(args.dataset,sp_inc = args.sp_inc,axis=args.axis,batch=args.batch_size,scheme=args.scheme,repeat=args.repeat_data)
+    dict_generators, class_weight, _ , p_test = load_data(
+        args.dataset,
+        sp_inc = args.sp_inc,
+        axis=args.axis,
+        batch=args.batch_size,
+        scheme=args.scheme,
+        repeat=args.repeat_data,
+        kfolds=args.kfolds, 
+        val_type=args.val_type)
+
     args.class_weight = class_weight
     model = Training_model(project_name, dict_generators,args,wandb,freeze=False,k=k)
 
