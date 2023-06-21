@@ -37,6 +37,7 @@ class VAE(torch.nn.Module):
     ):
         super(VAE, self).__init__()
         self.embedding_input = embedding_input
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         encoder_layers = []
         for i in range(len(hidden_dims_enc)):
@@ -58,6 +59,8 @@ class VAE(torch.nn.Module):
             *decoder_layers,
             torch.nn.Linear(hidden_dims_dec[-1], self.embedding_input),
         )
+
+        self.to(self.device)
 
     def encoder(self, x):
         h = self.enc(x)
