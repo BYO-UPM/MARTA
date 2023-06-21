@@ -11,8 +11,8 @@ import seaborn as sns
 # Add rasta_py to the path
 import sys
 
-sys.path.append("./rasta_py")
-from rasta import rastaplp
+
+from utils.rasta_py import rastaplp
 
 
 def analyse_distribution(data):

@@ -554,7 +554,7 @@ def Training_model(project_name, dict_generators, args, wandb=[], freeze=False, 
     return model
 
 
-def VAE_trainer(model, dataloader, epochs, beta, lr, wandb_flag):
+def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
     # Optimizer
     opt = torch.optim.Adam(model.parameters(), lr)
     loss = torch.nn.GaussianNLLLoss(reduction="sum")
@@ -565,24 +565,22 @@ def VAE_trainer(model, dataloader, epochs, beta, lr, wandb_flag):
 
     model.train()
     print("Training the VAE model")
-    print(epochs)
     for e in range(epochs):
         train_loss = 0
         kl_div = 0
         rec_loss = 0
-        print(e)
-        with tqdm(dataloader, unit="batch") as tepoch:
+        with tqdm(trainloader, unit="batch") as tepoch:
             for x in tepoch:
                 tepoch.set_description(f"Epoch {e}")
                 # Move data to device
-                x = x.to(model.device)
+                x = x.to(model.device).to(torch.float32)
 
                 # Gradient to zero
                 opt.zero_grad()
                 # Forward pass
                 x_hat, mu, logvar = model(x)
                 # Compute variational lower bound
-                reconstruction_loss = loss(x_hat, x, var=0 * x_hat)
+                reconstruction_loss = loss(x_hat, x, var=0.01 * torch.ones_like(x_hat))
                 kl_divergence = torch.distributions.kl_divergence(
                     torch.distributions.Normal(mu, logvar.exp()),
                     torch.distributions.Normal(
@@ -601,18 +599,104 @@ def VAE_trainer(model, dataloader, epochs, beta, lr, wandb_flag):
                 rec_loss += reconstruction_loss.item()
 
         # Store losses
-        elbo_training.append(train_loss / len(dataloader.dataset))
-        kl_div_training.append(kl_div / len(dataloader.dataset))
-        rec_loss_training.append(rec_loss / len(dataloader.dataset))
+        elbo_training.append(train_loss / len(trainloader.dataset))
+        kl_div_training.append(kl_div / len(trainloader.dataset))
+        rec_loss_training.append(rec_loss / len(trainloader.dataset))
 
         # Log to wandb
         if wandb_flag:
             wandb.log(
                 {
-                    "ELBO": elbo_training[-1],
-                    "KL_div": kl_div_training[-1],
-                    "rec_loss": rec_loss_training[-1],
+                    "train/ELBO": elbo_training[-1],
+                    "train/KL_div": kl_div_training[-1],
+                    "train/rec_loss": rec_loss_training[-1],
                 }
             )
 
-    return elbo_training, kl_div_training, rec_loss_training
+    # Validate model
+    elbo_validation = []
+    kl_div_validation = []
+    rec_loss_validation = []
+    model.eval()
+    print("Validating the VAE model")
+    with torch.no_grad():
+        valid_loss = 0
+        kl_div = 0
+        rec_loss = 0
+        with tqdm(validloader, unit="batch") as tepoch:
+            for x in tepoch:
+                # Move data to device
+                x = x.to(model.device).to(torch.float32)
+
+                # Forward pass
+                x_hat, mu, logvar = model(x)
+                # Compute variational lower bound
+                reconstruction_loss = loss(x_hat, x, var=0.01 * torch.ones_like(x_hat))
+                kl_divergence = torch.distributions.kl_divergence(
+                    torch.distributions.Normal(mu, logvar.exp()),
+                    torch.distributions.Normal(
+                        torch.zeros_like(mu), torch.ones_like(logvar)
+                    ),
+                ).sum()
+                variational_lower_bound = reconstruction_loss + beta * kl_divergence
+
+                # Update losses storing
+                valid_loss += variational_lower_bound.item()
+                kl_div += kl_divergence.sum().item()
+                rec_loss += reconstruction_loss.item()
+
+        # Store losses
+        elbo_validation.append(valid_loss / len(validloader.dataset))
+        kl_div_validation.append(kl_div / len(validloader.dataset))
+        rec_loss_validation.append(rec_loss / len(validloader.dataset))
+
+        # Log to wandb
+        if wandb_flag:
+            wandb.log(
+                {
+                    "valid/ELBO": elbo_validation[-1],
+                    "valid/KL_div": kl_div_validation[-1],
+                    "valid/rec_loss": rec_loss_validation[-1],
+                }
+            )
+
+    return (
+        elbo_training,
+        kl_div_training,
+        rec_loss_training,
+        elbo_validation,
+        kl_div_validation,
+        rec_loss_validation,
+    )
+
+
+def VAE_tester(model, testloader):
+    loss_nll = torch.nn.GaussianNLLLoss(reduction="sum")
+    loss_mse = torch.nn.MSELoss(reduction="sum")
+
+    model.eval()
+    print("Evaluating the VAE model")
+    with torch.no_grad():
+        test_loss = 0
+        test2_loss = 0
+
+        with tqdm(testloader, unit="batch") as tepoch:
+            for x in tepoch:
+                # Move data to device
+                x = x.to(model.device).to(torch.float32)
+
+                # Forward pass
+                x_hat, mu, logvar = model(x)
+                # Compute variational lower bound
+                nll_loss = loss_nll(x_hat, x, var=0.01 * torch.ones_like(x_hat))
+                mse_loss = loss_mse(x_hat, x)
+
+                # Update losses storing
+                test_loss += mse_loss.item()
+                test2_loss += nll_loss.item()
+
+        # Store losses
+        reconstruction_error_nll = test2_loss / len(testloader.dataset)
+        reconstruction_error_mse = test_loss / len(testloader.dataset)
+
+    return reconstruction_error_mse, reconstruction_error_nll

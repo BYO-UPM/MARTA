@@ -44,10 +44,20 @@ def test_VAE_trainer():
         dataset=torch.randn(100, 39), batch_size=10, shuffle=True
     )
 
-    # Run the VAE model
-    elbo_training, kl_div_training, rec_loss_training = VAE_trainer(
-        vae, dataloader, 10, 1, 0.001, False
+    # Create a valid dataloader
+    valid_dataloader = torch.utils.data.DataLoader(
+        dataset=torch.randn(100, 39), batch_size=10, shuffle=True
     )
+
+    # Run the VAE model
+    (
+        elbo_training,
+        kl_div_training,
+        rec_loss_training,
+        elbo_validation,
+        kl_div_validation,
+        rec_loss_validation,
+    ) = VAE_trainer(vae, dataloader, valid_dataloader, 10, 1, 0.001, False)
 
     print(elbo_training)
 
