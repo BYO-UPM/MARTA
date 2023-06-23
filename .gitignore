@@ -2,6 +2,7 @@
 /model_checkpoints
 /wandb
 .DS_Store
+local_results/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

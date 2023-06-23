@@ -2,9 +2,9 @@ from utils.rasta_py import rastaplp
 from utils.preprocess import read_data, extract_rasta_plp_with_derivatives
 from models.pt_models import VAE
 from training.pt_training import VAE_trainer, VAE_tester
+from utils.utils import plot_latent_space
 import torch
-
-
+import wandb
 import numpy as np
 import pandas as pd
 
@@ -106,6 +106,12 @@ def main(args):
 
         # Test the model
         test_loss_mse, test_loss_nll = VAE_tester(model, test_dataloader)
+
+        # Plot the latent space in test
+        plot_latent_space(model, test_data, fold, hyperparams["wandb_flag"])
+
+        # Plot the latent space in train
+        plot_latent_space(model, train_data, fold, hyperparams["wandb_flag"])
 
 
 if __name__ == "__main__":
