@@ -45,6 +45,17 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
             torch.Tensor(np.vstack(data["plps"])).to(model.device)
         )
 
+    # Check latent_mu shape, if greater than 2 do a t-SNE
+    if latent_mu.shape[1] > 2:
+        from sklearn.manifold import TSNE
+
+        latent_mu = TSNE(n_components=2).fit_transform(latent_mu)
+        xlabel = "t-SNE dim 1"
+        ylabel = "t-SNE dim 2"
+    else:
+        xlabel = "Latent dim 1"
+        ylabel = "Latent dim 2"
+
     plt.figure(figsize=(10, 10))
 
     # Scatter plot
@@ -56,8 +67,8 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
     )
 
     # Add labels and title
-    plt.xlabel("Latent dim 1")
-    plt.ylabel("Latent dim 2")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
     plt.title(f"Latent space in " + str(name) + " for fold {fold}")
 
     # Create custom legend

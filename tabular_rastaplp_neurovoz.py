@@ -21,19 +21,12 @@ def main(args):
         "latent_dim": args.latent_dim,
         "hidden_dims_enc": args.hidden_dims_enc,
         "hidden_dims_dec": args.hidden_dims_dec,
+        "supervised": args.supervised,
     }
-
-    if hyperparams["wandb_flag"]:
-        wandb.init(
-            project="parkinson",
-            config=hyperparams,
-            group="rasta_plp_vae",
-            name="preprocess",
-        )
 
     print("Reading data...")
     # Read the data
-    data = read_data(args.data_path, args.wandb_flag)
+    data = read_data(args.data_path, False)
 
     print("Extracting RASTA-PLP features...")
     # Extract the RASTA-PLP features
@@ -73,7 +66,7 @@ def main(args):
             wandb.init(
                 project="parkinson",
                 config=hyperparams,
-                group="rasta_plp_vae",
+                group="rasta_plp_vae_supervised",
                 name="fold_" + str(fold),
             )
         print("Training a VAE for fold: ", fold)
@@ -107,19 +100,23 @@ def main(args):
         # Create DataLoaders
         print("Train data shape: ", np.vstack(train_data["plps"]).shape)
         train_dataloader = torch.utils.data.DataLoader(
-            dataset=np.vstack(train_data["plps"]),
+            dataset=list(
+                zip(np.vstack(train_data["plps"]), train_data["label"].values)
+            ),
             batch_size=hyperparams["batch_size"],
             sampler=sampler,
         )
         print("Valid data shape: ", np.vstack(valid_data["plps"]).shape)
         valid_dataloader = torch.utils.data.DataLoader(
-            dataset=np.vstack(valid_data["plps"]),
+            dataset=list(
+                zip(np.vstack(valid_data["plps"]), valid_data["label"].values)
+            ),
             batch_size=hyperparams["batch_size"],
             shuffle=True,
         )
         print("Test data shape: ", np.vstack(test_data["plps"]).shape)
         test_dataloader = torch.utils.data.DataLoader(
-            dataset=np.vstack(test_data["plps"]),
+            dataset=list(zip(np.vstack(test_data["plps"]), test_data["label"].values)),
             batch_size=hyperparams["batch_size"],
             shuffle=True,
         )
@@ -131,6 +128,7 @@ def main(args):
             latent_dim=hyperparams["latent_dim"],
             hidden_dims_enc=hyperparams["hidden_dims_enc"],
             hidden_dims_dec=hyperparams["hidden_dims_dec"],
+            supervised=hyperparams["supervised"],
         )
 
         print("Training VAE...")
@@ -140,15 +138,21 @@ def main(args):
             train_dataloader,
             valid_dataloader,
             epochs=hyperparams["epochs"],
-            beta=0.5,
+            beta=1,
             lr=hyperparams["lr"],
             wandb_flag=hyperparams["wandb_flag"],
+            supervised=hyperparams["supervised"],
         )
         print("Training finished!")
 
         print("Testing VAE...")
         # Test the model
-        test_loss_mse, test_loss_nll = VAE_tester(model, test_dataloader)
+        test_loss_mse, test_loss_nll = VAE_tester(
+            model,
+            test_dataloader,
+            supervised=hyperparams["supervised"],
+            wandb_flag=hyperparams["wandb_flag"],
+        )
 
         # Plot the latent space in test
         plot_latent_space(
@@ -230,6 +234,11 @@ if __name__ == "__main__":
         type=list,
         default=[10],
         help="Hidden dimensions of the decoder",
+    )
+    parser.add_argument(
+        "--supervised",
+        action="store_true",
+        help="Flag to use supervised training",
     )
     args = parser.parse_args()
 

@@ -9,12 +9,15 @@ from losses.pt_losses import SimCLR, GE2E_Loss
 import timm
 import timm.scheduler
 import itertools
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, balanced_accuracy_score
 from sklearn.model_selection import StratifiedKFold
 import os
 from tqdm import tqdm
 import wandb
-from matplotlib import pyplot as plt
+from matplotlib.colors import Normalize
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
 
 
 class StratifiedBatchSampler:
@@ -555,17 +558,25 @@ def Training_model(project_name, dict_generators, args, wandb=[], freeze=False, 
     return model
 
 
-def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
+def VAE_trainer(
+    model, trainloader, validloader, epochs, beta, lr, supervised, wandb_flag
+):
     # Optimizer
     opt = torch.optim.Adam(model.parameters(), lr)
     loss = torch.nn.MSELoss(reduction="sum")
+    if supervised:
+        loss_class = torch.nn.BCELoss(reduction="sum")
 
     elbo_training = []
     kl_div_training = []
     rec_loss_training = []
+    if supervised:  # if supervised we also have BCE loss
+        bce_loss_training = []
     elbo_validation = []
     kl_div_validation = []
     rec_loss_validation = []
+    if supervised:  # if supervised we also have BCE loss
+        bce_loss_validation = []
 
     model.train()
     print("Training the VAE model")
@@ -573,22 +584,34 @@ def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
         train_loss = 0
         kl_div = 0
         rec_loss = 0
+        if supervised:
+            bce_loss = 0
         model.train()
         with tqdm(trainloader, unit="batch") as tepoch:
-            for x in tepoch:
+            for x, y in tepoch:
                 tepoch.set_description(f"Epoch {e}")
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
+                y = y.to(model.device).to(torch.float32)
 
                 # Gradient to zero
                 opt.zero_grad()
                 # Forward pass
-                x_hat, mu, logvar = model(x)
+                if supervised:
+                    x_hat, y_hat, mu, logvar = model(x)
+                else:
+                    x_hat, mu, logvar = model(x)
                 # Compute variational lower bound
                 # reconstruction_loss = loss(x_hat, x, var=0.01 * torch.ones_like(x_hat))
                 reconstruction_loss = loss(x_hat, x)
                 kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-                variational_lower_bound = reconstruction_loss + beta * kl_divergence
+                if supervised:
+                    bce = loss_class(y_hat, y.view(-1, 1))
+                    variational_lower_bound = (
+                        reconstruction_loss + beta * kl_divergence + bce
+                    )
+                else:
+                    variational_lower_bound = reconstruction_loss + beta * kl_divergence
                 # Backward pass
                 variational_lower_bound.backward()
                 # Update parameters
@@ -598,16 +621,22 @@ def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
                 train_loss += variational_lower_bound.item()
                 kl_div += kl_divergence.item()
                 rec_loss += reconstruction_loss.item()
+                if supervised:
+                    bce_loss += bce.item()
 
             # Store losses
             elbo_training.append(train_loss / len(trainloader))
             kl_div_training.append(kl_div / len(trainloader))
             rec_loss_training.append(rec_loss / len(trainloader))
+            if supervised:
+                bce_loss_training.append(bce_loss / len(trainloader))
 
             # Print Losses at current epoch
             print(
                 f"Epoch {e}: Train ELBO: {elbo_training[-1]:.2f}, Train KL divergence: {kl_div_training[-1]:.2f}, Train reconstruction loss: {rec_loss_training[-1]:.2f}"
             )
+            if supervised:
+                print(f"Train BCE loss: {bce_loss_training[-1]:.2f}")
 
             # Get 10 fisrt samples and check their value vs their reconstruction
             idx = np.arange(10)
@@ -618,9 +647,21 @@ def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
 
             # Plot them as heatmaps
             fig, axs = plt.subplots(3, 1, figsize=(20, 20))
-            axs[0].imshow(x_sample.cpu().detach().numpy())
-            axs[1].imshow(x_hat_sample.cpu().detach().numpy())
-            axs[2].imshow(error.cpu().detach().numpy())
+            cmap = cm.get_cmap("viridis")
+            normalizer = Normalize(
+                torch.min(torch.cat((x_sample, x_hat_sample))),
+                torch.max(torch.cat((x_sample, x_hat_sample))),
+            )
+            im = cm.ScalarMappable(norm=normalizer)
+            axs[0].set_title("Original")
+            axs[0].imshow(x_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer)
+            axs[1].set_title("Reconstruction")
+            axs[1].imshow(
+                x_hat_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer
+            )
+            axs[2].set_title("Error")
+            axs[2].imshow(error.cpu().detach().numpy(), cmap=cmap, norm=normalizer)
+            fig.colorbar(im, ax=axs.ravel().tolist())
             plt.show()
             # Log to wandb
             if wandb_flag:
@@ -630,6 +671,8 @@ def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
                         "train/KL_div": kl_div_training[-1],
                         "train/rec_loss": rec_loss_training[-1],
                         "train/rec_img": fig,
+                        "train/bce_loss": bce_loss_training[-1],
+                        "train/epoch": e,
                     }
                 )
             # Close the img
@@ -643,13 +686,19 @@ def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
                 valid_loss = 0
                 kl_div = 0
                 rec_loss = 0
+                if supervised:
+                    bce_loss = 0
                 with tqdm(validloader, unit="batch") as tepoch:
-                    for x in tepoch:
+                    for x, y in tepoch:
                         # Move data to device
                         x = x.to(model.device).to(torch.float32)
+                        y = y.to(model.device).to(torch.float32)
 
                         # Forward pass
-                        x_hat, mu, logvar = model(x)
+                        if supervised:
+                            x_hat, y_hat, mu, logvar = model(x)
+                        else:
+                            x_hat, mu, logvar = model(x)
                         # Compute variational lower bound
                         # reconstruction_loss = loss(
                         #     x_hat, x, var=0.01 * torch.ones_like(x_hat)
@@ -658,37 +707,59 @@ def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
                         kl_divergence = -0.5 * torch.sum(
                             1 + logvar - mu.pow(2) - logvar.exp()
                         )
-
-                        variational_lower_bound = (
-                            reconstruction_loss + beta * kl_divergence
-                        )
+                        if supervised:
+                            bce = loss_class(y_hat, y.view(-1, 1))
+                            variational_lower_bound = (
+                                reconstruction_loss + beta * kl_divergence + bce
+                            )
+                        else:
+                            variational_lower_bound = (
+                                reconstruction_loss + beta * kl_divergence
+                            )
 
                         # Update losses storing
                         valid_loss += variational_lower_bound.item()
                         kl_div += kl_divergence.item()
                         rec_loss += reconstruction_loss.item()
+                        if supervised:
+                            bce_loss += bce.item()
 
                     # Store losses
                     elbo_validation.append(valid_loss / len(validloader))
                     kl_div_validation.append(kl_div / len(validloader))
                     rec_loss_validation.append(rec_loss / len(validloader))
+                    if supervised:
+                        bce_loss_validation.append(bce_loss / len(validloader))
 
                     # Print Losses at current epoch
                     print(
                         f"Epoch {e}: Valid ELBO: {elbo_validation[-1]:.2f}, Valid KL divergence: {kl_div_validation[-1]:.2f}, Valid reconstruction loss: {rec_loss_validation[-1]:.2f}"
                     )
+                    if supervised:
+                        print(f"Valid BCE loss: {bce_loss_validation[-1]:.2f}")
                     # Get 10 fisrt samples and check their value vs their reconstruction
-                    idx = np.arange(10)
-                    x_sample = x[idx]
-                    x_hat_sample = x_hat[idx]
-                    # calculate error
-                    error = torch.abs(x_sample - x_hat_sample)
-
                     # Plot them as heatmaps
                     fig, axs = plt.subplots(3, 1, figsize=(20, 20))
-                    axs[0].imshow(x_sample.cpu().detach().numpy())
-                    axs[1].imshow(x_hat_sample.cpu().detach().numpy())
-                    axs[2].imshow(error.cpu().detach().numpy())
+                    cmap = cm.get_cmap("viridis")
+                    normalizer = Normalize(
+                        torch.min(torch.cat((x_sample, x_hat_sample))),
+                        torch.max(torch.cat((x_sample, x_hat_sample))),
+                    )
+                    im = cm.ScalarMappable(norm=normalizer)
+                    axs[0].set_title("Original")
+                    axs[0].imshow(
+                        x_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer
+                    )
+                    axs[1].set_title("Reconstruction")
+                    axs[1].imshow(
+                        x_hat_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer
+                    )
+                    axs[2].set_title("Error")
+                    axs[2].imshow(
+                        error.cpu().detach().numpy(), cmap=cmap, norm=normalizer
+                    )
+
+                    fig.colorbar(im, ax=axs.ravel().tolist())
                     plt.show()
 
                     # Log to wandb
@@ -699,6 +770,8 @@ def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
                                 "valid/KL_div": kl_div_validation[-1],
                                 "valid/rec_loss": rec_loss_validation[-1],
                                 "valid/rec_img": fig,
+                                "valid/bce_loss": bce_loss_validation[-1],
+                                "valid/epoch": e,
                             }
                         )
                     plt.close(fig)
@@ -723,33 +796,83 @@ def VAE_trainer(model, trainloader, validloader, epochs, beta, lr, wandb_flag):
     )
 
 
-def VAE_tester(model, testloader):
+def VAE_tester(model, testloader, supervised=False, wandb_flag=False):
     loss_nll = torch.nn.GaussianNLLLoss(reduction="sum")
     loss_mse = torch.nn.MSELoss(reduction="sum")
+    loss_class = torch.nn.BCELoss(reduction="sum")
 
     model.eval()
     print("Evaluating the VAE model")
     with torch.no_grad():
         test_loss = 0
         test2_loss = 0
-
+        if supervised:
+            bce_loss = 0
         with tqdm(testloader, unit="batch") as tepoch:
-            for x in tepoch:
+            for x, y in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
+                y = y.to(model.device).to(torch.float32)
 
                 # Forward pass
-                x_hat, mu, logvar = model(x)
+                if supervised:
+                    x_hat, y_hat, mu, logvar = model(x)
+                else:
+                    x_hat, mu, logvar = model(x)
                 # Compute variational lower bound
                 nll_loss = loss_nll(x_hat, x, var=0.01 * torch.ones_like(x_hat))
                 mse_loss = loss_mse(x_hat, x)
+                if supervised:
+                    bce = loss_class(y_hat, y.view(-1, 1))
 
                 # Update losses storing
                 test_loss += mse_loss.item()
                 test2_loss += nll_loss.item()
+                if supervised:
+                    bce_loss += bce.item()
 
         # Store losses
         reconstruction_error_nll = test2_loss / len(testloader.dataset)
         reconstruction_error_mse = test_loss / len(testloader.dataset)
+        if supervised:
+            bce_loss = bce_loss / len(testloader.dataset)
+
+        # Print Losses at current epoch
+        print(
+            f"Test MSE: {reconstruction_error_mse:.2f}, Test NLL: {reconstruction_error_nll:.2f}"
+        )
+        if supervised:
+            print(f"Test BCE: {bce_loss:.2f}")
+
+        # Calculate accuracy and balanced accuracy and AUC if supervised
+        if supervised:
+            y_bin = torch.round(y_hat)
+            accuracy = accuracy_score(
+                y.cpu().detach().numpy(), y_bin.cpu().detach().numpy()
+            )
+            balanced_accuracy = balanced_accuracy_score(
+                y.cpu().detach().numpy(), y_bin.cpu().detach().numpy()
+            )
+            auc = roc_auc_score(y.cpu().detach().numpy(), y_hat.cpu().detach().numpy())
+            print(
+                f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
+            )
+            if wandb_flag:
+                wandb.log(
+                    {
+                        "test/accuracy": accuracy,
+                        "test/balanced_accuracy": balanced_accuracy,
+                        "test/AUC": auc,
+                        "test/BCE": bce_loss,
+                    }
+                )
+
+        if wandb_flag:
+            wandb.log(
+                {
+                    "test/MSE": reconstruction_error_mse,
+                    "test/NLL": reconstruction_error_nll,
+                }
+            )
 
     return reconstruction_error_mse, reconstruction_error_nll

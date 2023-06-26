@@ -1,5 +1,6 @@
 import torch
 import timm
+import copy
 
 
 width = 64
@@ -34,9 +35,11 @@ class VAE(torch.nn.Module):
         latent_dim=2,
         hidden_dims_enc=[20, 10],
         hidden_dims_dec=[20],
+        supervised=False,
     ):
         super(VAE, self).__init__()
         self.embedding_input = embedding_input
+        self.latent_dim = copy.deepcopy(latent_dim)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         encoder_layers = []
@@ -47,8 +50,8 @@ class VAE(torch.nn.Module):
 
         self.enc = torch.nn.Sequential(*encoder_layers)
 
-        self.fc_mu = torch.nn.Linear(hidden_dims_enc[-1], latent_dim)
-        self.fc_logvar = torch.nn.Linear(hidden_dims_enc[-1], latent_dim)
+        self.fc_mu = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
+        self.fc_logvar = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
 
         decoder_layers = []
         for i in range(len(hidden_dims_dec)):
@@ -59,6 +62,12 @@ class VAE(torch.nn.Module):
             *decoder_layers,
             torch.nn.Linear(hidden_dims_dec[-1], self.embedding_input),
         )
+        self.supervised = supervised
+        if self.supervised:
+            self.dec_sup = torch.nn.Sequential(
+                torch.nn.Linear(self.latent_dim, 1),
+                torch.nn.Sigmoid(),
+            )
 
         self.to(self.device)
 
@@ -76,11 +85,20 @@ class VAE(torch.nn.Module):
     def decoder(self, z):
         return self.dec(z)
 
+    def decoder_supervised(self, z, mu):
+        x_hat = self.dec(z)
+        y_hat = self.dec_sup(mu)
+        return x_hat, y_hat
+
     def forward(self, x):
         mu, logvar = self.encoder(x)
         z = self.reparameterize(mu, logvar)
-        return self.decoder(z), mu, logvar
-    
+        if self.supervised:
+            x_hat, y_hat = self.decoder_supervised(z, mu)
+            return x_hat, y_hat, mu, logvar
+        else:
+            x_hat = self.decoder(z)
+            return x_hat, mu, logvar
 
 
 class ViT_TwoClass(torch.nn.Module):
