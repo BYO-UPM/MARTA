@@ -35,7 +35,7 @@ def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
     return train_idx, test_idx
 
 
-def plot_latent_space(model, data, fold, wandb_flag):
+def plot_latent_space(model, data, fold, wandb_flag, name="default"):
     from matplotlib import pyplot as plt
 
     # Generate mu and sigma in training
@@ -46,12 +46,37 @@ def plot_latent_space(model, data, fold, wandb_flag):
         )
 
     plt.figure(figsize=(10, 10))
-    plt.scatter(
+
+    # Scatter plot
+    scatter = plt.scatter(
         latent_mu[:, 0].detach().cpu().numpy(),
         latent_mu[:, 1].detach().cpu().numpy(),
         c=data["label"].values,
         cmap="viridis",
     )
+
+    # Add labels and title
+    plt.xlabel("Latent dim 1")
+    plt.ylabel("Latent dim 2")
+    plt.title(f"Latent space in " + str(name) + " for fold {fold}")
+
+    # Create custom legend
+    classes = ["Healthy", "PD"]
+    class_labels = np.unique(data["label"].values)
+    class_handles = [
+        plt.Line2D(
+            [],
+            [],
+            marker="o",
+            color="white",
+            markerfacecolor=scatter.cmap(scatter.norm(cls)),
+            markersize=10,
+        )
+        for cls in class_labels
+    ]
+    plt.legend(class_handles, classes)
     plt.savefig(f"local_results/latent_space_{fold}.png")
     if wandb_flag:
-        wandb.log({"latent_space": plt})
+        wandb.log({str(name) + "/latent_space": plt})
+    plt.show()
+    plt.close()
