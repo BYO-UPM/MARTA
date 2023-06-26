@@ -138,7 +138,6 @@ def main(args):
             train_dataloader,
             valid_dataloader,
             epochs=hyperparams["epochs"],
-            beta=1,
             lr=hyperparams["lr"],
             wandb_flag=hyperparams["wandb_flag"],
             supervised=hyperparams["supervised"],

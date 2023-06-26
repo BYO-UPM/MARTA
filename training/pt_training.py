@@ -9,7 +9,12 @@ from losses.pt_losses import SimCLR, GE2E_Loss
 import timm
 import timm.scheduler
 import itertools
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, balanced_accuracy_score
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    roc_auc_score,
+    balanced_accuracy_score,
+)
 from sklearn.model_selection import StratifiedKFold
 import os
 from tqdm import tqdm
@@ -17,7 +22,6 @@ import wandb
 from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-
 
 
 class StratifiedBatchSampler:
@@ -558,9 +562,18 @@ def Training_model(project_name, dict_generators, args, wandb=[], freeze=False, 
     return model
 
 
-def VAE_trainer(
-    model, trainloader, validloader, epochs, beta, lr, supervised, wandb_flag
-):
+def get_beta(epoch):
+    cycle_length = 4  # Number of epochs in a single cycler
+    current_cycle_epoch = (epoch - 1) % cycle_length  # Current epoch within the cycle
+    beta = current_cycle_epoch / (cycle_length - 1) 
+
+    # Reescale beta value between 0 and 0.5
+    beta = beta / 2
+
+    return beta
+
+
+def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag):
     # Optimizer
     opt = torch.optim.Adam(model.parameters(), lr)
     loss = torch.nn.MSELoss(reduction="sum")
@@ -587,6 +600,10 @@ def VAE_trainer(
         if supervised:
             bce_loss = 0
         model.train()
+
+        beta_sc = get_beta(e)
+        print("Beta: ", beta_sc)
+
         with tqdm(trainloader, unit="batch") as tepoch:
             for x, y in tepoch:
                 tepoch.set_description(f"Epoch {e}")
@@ -608,7 +625,7 @@ def VAE_trainer(
                 if supervised:
                     bce = loss_class(y_hat, y.view(-1, 1))
                     variational_lower_bound = (
-                        reconstruction_loss + beta * kl_divergence + bce
+                        reconstruction_loss + beta_sc * kl_divergence + bce
                     )
                 else:
                     variational_lower_bound = reconstruction_loss + beta * kl_divergence
@@ -710,7 +727,7 @@ def VAE_trainer(
                         if supervised:
                             bce = loss_class(y_hat, y.view(-1, 1))
                             variational_lower_bound = (
-                                reconstruction_loss + beta * kl_divergence + bce
+                                reconstruction_loss + beta_sc * kl_divergence + bce
                             )
                         else:
                             variational_lower_bound = (
