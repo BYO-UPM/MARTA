@@ -49,10 +49,11 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
     if latent_mu.shape[1] > 2:
         from sklearn.manifold import TSNE
 
-        latent_mu = TSNE(n_components=2).fit_transform(latent_mu)
+        latent_mu = TSNE(n_components=2).fit_transform(latent_mu.detach().cpu().numpy())
         xlabel = "t-SNE dim 1"
         ylabel = "t-SNE dim 2"
     else:
+        latent_mu = latent_mu.detach().cpu().numpy()
         xlabel = "Latent dim 1"
         ylabel = "Latent dim 2"
 
@@ -60,8 +61,8 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
 
     # Scatter plot
     scatter = plt.scatter(
-        latent_mu[:, 0].detach().cpu().numpy(),
-        latent_mu[:, 1].detach().cpu().numpy(),
+        latent_mu[:, 0],
+        latent_mu[:, 1],
         c=data["label"].values,
         cmap="viridis",
     )

@@ -565,7 +565,7 @@ def Training_model(project_name, dict_generators, args, wandb=[], freeze=False, 
 def get_beta(epoch):
     cycle_length = 4  # Number of epochs in a single cycler
     current_cycle_epoch = (epoch - 1) % cycle_length  # Current epoch within the cycle
-    beta = current_cycle_epoch / (cycle_length - 1) 
+    beta = current_cycle_epoch / (cycle_length - 1)
 
     # Reescale beta value between 0 and 0.5
     beta = beta / 2
@@ -628,7 +628,9 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         reconstruction_loss + beta_sc * kl_divergence + bce
                     )
                 else:
-                    variational_lower_bound = reconstruction_loss + beta * kl_divergence
+                    variational_lower_bound = (
+                        reconstruction_loss + beta_sc * kl_divergence
+                    )
                 # Backward pass
                 variational_lower_bound.backward()
                 # Update parameters
@@ -688,10 +690,15 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         "train/KL_div": kl_div_training[-1],
                         "train/rec_loss": rec_loss_training[-1],
                         "train/rec_img": fig,
-                        "train/bce_loss": bce_loss_training[-1],
                         "train/epoch": e,
                     }
                 )
+                if supervised:  # if supervised we also have BCE loss
+                    wandb.log(
+                        {
+                            "train/BCE_loss": bce_loss_training[-1],
+                        }
+                    )
             # Close the img
             plt.close(fig)
 
@@ -731,7 +738,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             )
                         else:
                             variational_lower_bound = (
-                                reconstruction_loss + beta * kl_divergence
+                                reconstruction_loss + beta_sc * kl_divergence
                             )
 
                         # Update losses storing
@@ -787,20 +794,31 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                                 "valid/KL_div": kl_div_validation[-1],
                                 "valid/rec_loss": rec_loss_validation[-1],
                                 "valid/rec_img": fig,
-                                "valid/bce_loss": bce_loss_validation[-1],
                                 "valid/epoch": e,
                             }
                         )
+                        if supervised:  # if supervised we also have BCE loss
+                            wandb.log(
+                                {
+                                    "valid/BCE_loss": bce_loss_validation[-1],
+                                }
+                            )
                     plt.close(fig)
 
                     # If the validation loss is the best, save the model
                     if elbo_validation[-1] == min(elbo_validation):
+                        name = "local_results/VAE_best_model"
+                        if supervised:
+                            name += "_supervised"
+                        else:
+                            name += "_unsupervised"
+                        name += ".pt"
                         torch.save(
                             {
                                 "model_state_dict": model.state_dict(),
                                 "optimizer_state_dict": opt.state_dict(),
                             },
-                            "local_results/VAE_best_model.pt",
+                            name,
                         )
 
     return (
@@ -880,7 +898,7 @@ def VAE_tester(model, testloader, supervised=False, wandb_flag=False):
                         "test/accuracy": accuracy,
                         "test/balanced_accuracy": balanced_accuracy,
                         "test/AUC": auc,
-                        "test/BCE": bce_loss,
+                        "test/BCE_loss": bce_loss,
                     }
                 )
 

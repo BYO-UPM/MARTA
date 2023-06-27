@@ -60,13 +60,18 @@ def main(args):
     # )
 
     folds = data["fold"].unique()
-    for fold in folds:
+    for fold in np.arange(2, 10):
         if hyperparams["wandb_flag"]:
+            gname = "rasta_plp_vae"
+            if hyperparams["supervised"]:
+                gname += "_supervised"
+            else:
+                gname += "_UNsupervised"
             wandb.finish()
             wandb.init(
                 project="parkinson",
                 config=hyperparams,
-                group="rasta_plp_vae_supervised",
+                group=gname,
                 name="fold_" + str(fold),
             )
         print("Training a VAE for fold: ", fold)
@@ -143,6 +148,14 @@ def main(args):
             supervised=hyperparams["supervised"],
         )
         print("Training finished!")
+
+        # Restoring best model
+        if hyperparams["supervised"]:
+            name = "local_results/VAE_best_model_supervised.pt"
+        else:
+            name = "local_results/VAE_best_model_UNsupervised.pt"
+        tmp = torch.load(name)
+        model.load_state_dict(tmp["model_state_dict"])
 
         print("Testing VAE...")
         # Test the model
