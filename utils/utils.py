@@ -119,35 +119,58 @@ def plot_latent_space_vowels(model, data, fold, wandb_flag, name="default"):
     labels = data["label"].values
     vowels = data["vowel"].values
 
-    markers_vowels = ["^", "o", "s", "P", "X"]
+    # Make two different plots, one for vowels and one for labels
 
+    # PLot latent space by vowels
     plt.figure(figsize=(10, 10))
-    for v in data["vowel"].unique():
-        alpha = 0.2 * (v + 1)
-        idx_vowel = np.where(data["vowel"] == v)
-        idx_label0 = np.where(data["label"] == 0)
-        idx_label1 = np.where(data["label"] == 1)
-        idx0 = np.intersect1d(idx_vowel, idx_label0)
-        idx1 = np.intersect1d(idx_vowel, idx_label1)
-
-        plt.scatter(
-            latent_mu[idx0, 0],
-            latent_mu[idx0, 1],
-            c="r",
-            alpha=alpha,
-            marker=markers_vowels[v],
-            label="Vowel " + str(v) + " PD",
-        )
-        plt.scatter(
-            latent_mu[idx1, 0],
-            latent_mu[idx1, 1],
-            c="b",
-            alpha=alpha,
-            marker=markers_vowels[v],
-            label="Vowel " + str(v) + " PD",
-        )
-    plt.legend()
+    plt.scatter(latent_mu[:, 0], latent_mu[:, 1], c=vowels, cmap="viridis")
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
-    plt.title(f"Latent space in " + str(name) + " for fold " + str(fold))
-    plt.savefig(f"local_results/latent_space_{fold}_{name}.png")
+    plt.title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
+    # Create a custom legend where 0="a", 1="e", 2="i", 3="o", 4="u"
+    classes = ["a", "e", "i", "o", "u"]
+    class_labels = np.unique(vowels)
+    class_handles = [
+        plt.Line2D(
+            [],
+            [],
+            marker="o",
+            color="white",
+            markerfacecolor=plt.cm.viridis(i),
+            markersize=10,
+        )
+        for i in class_labels
+    ]
+    plt.legend(class_handles, classes)
+    plt.savefig(f"local_results/latent_space_{fold}_{name}_vowels.png")
+    if wandb_flag:
+        wandb.log({str(name) + "/latent_space_vowels": plt})
+    plt.show()
+    plt.close()
+
+    # Plot latent space by labels
+    plt.figure(figsize=(10, 10))
+    plt.scatter(latent_mu[:, 0], latent_mu[:, 1], c=labels, cmap="viridis")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(f"Latent space in " + str(name) + " for fold {fold} by labels")
+    # Create a custom legend where 0="healthy", 1="PD"
+    classes = ["healthy", "PD"]
+    class_labels = np.unique(labels)
+    class_handles = [
+        plt.Line2D(
+            [],
+            [],
+            marker="o",
+            color="white",
+            markerfacecolor=plt.cm.viridis(i),
+            markersize=10,
+        )
+        for i in class_labels
+    ]
+    plt.legend(class_handles, classes)
+    plt.savefig(f"local_results/latent_space_{fold}_{name}_labels.png")
+    if wandb_flag:
+        wandb.log({str(name) + "/latent_space_labels": plt})
+    plt.show()
+    plt.close()

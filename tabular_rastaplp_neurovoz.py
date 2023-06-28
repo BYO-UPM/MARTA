@@ -56,8 +56,10 @@ def main(args):
             supervised=hyperparams["supervised"],
         )
 
+        model = torch.compile(model)
+
         print("Training VAE...")
-        # TRain the model
+        # Train the model
         VAE_trainer(
             model,
             train_loader,
@@ -155,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--frame_size_ms",
         type=int,
-        default=15,
+        default=40,
         help="Frame size in milliseconds",
     )
     parser.add_argument(
