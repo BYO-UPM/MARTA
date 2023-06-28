@@ -86,7 +86,7 @@ def main(args):
             test_loader,
             supervised=hyperparams["supervised"],
             wandb_flag=hyperparams["wandb_flag"],
-        )
+        ) # TODO: add test measures per patient not by each frame
 
         # Create an empty pd dataframe with two columns: data and label
         df = pd.DataFrame(columns=["plps", "label", "vowel"])
