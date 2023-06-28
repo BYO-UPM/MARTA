@@ -1,6 +1,6 @@
 from models.pt_models import VAE
 from training.pt_training import VAE_trainer, VAE_tester
-from utils.utils import plot_latent_space
+from utils.utils import plot_latent_space, plot_latent_space_vowels
 from data_loaders.pt_data_loader_plps import Dataset_PLPs
 import torch
 import wandb
@@ -11,6 +11,7 @@ import pandas as pd
 def main(args):
     hyperparams = {
         "frame_size_ms": args.frame_size_ms,
+        "material": args.material,
         "hop_size_percent": args.hop_size_percent,
         "n_plps": args.n_plps,
         "wandb_flag": args.wandb_flag,
@@ -25,11 +26,11 @@ def main(args):
 
     print("Reading data...")
     # Read the data
-    dataset = Dataset_PLPs(args.data_path, hyperparams)
+    dataset = Dataset_PLPs(args.data_path, hyperparams, args.material)
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_plp_vae"
+            gname = "rasta_plp_vae_" + args.material
             if hyperparams["supervised"]:
                 gname += "_supervised"
             else:
@@ -86,23 +87,52 @@ def main(args):
         )
 
         # Create an empty pd dataframe with two columns: data and label
-        df = pd.DataFrame(columns=["plps", "label"])
-        x = [t[0] for t in test_loader.dataset]
-        y = [t[1] for t in test_loader.dataset]
-        df["plps"] = x
-        df["label"] = y
+        df = pd.DataFrame(columns=["plps", "label", "vowel"])
+        df["plps"] = [t[0] for t in test_loader.dataset]
+        df["label"] = [t[1] for t in test_loader.dataset]
+        df["vowel"] = [t[2] for t in test_loader.dataset]
 
-        # Plot the latent space in test
-        plot_latent_space(model, df, fold, hyperparams["wandb_flag"], name="test")
+        if args.material == "PATAKA":
+            # Plot the latent space in test
+            plot_latent_space(
+                model,
+                df,
+                fold,
+                hyperparams["wandb_flag"],
+                name="test",
+            )
+        elif args.material == "VOWELS":
+            plot_latent_space_vowels(
+                model,
+                df,
+                fold,
+                hyperparams["wandb_flag"],
+                name="test",
+            )
 
-        df = pd.DataFrame(columns=["plps", "label"])
-        x = [t[0] for t in train_loader.dataset]
-        y = [t[1] for t in train_loader.dataset]
-        df["plps"] = x
-        df["label"] = y
+        df = pd.DataFrame(columns=["plps", "label", "vowel"])
+        df["plps"] = [t[0] for t in train_loader.dataset]
+        df["label"] = [t[1] for t in train_loader.dataset]
+        df["vowel"] = [t[2] for t in train_loader.dataset]
 
         # Plot the latent space in train
-        plot_latent_space(model, df, fold, hyperparams["wandb_flag"], name="train")
+        if args.material == "PATAKA":
+            # Plot the latent space in test
+            plot_latent_space(
+                model,
+                df,
+                fold,
+                hyperparams["wandb_flag"],
+                name="train",
+            )
+        elif args.material == "VOWELS":
+            plot_latent_space_vowels(
+                model,
+                df,
+                fold,
+                hyperparams["wandb_flag"],
+                name="train",
+            )
 
 
 if __name__ == "__main__":
@@ -114,6 +144,13 @@ if __name__ == "__main__":
         type=str,
         default="/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/PorMaterial_limpios1_2",
         help="Path to the data",
+    )
+    parser.add_argument(
+        "--material",
+        type=str,
+        default="PATAKA",
+        choices=["PATAKA", "VOWELS"],
+        help="Acoustic material to use",
     )
     parser.add_argument(
         "--frame_size_ms",

@@ -605,7 +605,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
         print("Beta: ", beta_sc)
 
         with tqdm(trainloader, unit="batch") as tepoch:
-            for x, y in tepoch:
+            for x, y, z in tepoch:
                 tepoch.set_description(f"Epoch {e}")
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
@@ -687,7 +687,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 if supervised:
                     bce_loss = 0
                 with tqdm(validloader, unit="batch") as tepoch:
-                    for x, y in tepoch:
+                    for x, y, z in tepoch:
                         # Move data to device
                         x = x.to(model.device).to(torch.float32)
                         y = y.to(model.device).to(torch.float32)
@@ -828,7 +828,7 @@ def VAE_tester(model, testloader, supervised=False, wandb_flag=False):
         if supervised:
             bce_loss = 0
         with tqdm(testloader, unit="batch") as tepoch:
-            for x, y in tepoch:
+            for x, y, z in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
                 y = y.to(model.device).to(torch.float32)

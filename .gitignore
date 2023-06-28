@@ -4,6 +4,7 @@
 .DS_Store
 local_results/
 old/
+*.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

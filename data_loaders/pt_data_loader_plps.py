@@ -9,9 +9,9 @@ import librosa
 
 
 class Dataset_PLPs(torch.utils.data.Dataset):
-    def __init__(self, data_path, hyperparams):
+    def __init__(self, data_path, hyperparams, material):
         self.hyperparams = hyperparams
-        self.material = "PATAKA"
+        self.material = material
         if self.material == "PATAKA":
             self.data_path = os.path.join(data_path, self.material)
         elif self.material == "VOWELS":
@@ -47,6 +47,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
 
         # List all the folders in the path_to_data directory
         folders = os.listdir(path_to_data)
+
         # Loop through the folders
         for folder in folders:
             # Get the full folder path
@@ -79,6 +80,11 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         vowels = []
         id_patient = []
 
+        # Read the error files it is a txt file
+        error_files = pd.read_csv("error_files.txt", header=None)
+        # Remove the path get only the filename
+        error_files = error_files[0].apply(lambda x: x.split("/")[-1]).to_list()
+
         folders = [
             "A1",
             "A2",
@@ -103,10 +109,18 @@ class Dataset_PLPs(torch.utils.data.Dataset):
                 if os.path.isdir(folder_condition):
                     label = folder
                     for file in os.listdir(folder_condition):
-                        file_path = os.path.join(folder_path, file)
+                        # If the file does not end with .wav, skip it
+                        if not file.endswith(".wav"):
+                            continue
+                        # If the file is an error file, skip it
+                        if file in error_files:
+                            print("Skipping file: ", file)
+                            continue
+                        file_path = os.path.join(folder_condition, file)
                         file_paths.append(file_path)
                         labels.append(label)
-                        vowels.append(folder_vowel)
+                        vowel = [*folder_vowel][0]
+                        vowels.append(vowel)
                         # Each file is named as follows: <condition>_<vowel>_<id_patient>.wav
                         id_patient.append(file.split("_")[2].split(".")[0])
         # Generate a dataframe with all the data
@@ -130,15 +144,52 @@ class Dataset_PLPs(torch.utils.data.Dataset):
 
         if self.material == "PATAKA":
             data = self.read_pataka(path_to_data)
+            data["fold"] = data.groupby("label").cumcount() % 10
         elif self.material == "VOWELS":
             data = self.read_vowels(path_to_data)
+            # Generate the folds by splitting the data by id_patient
+            data["fold"] = data.groupby("id_patient").cumcount() % 10
+            # Categorise the vowels to 0,1,2,3,4
+            data["vowel"] = data["vowel"].astype("category").cat.codes
 
         print("Reading the .wav files...")
         # Read the .wav files and store the signals and sampling rates
-        data["sr"], data["signal"] = zip(*data["file_path"].map(wavfile.read))
-        data["fold"] = data.groupby("label").cumcount() % 10
+        data["signal"], data["sr"] = zip(*data["file_path"].map(librosa.load))
 
-        print("Noramlising the signals...")
+        # ======= Checking errors in loading files =======
+        # sr_list = []
+        # signal_list = []
+        # error_files = []
+        # for file in data["file_path"]:
+        #     try:
+        #         signal, sr = librosa.load(file)
+        #         sr_list.append(sr)
+        #         signal_list.append(signal)
+        #     except:
+        #         sr_list.append(0 * sr_list[-1])
+        #         signal_list.append(0 * signal_list[-1])
+        #         error_files.append(file)
+        #         print("Error reading file: ", file)
+
+        # data["sr"] = sr_list
+        # data["signal"] = signal_list
+
+        # Store in a txt file the files that could not be read
+        # with open("error_files.txt", "w") as f:
+        #     for file in error_files:
+        #         f.write("%s\n" % file)
+        # Print the total number of files that could not be read
+        # print("Total number of files that could not be read: ", len(error_files))
+        # # Check how many samples per patient are not read
+        # print(
+        #     "Number of samples per patient that could not be read: ",
+        #     data[data["sr"] == 0]["id_patient"].value_counts(),
+        # )
+        # # Remove the files that could not be read
+        # data = data[data["sr"] != 0]
+        # ======= END =======
+
+        print("Normalising the signals...")
         data["max"] = data["signal"].apply(np.abs).apply(np.max)
         data["norm_signal"] = data.apply(
             lambda x: self.normalize_audio(x["signal"]), axis=1
@@ -163,8 +214,6 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         # Data explode
         data = data.explode("plps")
 
-        data = data[["fold", "plps", "label"]]
-
         return data
 
     def get_dataloaders(self, fold=0):
@@ -186,21 +235,38 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         sampler = torch.utils.data.sampler.WeightedRandomSampler(
             weights=sample_weights, num_samples=len(sample_weights), replacement=True
         )
+        print(train_data.columns)
         print("Creating dataloaders...")
         train_loader = torch.utils.data.DataLoader(
             dataset=list(
-                zip(np.vstack(train_data["plps"]), train_data["label"].values)
+                zip(
+                    np.vstack(train_data["plps"]),
+                    train_data["label"].values,
+                    train_data["vowel"].values,
+                )
             ),
             batch_size=self.hyperparams["batch_size"],
             sampler=sampler,
         )
         val_loader = torch.utils.data.DataLoader(
-            dataset=list(zip(np.vstack(val_data["plps"]), val_data["label"].values)),
+            dataset=list(
+                zip(
+                    np.vstack(val_data["plps"]),
+                    val_data["label"].values,
+                    val_data["vowel"].values,
+                )
+            ),
             batch_size=self.hyperparams["batch_size"],
             shuffle=True,
         )
         test_loader = torch.utils.data.DataLoader(
-            dataset=list(zip(np.vstack(test_data["plps"]), test_data["label"].values)),
+            dataset=list(
+                zip(
+                    np.vstack(test_data["plps"]),
+                    test_data["label"].values,
+                    test_data["vowel"].values,
+                )
+            ),
             batch_size=self.hyperparams["batch_size"],
             shuffle=True,
         )
@@ -277,5 +343,4 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         # Concatenate the features
         mfcc_features = np.concatenate((mfccs, mfccs_delta, mfccs_delta2))
 
-        # TODO: Preguntar: es necesario separar por frames? o se puede hacer directamente com heatmaps?
         return mfcc_features.T
