@@ -3,6 +3,7 @@
 /wandb
 .DS_Store
 local_results/
+old/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

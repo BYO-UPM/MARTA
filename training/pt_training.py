@@ -619,7 +619,6 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 else:
                     x_hat, mu, logvar = model(x)
                 # Compute variational lower bound
-                # reconstruction_loss = loss(x_hat, x, var=0.01 * torch.ones_like(x_hat))
                 reconstruction_loss = loss(x_hat, x)
                 kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
                 if supervised:
@@ -657,31 +656,9 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
             if supervised:
                 print(f"Train BCE loss: {bce_loss_training[-1]:.2f}")
 
-            # Get 10 fisrt samples and check their value vs their reconstruction
-            idx = np.arange(10)
-            x_sample = x[idx]
-            x_hat_sample = x_hat[idx]
-            # calculate error
-            error = torch.abs(x_sample - x_hat_sample)
+            # Plot reconstruction
+            check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
 
-            # Plot them as heatmaps
-            fig, axs = plt.subplots(3, 1, figsize=(20, 20))
-            cmap = cm.get_cmap("viridis")
-            normalizer = Normalize(
-                torch.min(torch.cat((x_sample, x_hat_sample))),
-                torch.max(torch.cat((x_sample, x_hat_sample))),
-            )
-            im = cm.ScalarMappable(norm=normalizer)
-            axs[0].set_title("Original")
-            axs[0].imshow(x_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer)
-            axs[1].set_title("Reconstruction")
-            axs[1].imshow(
-                x_hat_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer
-            )
-            axs[2].set_title("Error")
-            axs[2].imshow(error.cpu().detach().numpy(), cmap=cmap, norm=normalizer)
-            fig.colorbar(im, ax=axs.ravel().tolist())
-            plt.show()
             # Log to wandb
             if wandb_flag:
                 wandb.log(
@@ -689,7 +666,6 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         "train/ELBO": elbo_training[-1],
                         "train/KL_div": kl_div_training[-1],
                         "train/rec_loss": rec_loss_training[-1],
-                        "train/rec_img": fig,
                         "train/epoch": e,
                     }
                 )
@@ -699,8 +675,6 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             "train/BCE_loss": bce_loss_training[-1],
                         }
                     )
-            # Close the img
-            plt.close(fig)
 
             # Validate model
 
@@ -724,9 +698,6 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         else:
                             x_hat, mu, logvar = model(x)
                         # Compute variational lower bound
-                        # reconstruction_loss = loss(
-                        #     x_hat, x, var=0.01 * torch.ones_like(x_hat)
-                        # )
                         reconstruction_loss = loss(x_hat, x)
                         kl_divergence = -0.5 * torch.sum(
                             1 + logvar - mu.pow(2) - logvar.exp()
@@ -761,30 +732,9 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                     )
                     if supervised:
                         print(f"Valid BCE loss: {bce_loss_validation[-1]:.2f}")
-                    # Get 10 fisrt samples and check their value vs their reconstruction
-                    # Plot them as heatmaps
-                    fig, axs = plt.subplots(3, 1, figsize=(20, 20))
-                    cmap = cm.get_cmap("viridis")
-                    normalizer = Normalize(
-                        torch.min(torch.cat((x_sample, x_hat_sample))),
-                        torch.max(torch.cat((x_sample, x_hat_sample))),
-                    )
-                    im = cm.ScalarMappable(norm=normalizer)
-                    axs[0].set_title("Original")
-                    axs[0].imshow(
-                        x_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer
-                    )
-                    axs[1].set_title("Reconstruction")
-                    axs[1].imshow(
-                        x_hat_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer
-                    )
-                    axs[2].set_title("Error")
-                    axs[2].imshow(
-                        error.cpu().detach().numpy(), cmap=cmap, norm=normalizer
-                    )
 
-                    fig.colorbar(im, ax=axs.ravel().tolist())
-                    plt.show()
+                    # Plot reconstruction
+                    check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
 
                     # Log to wandb
                     if wandb_flag:
@@ -793,7 +743,6 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                                 "valid/ELBO": elbo_validation[-1],
                                 "valid/KL_div": kl_div_validation[-1],
                                 "valid/rec_loss": rec_loss_validation[-1],
-                                "valid/rec_img": fig,
                                 "valid/epoch": e,
                             }
                         )
@@ -803,7 +752,6 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                                     "valid/BCE_loss": bce_loss_validation[-1],
                                 }
                             )
-                    plt.close(fig)
 
                     # If the validation loss is the best, save the model
                     if elbo_validation[-1] == min(elbo_validation):
@@ -829,6 +777,42 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
         kl_div_validation,
         rec_loss_validation,
     )
+
+
+def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):
+    # Take the first 10 samples, but check if there are at least 10 samples
+    if x.shape[0] < 10:
+        idx = np.arange(x.shape[0])
+    else:
+        idx = np.arange(10)
+    x_sample = x[idx]
+    x_hat_sample = x_hat[idx]
+    # calculate error
+    error = torch.abs(x_sample - x_hat_sample)
+
+    # Plot them as heatmaps
+    fig, axs = plt.subplots(3, 1, figsize=(20, 20))
+    cmap = cm.get_cmap("viridis")
+    normalizer = Normalize(
+        torch.min(torch.cat((x_sample, x_hat_sample))),
+        torch.max(torch.cat((x_sample, x_hat_sample))),
+    )
+    im = cm.ScalarMappable(norm=normalizer)
+    axs[0].set_title("Original")
+    axs[0].imshow(x_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer)
+    axs[1].set_title("Reconstruction")
+    axs[1].imshow(x_hat_sample.cpu().detach().numpy(), cmap=cmap, norm=normalizer)
+    axs[2].set_title("Error")
+    axs[2].imshow(error.cpu().detach().numpy(), cmap=cmap, norm=normalizer)
+    fig.colorbar(im, ax=axs.ravel().tolist())
+    plt.show()
+    if wandb_flag:
+        if train_flag:
+            name = "train/rec_img"
+        else:
+            name = "valid/rec_img"
+        wandb.log({name: fig})
+    plt.close(fig)
 
 
 def VAE_tester(model, testloader, supervised=False, wandb_flag=False):

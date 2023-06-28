@@ -87,7 +87,7 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
         for cls in class_labels
     ]
     plt.legend(class_handles, classes)
-    plt.savefig(f"local_results/latent_space_{fold}.png")
+    plt.savefig(f"local_results/latent_space_{fold}_{name}.png")
     if wandb_flag:
         wandb.log({str(name) + "/latent_space": plt})
     plt.show()
