@@ -136,7 +136,7 @@ def plot_latent_space_vowels(model, data, fold, wandb_flag, name="default"):
             [],
             marker="o",
             color="white",
-            markerfacecolor=plt.cm.viridis(i),
+            markerfacecolor=plt.cm.viridis(range(len(class_labels))),
             markersize=10,
         )
         for i in class_labels
@@ -163,7 +163,7 @@ def plot_latent_space_vowels(model, data, fold, wandb_flag, name="default"):
             [],
             marker="o",
             color="white",
-            markerfacecolor=plt.cm.viridis(i),
+            markerfacecolor=plt.cm.viridis(range(len(class_labels))),
             markersize=10,
         )
         for i in class_labels
