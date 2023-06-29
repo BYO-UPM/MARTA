@@ -599,9 +599,9 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             for x, y, z in trainloader:
                 opt.zero_grad()
                 # Data
-                x = x.to(model.device)
+                x = x.to(torch.float32).to(model.device)
                 # Label
-                y = y.to(model.device)
+                y = y.to(torch.float32).to(model.device)
 
                 # Forward pass
                 x_hat, y_hat, vq_loss = model(x)
@@ -650,9 +650,9 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             with tqdm(total=len(validloader)) as pbar_valid:
                 for x, y, z in validloader:
                     # Data
-                    x = x.to(model.device)
+                    x = x.to(torch.float32).to(model.device)
                     # Label
-                    y = y.to(model.device)
+                    y = y.to(torch.float32).to(model.device)
 
                     # Forward pass
                     x_hat, y_hat, vq_loss = model(x)

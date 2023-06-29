@@ -60,7 +60,7 @@ def main(args):
             supervised=hyperparams["supervised"],
         )
 
-        model = torch.compile(model)
+        # model = torch.compile(model)
 
         print("Training VQVAE...")
         # Train the model

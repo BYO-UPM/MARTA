@@ -179,6 +179,7 @@ class VQVAE(torch.nn.Module):
 
         self.vq = VectorQuantizer(self.K, self.latent_dim, self.commitment_cost)
 
+        latent_dim = self.latent_dim
         decoder_layers = []
         for i in range(len(hidden_dims_dec)):
             decoder_layers.append(torch.nn.Linear(latent_dim, hidden_dims_dec[i]))
