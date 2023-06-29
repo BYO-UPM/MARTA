@@ -573,6 +573,131 @@ def get_beta(epoch):
     return beta
 
 
+def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag):
+    loss = torch.nn.MSELoss(reduction="sum")
+    opt = torch.optim.Adam(model.parameters(), lr)
+    if supervised:
+        loss_class = torch.nn.BCELoss(reduction="sum")
+
+    beta = 0.25
+
+    loss_train = []
+    loss_valid = []
+    loss_vq_train = []
+    loss_vq_valid = []
+    loss_class_train = []
+    loss_class_valid = []
+
+    for e in range(epochs):
+        model.train()
+        train_rec_loss = 0
+        train_vq_loss = 0
+        train_loss = 0
+        train_class_loss = 0
+
+        with tqdm(total=len(trainloader)) as pbar_train:
+            for x, y, z in trainloader:
+                opt.zero_grad()
+                # Data
+                x = x.to(model.device)
+                # Label
+                y = y.to(model.device)
+
+                # Forward pass
+                x_hat, y_hat, vq_loss = model(x)
+
+                # Reconstruction loss
+                rec_loss = loss(x_hat, x)
+                # Latent loss
+                quant_loss = vq_loss
+                # If supervised, add classification loss
+                if supervised:
+                    class_loss = loss_class(y_hat, y)
+                    train_class_loss += class_loss.item()
+                else:
+                    class_loss = 0
+                # Total loss
+                loss_vq = rec_loss + beta * quant_loss + class_loss
+
+                # Backward pass
+                loss_vq.backward()
+                opt.step()
+                # Update losses
+                train_rec_loss += rec_loss.item()
+                train_vq_loss += quant_loss.item()
+                train_loss += loss_vq.item()
+
+            # Update progress bar
+            pbar_train.update(1)
+            pbar_train.set_description(
+                "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
+                    e, loss_vq.item(), rec_loss.item(), quant_loss.item()
+                )
+            )
+
+            # Update lsits
+            loss_train.append(train_loss / len(trainloader))
+            loss_vq_train.append(train_vq_loss / len(trainloader))
+            loss_class_train.append(train_class_loss / len(trainloader))
+
+            # Validation
+            model.eval()
+            valid_rec_loss = 0
+            valid_vq_loss = 0
+            valid_loss = 0
+            valid_class_loss = 0
+
+            with tqdm(total=len(validloader)) as pbar_valid:
+                for x, y, z in validloader:
+                    # Data
+                    x = x.to(model.device)
+                    # Label
+                    y = y.to(model.device)
+
+                    # Forward pass
+                    x_hat, y_hat, vq_loss = model(x)
+
+                    # Reconstruction loss
+                    rec_loss = loss(x_hat, x)
+                    # Latent loss
+                    quant_loss = vq_loss
+                    # If supervised, add classification loss
+                    if supervised:
+                        class_loss = loss_class(y_hat, y)
+                        valid_class_loss += class_loss.item()
+                    else:
+                        class_loss = 0
+                    # Total loss
+                    loss_vq = rec_loss + beta * quant_loss + class_loss
+
+                    # Update losses
+                    valid_rec_loss += rec_loss.item()
+                    valid_vq_loss += quant_loss.item()
+                    valid_loss += loss_vq.item()
+
+                    # Update progress bar
+                    pbar_valid.update(1)
+                    pbar_valid.set_description(
+                        "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
+                            e, loss_vq.item(), rec_loss.item(), quant_loss.item()
+                        )
+                    )
+
+                # Update lsits
+                loss_valid.append(valid_loss / len(validloader))
+                loss_vq_valid.append(valid_vq_loss / len(validloader))
+                loss_class_valid.append(valid_class_loss / len(validloader))
+
+    return (
+        loss_train,
+        loss_valid,
+        loss_vq_train,
+        loss_vq_valid,
+        loss_class_train,
+        loss_class_valid,
+    )
+
+
 def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag):
     # Optimizer
     opt = torch.optim.Adam(model.parameters(), lr)
@@ -755,11 +880,11 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
 
                     # If the validation loss is the best, save the model
                     if elbo_validation[-1] == min(elbo_validation):
-                        name = "local_results/VAE_best_model"
+                        name = "local_results/"
                         if supervised:
-                            name += "_supervised"
+                            name += "vae_supervised/VAE_best_model"
                         else:
-                            name += "_unsupervised"
+                            name += "vae_unsupervised/VAE_best_model"
                         name += ".pt"
                         torch.save(
                             {

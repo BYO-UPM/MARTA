@@ -66,8 +66,6 @@ class VAE(torch.nn.Module):
         if self.supervised:
             self.dec_sup = torch.nn.Sequential(
                 torch.nn.Linear(self.latent_dim, 5),
-                torch.nn.ReLU(),
-                torch.nn.Linear(5, 1),
                 torch.nn.Sigmoid(),
             )
 
@@ -101,6 +99,121 @@ class VAE(torch.nn.Module):
         else:
             x_hat = self.decoder(z)
             return x_hat, mu, logvar
+
+
+class VectorQuantizer(torch.nn.Module):
+    def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float):
+        super(VectorQuantizer, self).__init__()
+        self.K = embedding_dim
+        self.D = num_embeddings
+        self.commitment_cost = commitment_cost
+
+        self.embedding = torch.nn.Embedding(self.K, self.D)
+        self.embedding.weight.data.uniform_(-1 / self.K, 1 / self.K)
+
+    def forward(self, continous_latents: torch.Tensor) -> torch.Tensor:
+        latents_shape = continous_latents.shape
+        flat_latents = continous_latents.view(-1, self.D)
+
+        # Calclate L2 distance between latents and embedding weights
+        dist = torch.cdist(flat_latents, self.embedding.weight)
+
+        # Get the index of the closest embedding
+        enc_idx = torch.argmin(dist, dim=1)
+
+        # Convert to one-hot encodings
+        encoding_ohe = torch.nn.functional.one_hot(enc_idx, self.K).type_as(
+            flat_latents
+        )
+
+        # Quantize the latents
+        quantized_latents = torch.matmul(encoding_ohe, self.embedding.weight).view(
+            latents_shape
+        )
+
+        # Compute VQ loss
+        commitment_loss = torch.nn.functional.mse_loss(
+            quantized_latents.detach(), continous_latents
+        )
+        embedding_loss = torch.nn.functional.mse_loss(
+            quantized_latents, continous_latents.detach()
+        )
+
+        # Loss
+        vq_loss = embedding_loss + self.commitment_cost * commitment_loss
+
+        # Straight-through estimator
+        quantized_latents = (
+            continous_latents + (quantized_latents - continous_latents).detach()
+        )
+
+        return quantized_latents, vq_loss
+
+
+class VQVAE(torch.nn.Module):
+    def __init__(
+        self,
+        input_dim,
+        latent_dim,
+        K=128,
+        hidden_dims_enc=[20, 10],
+        hidden_dims_dec=[20],
+        commitment_cost=0.25,
+        supervised=False,
+    ):
+        super().__init__()
+        self.latent_dim = copy.deepcopy(latent_dim)
+        self.K = K
+        self.input_dim = copy.deepcopy(input_dim)
+        self.commitment_cost = commitment_cost
+        self.supervised = supervised
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        encoder_layers = []
+        for i in range(len(hidden_dims_enc)):
+            encoder_layers.append(torch.nn.Linear(input_dim, hidden_dims_enc[i]))
+            encoder_layers.append(torch.nn.ReLU())
+            input_dim = hidden_dims_enc[i]
+
+        self.enc = torch.nn.Sequential(*encoder_layers)
+
+        self.vq = VectorQuantizer(self.K, self.latent_dim, self.commitment_cost)
+
+        decoder_layers = []
+        for i in range(len(hidden_dims_dec)):
+            decoder_layers.append(torch.nn.Linear(latent_dim, hidden_dims_dec[i]))
+            decoder_layers.append(torch.nn.ReLU())
+            latent_dim = hidden_dims_dec[i]
+        self.dec = torch.nn.Sequential(
+            *decoder_layers,
+            torch.nn.Linear(hidden_dims_dec[-1], self.input_dim),
+        )
+
+        if self.supervised:
+            self.clf = torch.nn.Sequential(
+                torch.nn.Linear(self.latent_dim, 1),
+                torch.nn.Sigmoid(),
+            )
+
+        self.to(self.device)
+
+    def encoder(self, x: torch.Tensor) -> torch.Tensor:
+        z = self.enc(x)
+        return z
+
+    def decoder(self, z: torch.Tensor) -> torch.Tensor:
+        x = self.dec(z)
+        if self.supervised:
+            y = self.clf(z)
+        else:
+            y = None
+        return x, y
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        z = self.encoder(x)
+        z_q, vq_loss = self.vq(z)
+        x_hat, y_hat = self.decoder(z_q)
+        return x_hat, y_hat, vq_loss
 
 
 class ViT_TwoClass(torch.nn.Module):

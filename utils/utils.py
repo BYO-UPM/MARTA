@@ -94,7 +94,9 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
     plt.close()
 
 
-def plot_latent_space_vowels(model, data, fold, wandb_flag, name="default"):
+def plot_latent_space_vowels(
+    model, data, fold, wandb_flag, name="default", supervised=False
+):
     from matplotlib import pyplot as plt
 
     # Generate mu and sigma in training
@@ -137,7 +139,11 @@ def plot_latent_space_vowels(model, data, fold, wandb_flag, name="default"):
     plt.ylabel(ylabel)
     plt.title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
     plt.legend()
-    plt.savefig(f"local_results/latent_space_{fold}_{name}_vowels.png")
+    if supervised:
+        name = "local_results/vae_supervised/"
+    else:
+        name = "local_results/vae_unsupervised/"
+    plt.savefig(f"{name}latent_space_vowels_{fold}_{name}.png")
     if wandb_flag:
         wandb.log({str(name) + "/latent_space_vowels": plt})
     plt.show()

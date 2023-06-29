@@ -1,5 +1,7 @@
-from models.pt_models import VAE
-from training.pt_training import VAE_trainer, VAE_tester
+import torch
+import copy
+from models.pt_models import VQVAE
+from training.pt_training import VQVAE_trainer
 from utils.utils import plot_latent_space, plot_latent_space_vowels
 from data_loaders.pt_data_loader_plps import Dataset_PLPs
 import torch
@@ -19,6 +21,7 @@ def main(args):
         "batch_size": args.batch_size,
         "lr": args.lr,
         "latent_dim": args.latent_dim,
+        "K": args.K,
         "hidden_dims_enc": args.hidden_dims_enc,
         "hidden_dims_dec": args.hidden_dims_dec,
         "supervised": args.supervised,
@@ -48,9 +51,10 @@ def main(args):
 
         print("Defining models...")
         # Create the model
-        model = VAE(
+        model = VQVAE(
             train_loader.dataset[0][0].shape[0],
             latent_dim=hyperparams["latent_dim"],
+            K=hyperparams["K"],
             hidden_dims_enc=hyperparams["hidden_dims_enc"],
             hidden_dims_dec=hyperparams["hidden_dims_dec"],
             supervised=hyperparams["supervised"],
@@ -58,9 +62,9 @@ def main(args):
 
         model = torch.compile(model)
 
-        print("Training VAE...")
+        print("Training VQVAE...")
         # Train the model
-        VAE_trainer(
+        VQVAE_trainer(
             model,
             train_loader,
             val_loader,
@@ -73,9 +77,9 @@ def main(args):
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/vae_supervised/VAE_best_model_supervised.pt"
+            name = "local_results/vqvae/VAE_best_model_supervised.pt"
         else:
-            name = "local_results/vae_unsupervised/VAE_best_model_unsupervised.pt"
+            name = "local_results/vqvae/VAE_best_model_unsupervised.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -102,7 +106,6 @@ def main(args):
                 fold,
                 hyperparams["wandb_flag"],
                 name="test",
-                supervised=hyperparams["supervised"],
             )
         elif args.material == "VOWELS":
             plot_latent_space_vowels(
@@ -111,7 +114,6 @@ def main(args):
                 fold,
                 hyperparams["wandb_flag"],
                 name="test",
-                supervised=hyperparams["supervised"],
             )
 
         df = pd.DataFrame(columns=["plps", "label", "vowel"])
@@ -214,6 +216,12 @@ if __name__ == "__main__":
         type=list,
         default=[10],
         help="Hidden dimensions of the decoder",
+    )
+    parser.add_argument(
+        "--K",
+        type=int,
+        default=5,
+        help="Dimension of the codebook",
     )
     parser.add_argument(
         "--supervised",
