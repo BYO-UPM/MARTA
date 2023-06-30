@@ -24,3 +24,10 @@ This repository contains the base modules for experimenting with Deep Learning m
 main: file to launch the experiment
 
 Directories for saving check point models, data and results are keeping local.
+
+# TODO list
+
+- [ ] Store in wandb for VAE supervised results per patient
+- [ ] Store in wandb for VAE unsupervised results per patient
+- [ ] Relaunch both VAEs when storing in wandb
+- [ ] Log VQVAE results in wandb
