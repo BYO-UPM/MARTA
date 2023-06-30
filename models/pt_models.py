@@ -65,7 +65,7 @@ class VAE(torch.nn.Module):
         self.supervised = supervised
         if self.supervised:
             self.dec_sup = torch.nn.Sequential(
-                torch.nn.Linear(self.latent_dim, 5),
+                torch.nn.Linear(self.latent_dim, 1),
                 torch.nn.Sigmoid(),
             )
 
@@ -104,8 +104,8 @@ class VAE(torch.nn.Module):
 class VectorQuantizer(torch.nn.Module):
     def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float):
         super(VectorQuantizer, self).__init__()
-        self.K = embedding_dim
-        self.D = num_embeddings
+        self.K = num_embeddings
+        self.D = embedding_dim
         self.commitment_cost = commitment_cost
 
         self.embedding = torch.nn.Embedding(self.K, self.D)
@@ -163,7 +163,7 @@ class VQVAE(torch.nn.Module):
     ):
         super().__init__()
         self.latent_dim = copy.deepcopy(latent_dim)
-        self.K = K
+        self.K = copy.deepcopy(K)
         self.input_dim = copy.deepcopy(input_dim)
         self.commitment_cost = commitment_cost
         self.supervised = supervised
@@ -176,6 +176,7 @@ class VQVAE(torch.nn.Module):
             input_dim = hidden_dims_enc[i]
 
         self.enc = torch.nn.Sequential(*encoder_layers)
+        self.fc_mu = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
 
         self.vq = VectorQuantizer(self.K, self.latent_dim, self.commitment_cost)
 
@@ -200,7 +201,8 @@ class VQVAE(torch.nn.Module):
 
     def encoder(self, x: torch.Tensor) -> torch.Tensor:
         z = self.enc(x)
-        return z
+        mu = self.fc_mu(z)
+        return mu
 
     def decoder(self, z: torch.Tensor) -> torch.Tensor:
         x = self.dec(z)

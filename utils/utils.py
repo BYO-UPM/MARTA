@@ -143,7 +143,7 @@ def plot_latent_space_vowels(
         name = "local_results/vae_supervised/"
     else:
         name = "local_results/vae_unsupervised/"
-    plt.savefig(f"{name}latent_space_vowels_{fold}_{name}.png")
+    plt.savefig(f"{name}latent_space_vowels_{fold}.png")
     if wandb_flag:
         wandb.log({str(name) + "/latent_space_vowels": plt})
     plt.show()

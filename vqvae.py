@@ -26,14 +26,32 @@ def main(args):
         "hidden_dims_dec": args.hidden_dims_dec,
         "supervised": args.supervised,
     }
+    # Define hyperparams for debugger
+    # hyperparams = {
+    #     "frame_size_ms": 40,
+    #     "material": "VOWELS",
+    #     "hop_size_percent": 0.5,
+    #     "n_plps": 13,
+    #     "wandb_flag": False,
+    #     "epochs": 100,
+    #     "batch_size": 64,
+    #     "lr": 0.001,
+    #     "latent_dim": 16,
+    #     "K": 512,
+    #     "hidden_dims_enc": [128, 256],
+    #     "hidden_dims_dec": [256, 128],
+    #     "supervised": False,
+    # }
+    # data_path = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/PorMaterial_limpios1_2"
 
     print("Reading data...")
     # Read the data
     dataset = Dataset_PLPs(args.data_path, hyperparams, args.material)
+    # dataset = Dataset_PLPs(data_path, hyperparams, hyperparams["material"])
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_plp_vae_" + args.material
+            gname = "rasta_plp_vae_" + hyperparams["material"]
             if hyperparams["supervised"]:
                 gname += "_supervised"
             else:
@@ -47,7 +65,14 @@ def main(args):
             )
         print("Training a VAE for fold: ", fold)
 
-        train_loader, val_loader, test_loader = dataset.get_dataloaders(fold)
+        (
+            train_loader,
+            val_loader,
+            test_loader,
+            train_data,
+            val_data,
+            test_data,
+        ) = dataset.get_dataloaders(fold)
 
         print("Defining models...")
         # Create the model
@@ -85,20 +110,20 @@ def main(args):
 
         print("Testing VAE...")
         # Test the model
-        test_loss_mse, test_loss_nll = VAE_tester(
+        VAE_tester(
             model,
             test_loader,
+            test_data,
             supervised=hyperparams["supervised"],
             wandb_flag=hyperparams["wandb_flag"],
-        )  # TODO: add test measures per patient not by each frame
-
+        )
         # Create an empty pd dataframe with two columns: data and label
         df = pd.DataFrame(columns=["plps", "label", "vowel"])
         df["plps"] = [t[0] for t in test_loader.dataset]
         df["label"] = [t[1] for t in test_loader.dataset]
         df["vowel"] = [t[2] for t in test_loader.dataset]
 
-        if args.material == "PATAKA":
+        if hyperparams["material"] == "PATAKA":
             # Plot the latent space in test
             plot_latent_space(
                 model,
@@ -107,7 +132,7 @@ def main(args):
                 hyperparams["wandb_flag"],
                 name="test",
             )
-        elif args.material == "VOWELS":
+        elif hyperparams["material"] == "VOWELS":
             plot_latent_space_vowels(
                 model,
                 df,
@@ -122,7 +147,7 @@ def main(args):
         df["vowel"] = [t[2] for t in train_loader.dataset]
 
         # Plot the latent space in train
-        if args.material == "PATAKA":
+        if hyperparams["material"] == "PATAKA":
             # Plot the latent space in test
             plot_latent_space(
                 model,
@@ -131,7 +156,7 @@ def main(args):
                 hyperparams["wandb_flag"],
                 name="train",
             )
-        elif args.material == "VOWELS":
+        elif hyperparams["material"] == "VOWELS":
             plot_latent_space_vowels(
                 model,
                 df,
@@ -154,7 +179,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--material",
         type=str,
-        default="PATAKA",
+        default="VOWELS",
         choices=["PATAKA", "VOWELS"],
         help="Acoustic material to use",
     )
@@ -184,7 +209,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=100,
+        default=1,
         help="Number of epochs",
     )
     parser.add_argument(
@@ -220,7 +245,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--K",
         type=int,
-        default=5,
+        default=10,
         help="Dimension of the codebook",
     )
     parser.add_argument(
@@ -231,3 +256,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args)
+
+    # # Main debugger
+    # main("debug")

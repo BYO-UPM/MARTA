@@ -688,6 +688,22 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 loss_vq_valid.append(valid_vq_loss / len(validloader))
                 loss_class_valid.append(valid_class_loss / len(validloader))
 
+            # If the validation loss is the best, save the model
+            if loss_valid[-1] == min(loss_valid):
+                name = "local_results/"
+                if supervised:
+                    name += "vqvae/VAE_best_model_supervised"
+                else:
+                    name += "vqvae/VAE_best_model_unsupervised"
+                name += ".pt"
+                torch.save(
+                    {
+                        "model_state_dict": model.state_dict(),
+                        "optimizer_state_dict": opt.state_dict(),
+                    },
+                    name,
+                )
+
     return (
         loss_train,
         loss_valid,
@@ -940,18 +956,21 @@ def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):
     plt.close(fig)
 
 
-def VAE_tester(model, testloader, supervised=False, wandb_flag=False):
-    loss_nll = torch.nn.GaussianNLLLoss(reduction="sum")
-    loss_mse = torch.nn.MSELoss(reduction="sum")
-    loss_class = torch.nn.BCELoss(reduction="sum")
-
+def VAE_tester(model, testloader, test_data, supervised=False, wandb_flag=False):
+    # Set model in evaluation mode
     model.eval()
     print("Evaluating the VAE model")
     with torch.no_grad():
-        test_loss = 0
-        test2_loss = 0
-        if supervised:
-            bce_loss = 0
+        y_hat_array = np.array([])
+        y_array = np.array([])
+        # Create x_array of shape Batch x Output shape
+        print(test_data["plps"][0][0].shape)
+        x_array = np.zeros(
+            (32, test_data["plps"][0][0].shape[1])
+        )  # 32 is the batch size
+        x_hat_array = np.zeros(
+            (32, test_data["plps"][0].shape[1])
+        )  # 32 is the batch size
         with tqdm(testloader, unit="batch") as tepoch:
             for x, y, z in tepoch:
                 # Move data to device
@@ -961,62 +980,77 @@ def VAE_tester(model, testloader, supervised=False, wandb_flag=False):
                 # Forward pass
                 if supervised:
                     x_hat, y_hat, mu, logvar = model(x)
+                    # Concatenate predictions
+                    y_array = np.concatenate((y_array, y.cpu().detach().numpy()))
+                    y_hat_array = np.concatenate(
+                        (y_hat_array, y_hat.cpu().detach().numpy())
+                    )
                 else:
                     x_hat, mu, logvar = model(x)
-                # Compute variational lower bound
-                nll_loss = loss_nll(x_hat, x, var=0.01 * torch.ones_like(x_hat))
-                mse_loss = loss_mse(x_hat, x)
-                if supervised:
-                    bce = loss_class(y_hat, y.view(-1, 1))
 
-                # Update losses storing
-                test_loss += mse_loss.item()
-                test2_loss += nll_loss.item()
-                if supervised:
-                    bce_loss += bce.item()
+                # Concatenate predictions
+                x_hat_array = np.concatenate(
+                    (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
+                )
+                x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
+        # Remove first row of zeros
+        x_hat_array = x_hat_array[32:, :]
+        x_array = x_array[32:, :]
 
-        # Store losses
-        reconstruction_error_nll = test2_loss / len(testloader.dataset)
-        reconstruction_error_mse = test_loss / len(testloader.dataset)
-        if supervised:
-            bce_loss = bce_loss / len(testloader.dataset)
+        # Calculate mse between x and x_hat
+        mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
+        # Results for all frames
+        print(f"Reconstruction loss: {mse:.2f}")
 
-        # Print Losses at current epoch
+        # Results per patient
+        rec_loss_per_patient = []
+        for i in test_data["id_patient"].unique():
+            idx = test_data["id_patient"] == i
+            rec_loss_per_patient.append(((x_array[idx] - x_hat_array[idx]) ** 2).mean())
+
+        print("Results per patient in mean and std:")
         print(
-            f"Test MSE: {reconstruction_error_mse:.2f}, Test NLL: {reconstruction_error_nll:.2f}"
+            f"Reconstruction loss: {np.mean(rec_loss_per_patient):.2f} +- {np.std(rec_loss_per_patient):.2f}"
         )
+        # Calculate results in total
         if supervised:
-            print(f"Test BCE: {bce_loss:.2f}")
-
-        # Calculate accuracy and balanced accuracy and AUC if supervised
-        if supervised:
-            y_bin = torch.round(y_hat)
-            accuracy = accuracy_score(
-                y.cpu().detach().numpy(), y_bin.cpu().detach().numpy()
-            )
-            balanced_accuracy = balanced_accuracy_score(
-                y.cpu().detach().numpy(), y_bin.cpu().detach().numpy()
-            )
-            auc = roc_auc_score(y.cpu().detach().numpy(), y_hat.cpu().detach().numpy())
+            y_hat_array = y_hat_array.cpu().detach().numpy()
+            y_bin = torch.round(y_hat_array)
+            accuracy = accuracy_score(y_array, y_bin)
+            balanced_accuracy = balanced_accuracy_score(y_array, y_bin)
+            auc = roc_auc_score(y_array, y_hat_array)
+            print("Results for all frames:")
             print(
                 f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
             )
-            if wandb_flag:
-                wandb.log(
-                    {
-                        "test/accuracy": accuracy,
-                        "test/balanced_accuracy": balanced_accuracy,
-                        "test/AUC": auc,
-                        "test/BCE_loss": bce_loss,
-                    }
+
+            # Calculate results per patient
+            auc_per_patient = []
+            accuracy_per_patient = []
+            balanced_accuracy_per_patient = []
+            for i in test_data["id_patient"].unique():
+                # Get the predictions for the patient
+                y_patient = y_array[test_data.id_patient == i]
+                y_hat_patient = y_hat_array[test_data.id_patient == i]
+
+                # Calculate the metrics
+                auc_patient = roc_auc_score(
+                    y_patient.cpu().detach().numpy(), y_hat_patient
+                )
+                accuracy_patient = accuracy_score(
+                    y_patient.cpu().detach().numpy(), torch.round(y_hat_patient)
+                )
+                balanced_accuracy_patient = balanced_accuracy_score(
+                    y_patient.cpu().detach().numpy(), torch.round(y_hat_patient)
                 )
 
-        if wandb_flag:
-            wandb.log(
-                {
-                    "test/MSE": reconstruction_error_mse,
-                    "test/NLL": reconstruction_error_nll,
-                }
-            )
+                # Store the results
+                auc_per_patient.append(auc_patient)
+                accuracy_per_patient.append(accuracy_patient)
+                balanced_accuracy_per_patient.append(balanced_accuracy_patient)
 
-    return reconstruction_error_mse, reconstruction_error_nll
+            # Print the results
+            print("Results per patient in mean and std:")
+            print(
+                f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}, AUC: {np.mean(auc_per_patient):.2f} +- {np.std(auc_per_patient):.2f}"
+            )

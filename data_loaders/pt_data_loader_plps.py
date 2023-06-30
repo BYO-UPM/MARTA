@@ -16,6 +16,8 @@ class Dataset_PLPs(torch.utils.data.Dataset):
             self.data_path = os.path.join(data_path, self.material)
         elif self.material == "VOWELS":
             self.data_path = data_path
+        else:
+            raise ValueError("Material not recognized")
         self.data = self.read_dataset(self.data_path)
 
     def __len__(self):
@@ -44,6 +46,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         # Initialize lists to store file paths and corresponding labels
         file_paths = []
         labels = []
+        id_patient = []
 
         # List all the folders in the path_to_data directory
         folders = os.listdir(path_to_data)
@@ -69,8 +72,12 @@ class Dataset_PLPs(torch.utils.data.Dataset):
                     # Append the file path and label to the lists
                     file_paths.append(file_path)
                     labels.append(label)
+                    # Each file is named as follows: <condition>_<PATAKA>_<id_patient>.wav
+                    id_patient.append(file.split("_")[2].split(".")[0])
         # Create a dataframe with all the data
-        data = pd.DataFrame({"file_path": file_paths, "label": labels})
+        data = pd.DataFrame(
+            {"file_path": file_paths, "label": labels, "id_patient": id_patient}
+        )
 
         return data
 
@@ -257,7 +264,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
                 )
             ),
             batch_size=self.hyperparams["batch_size"],
-            shuffle=True,
+            shuffle=False,
         )
         test_loader = torch.utils.data.DataLoader(
             dataset=list(
@@ -268,10 +275,10 @@ class Dataset_PLPs(torch.utils.data.Dataset):
                 )
             ),
             batch_size=self.hyperparams["batch_size"],
-            shuffle=True,
+            shuffle=False,
         )
 
-        return train_loader, val_loader, test_loader
+        return train_loader, val_loader, test_loader, train_data, val_data, test_data
 
     def normalize_audio(self, audio_data, max=None):
         if max is None:

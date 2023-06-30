@@ -44,7 +44,14 @@ def main(args):
             )
         print("Training a VAE for fold: ", fold)
 
-        train_loader, val_loader, test_loader = dataset.get_dataloaders(fold)
+        (
+            train_loader,
+            val_loader,
+            test_loader,
+            train_data,
+            val_data,
+            test_data,
+        ) = dataset.get_dataloaders(fold)
 
         print("Defining models...")
         # Create the model
@@ -73,20 +80,21 @@ def main(args):
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/vae_supervised/VAE_best_model_supervised.pt"
+            name = "local_results/vae_supervised/VAE_best_model.pt"
         else:
-            name = "local_results/vae_unsupervised/VAE_best_model_unsupervised.pt"
+            name = "local_results/vae_unsupervised/VAE_best_model.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
         print("Testing VAE...")
-        # Test the model
-        test_loss_mse, test_loss_nll = VAE_tester(
+        # Test the model by frame
+        VAE_tester(
             model,
             test_loader,
+            test_data,
             supervised=hyperparams["supervised"],
             wandb_flag=hyperparams["wandb_flag"],
-        )  # TODO: add test measures per patient not by each frame
+        )
 
         # Create an empty pd dataframe with two columns: data and label
         df = pd.DataFrame(columns=["plps", "label", "vowel"])
