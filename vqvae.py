@@ -1,7 +1,7 @@
 import torch
 import copy
 from models.pt_models import VQVAE
-from training.pt_training import VQVAE_trainer
+from training.pt_training import VQVAE_trainer, VQVAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels
 from data_loaders.pt_data_loader_plps import Dataset_PLPs
 import torch
@@ -110,7 +110,7 @@ def main(args):
 
         print("Testing VAE...")
         # Test the model
-        VAE_tester(
+        VQVAE_tester(
             model,
             test_loader,
             test_data,
@@ -131,6 +131,8 @@ def main(args):
                 fold,
                 hyperparams["wandb_flag"],
                 name="test",
+                supervised=hyperparams["supervised"],
+                vqvae = True
             )
         elif hyperparams["material"] == "VOWELS":
             plot_latent_space_vowels(
@@ -139,6 +141,8 @@ def main(args):
                 fold,
                 hyperparams["wandb_flag"],
                 name="test",
+                supervised=hyperparams["supervised"],
+                vqvae = True
             )
 
         df = pd.DataFrame(columns=["plps", "label", "vowel"])
@@ -155,6 +159,8 @@ def main(args):
                 fold,
                 hyperparams["wandb_flag"],
                 name="train",
+                supervised=hyperparams["supervised"],
+                vqvae = True
             )
         elif hyperparams["material"] == "VOWELS":
             plot_latent_space_vowels(
@@ -163,6 +169,8 @@ def main(args):
                 fold,
                 hyperparams["wandb_flag"],
                 name="train",
+                supervised=hyperparams["supervised"],
+                vqvae = True
             )
 
 

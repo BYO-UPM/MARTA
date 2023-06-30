@@ -135,6 +135,7 @@ def main(args):
                 df,
                 fold,
                 hyperparams["wandb_flag"],
+                supervised=hyperparams["supervised"],
                 name="train",
             )
         elif args.material == "VOWELS":
@@ -143,6 +144,7 @@ def main(args):
                 df,
                 fold,
                 hyperparams["wandb_flag"],
+                supervised=hyperparams["supervised"],
                 name="train",
             )
 
