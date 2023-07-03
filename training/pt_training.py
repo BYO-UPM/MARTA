@@ -629,11 +629,22 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
             # Update progress bar
             pbar_train.update(1)
-            pbar_train.set_description(
-                "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
-                    e, loss_vq.item(), rec_loss.item(), quant_loss.item()
+            if supervised:
+                pbar_train.set_description(
+                    "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
+                        e,
+                        loss_vq.item(),
+                        rec_loss.item(),
+                        quant_loss.item(),
+                        class_loss.item(),
+                    )
                 )
-            )
+            else: 
+                pbar_train.set_description(
+                    "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
+                        e, loss_vq.item(), rec_loss.item(), quant_loss.item()
+                    )
+                )
 
             # Update lsits
             loss_train.append(train_loss / len(trainloader))
@@ -677,11 +688,17 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
                     # Update progress bar
                     pbar_valid.update(1)
-                    pbar_valid.set_description(
-                        "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
-                            e, loss_vq.item(), rec_loss.item(), quant_loss.item()
+                    if supervised:
+                        pbar_valid.set_description(
+                            "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
+                                e, loss_vq.item(), rec_loss.item(), quant_loss.item(), class_loss.item()
+                            ))
+                    else:
+                        pbar_valid.set_description(
+                            "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
+                                e, loss_vq.item(), rec_loss.item(), quant_loss.item()
+                            )
                         )
-                    )
 
                 # Update lsits
                 loss_valid.append(valid_loss / len(validloader))
