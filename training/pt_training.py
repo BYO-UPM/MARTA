@@ -604,7 +604,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 y = y.to(torch.float32).to(model.device)
 
                 # Forward pass
-                x_hat, y_hat, vq_loss = model(x)
+                x_hat, y_hat, vq_loss, z, z_q, enc_idx = model(x)
 
                 # Reconstruction loss
                 rec_loss = loss(x_hat, x)
@@ -612,7 +612,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 quant_loss = vq_loss
                 # If supervised, add classification loss
                 if supervised:
-                    class_loss = loss_class(y_hat, y)
+                    class_loss = loss_class(y_hat, y.reshape(-1, 1))
                     train_class_loss += class_loss.item()
                 else:
                     class_loss = 0
@@ -655,7 +655,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     y = y.to(torch.float32).to(model.device)
 
                     # Forward pass
-                    x_hat, y_hat, vq_loss = model(x)
+                    x_hat, y_hat, vq_loss, z, z_q, enc_idx = model(x)
 
                     # Reconstruction loss
                     rec_loss = loss(x_hat, x)
@@ -663,7 +663,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     quant_loss = vq_loss
                     # If supervised, add classification loss
                     if supervised:
-                        class_loss = loss_class(y_hat, y)
+                        class_loss = loss_class(y_hat, y.reshape(-1,1))
                         valid_class_loss += class_loss.item()
                     else:
                         class_loss = 0
@@ -1075,15 +1075,24 @@ def VQVAE_tester(model, testloader, test_data, supervised=False, wandb_flag=Fals
         x_hat_array = np.zeros(
             x_array.shape
         ) 
+        z_array = np.zeros(
+            (batch_size, model.latent_dim))
+        z_q_array = np.zeros(
+            (batch_size, model.latent_dim))
+        enc_idx_array = np.zeros(
+            (batch_size, 1))
+        vowel_array = np.zeros(
+            (batch_size, 1))
+        
         with tqdm(testloader, unit="batch") as tepoch:
-            for x, y, z in tepoch:
+            for x, y, v in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
                 y = y.to(model.device).to(torch.float32)
 
                 # Forward pass
                 if supervised:
-                    x_hat, y_hat, vq_loss = model(x)
+                    x_hat, y_hat, vq_loss, z, z_q, enc_idx = model(x)
                     # Concatenate predictions
                     y_array = np.concatenate((y_array, y.cpu().detach().numpy().reshape(-1, 1)))
                     
@@ -1091,13 +1100,19 @@ def VQVAE_tester(model, testloader, test_data, supervised=False, wandb_flag=Fals
                         (y_hat_array, y_hat.cpu().detach().numpy())
                     )
                 else:
-                    x_hat, y_hat, vq_loss = model(x)
+                    x_hat, y_hat, vq_loss, z, z_q, enc_idx  = model(x)
 
                 # Concatenate predictions
                 x_hat_array = np.concatenate(
                     (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
                 )
                 x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
+                # Concatenate latent variables
+                z_array = np.concatenate((z_array, z.cpu().detach().numpy()), axis=0)
+                z_q_array = np.concatenate((z_q_array, z_q.cpu().detach().numpy()), axis=0)
+
+                enc_idx_array = np.concatenate((enc_idx_array, enc_idx.cpu().detach().numpy().reshape(-1,1)), axis=0)
+                vowel_array = np.concatenate((vowel_array, v.cpu().detach().numpy().reshape(-1, 1)), axis=0)
 
         # Remove the first batch_size elements
         x_array = x_array[batch_size:]
@@ -1157,3 +1172,5 @@ def VQVAE_tester(model, testloader, test_data, supervised=False, wandb_flag=Fals
             print(
                 f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
             )
+
+    return x_array, x_hat_array, z_array, z_q_array, enc_idx_array, vowel_array

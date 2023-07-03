@@ -110,7 +110,7 @@ def plot_latent_space_vowels(
             latent_mu = model.encoder(
                 torch.Tensor(np.vstack(data["plps"])).to(model.device)
             )
-            latent_code, _ = model.vq(latent_mu)
+            latent_code, vq_loss, enc_idx = model.vq(latent_mu)
 
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
@@ -133,7 +133,21 @@ def plot_latent_space_vowels(
 
     # Make two different plots, one for vowels and one for labels
 
-    # TODO: repeat this code for VQVAE latent_code
+    # TODO: repeat this code for VQVAE enc_idx
+    if vqvae:
+        plt.figure()
+        unique_codes = np.unique(enc_idx)[0]
+        for i in range(len(unique_codes)):
+            idx = np.argwhere(enc_idx == unique_codes[i]).ravel()
+            plt.scatter(latent_mu[idx, 0], latent_mu[idx, 1], label="Code " + str(i))
+        plt.legend()
+        plt.title("Latent space by CODE in " + str(name) + " for fold " + str(fold))
+        plt.savefig(f"local_results/vqvae/latent_space_code_{fold}_{name}.png")
+        if wandb_flag:
+            wandb.log({str(name) + "/latent_space_code": plt})
+        plt.show()
+        plt.close()
+
 
     # PLot latent space by vowels
     plt.figure(figsize=(10, 10))

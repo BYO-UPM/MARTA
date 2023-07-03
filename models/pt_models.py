@@ -104,21 +104,50 @@ class VAE(torch.nn.Module):
 
 
 class VectorQuantizer(torch.nn.Module):
-    def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float):
+    def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float, usage_threshold: float):
         super(VectorQuantizer, self).__init__()
         self.K = num_embeddings
         self.D = embedding_dim
         self.commitment_cost = commitment_cost
+        self.usage_threshold = usage_threshold
 
         self.embedding = torch.nn.Embedding(self.K, self.D)
         self.embedding.weight.data.uniform_(-1 / self.K, 1 / self.K)
 
-    def forward(self, continous_latents: torch.Tensor) -> torch.Tensor:
-        latents_shape = continous_latents.shape
-        flat_latents = continous_latents.view(-1, self.D)
+        self.register_buffer("cluster_size", torch.zeros(self.K))
+        self.register_buffer("embed_avg", torch.zeros(self.K, self.D))
+        self.register_buffer('usage', torch.ones(self.K), persistent=False)
+
+    def random_restart(self):
+        # Get dead embeddings
+        dead_embeddings = torch.where(self.embed_usage < self.usage_threshold)[0]
+        # Reset dead embeddings
+        rand_codes = torch.randperm(self.K)[: len(dead_embeddings)]
+        with torch.no_grad():
+            self.embedding.weight[dead_embeddings] = self.embedding.weight[rand_codes]
+            self.embed_usage[dead_embeddings] = self.embed_usage[rand_codes]
+            self.cluster_size[dead_embeddings] = self.cluster_size[rand_codes]
+            self.embed_avg[dead_embeddings] = self.embed_avg[rand_codes]
+    
+    def reset_usage(self):
+        self.embed_usage = torch.zeros(self.K)
+        self.usage.zero_() #  reset usage between epochs
+
+    def update_usage(self, min_enc):
+        self.usage[min_enc] = self.usage[min_enc] + 1  # if code is used add 1 to usage
+        self.usage /= 2 # decay all codes usage
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        latents_shape = z.shape
+        # Flatten batch inputs
+        flat_latents = z.view(-1, self.D)
 
         # Calclate L2 distance between latents and embedding weights
-        dist = torch.cdist(flat_latents, self.embedding.weight)
+        dist = (
+            torch.sum(flat_latents ** 2, dim=1, keepdim=True)
+            + torch.sum(self.embedding.weight ** 2, dim=1)
+            - 2 * torch.matmul(flat_latents, self.embedding.weight.t())
+        )
 
         # Get the index of the closest embedding
         enc_idx = torch.argmin(dist, dim=1)
@@ -129,27 +158,32 @@ class VectorQuantizer(torch.nn.Module):
         )
 
         # Quantize the latents
-        quantized_latents = torch.matmul(encoding_ohe, self.embedding.weight).view(
-            latents_shape
-        )
+        z_q = torch.matmul(encoding_ohe, self.embedding.weight).view(latents_shape)
+
+        # Update usage
+        self.update_usage(enc_idx)
 
         # Compute VQ loss
-        commitment_loss = torch.nn.functional.mse_loss(
-            quantized_latents.detach(), continous_latents
-        )
         embedding_loss = torch.nn.functional.mse_loss(
-            quantized_latents, continous_latents.detach()
+            z_q.detach(), z
+        )
+        commitment_loss = torch.nn.functional.mse_loss(
+            z_q, z.detach()
         )
 
         # Loss
         vq_loss = embedding_loss + self.commitment_cost * commitment_loss
 
         # Straight-through estimator
-        quantized_latents = (
-            continous_latents + (quantized_latents - continous_latents).detach()
+        z_q = (
+            z + (z_q - z).detach()
         )
 
-        return quantized_latents, vq_loss
+        # Calculate avg
+        avg_probs = torch.mean(encoding_ohe, dim=0)
+        perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
+
+        return z_q, vq_loss, enc_idx
 
 
 class VQVAE(torch.nn.Module):
@@ -180,7 +214,7 @@ class VQVAE(torch.nn.Module):
         self.enc = torch.nn.Sequential(*encoder_layers)
         self.fc_mu = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
 
-        self.vq = VectorQuantizer(self.K, self.latent_dim, self.commitment_cost)
+        self.vq = VectorQuantizer(self.K, self.latent_dim, self.commitment_cost, usage_threshold=1e-3)
 
         latent_dim = self.latent_dim
         decoder_layers = []
@@ -216,9 +250,9 @@ class VQVAE(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.encoder(x)
-        z_q, vq_loss = self.vq(z)
+        z_q, vq_loss, enc_idx = self.vq(z)
         x_hat, y_hat = self.decoder(z_q)
-        return x_hat, y_hat, vq_loss
+        return x_hat, y_hat, vq_loss, z, z_q, enc_idx
 
 
 class ViT_TwoClass(torch.nn.Module):
