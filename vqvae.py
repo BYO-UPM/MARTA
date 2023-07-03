@@ -11,43 +11,43 @@ import pandas as pd
 
 
 def main(args):
-    # hyperparams = {
-    #     "frame_size_ms": args.frame_size_ms,
-    #     "material": args.material,
-    #     "hop_size_percent": args.hop_size_percent,
-    #     "n_plps": args.n_plps,
-    #     "wandb_flag": args.wandb_flag,
-    #     "epochs": args.epochs,
-    #     "batch_size": args.batch_size,
-    #     "lr": args.lr,
-    #     "latent_dim": args.latent_dim,
-    #     "K": args.K,
-    #     "hidden_dims_enc": args.hidden_dims_enc,
-    #     "hidden_dims_dec": args.hidden_dims_dec,
-    #     "supervised": args.supervised,
-    # }
-    # Define hyperparams for debugger
     hyperparams = {
-        "frame_size_ms": 40,
-        "material": "VOWELS",
-        "hop_size_percent": 0.5,
-        "n_plps": 13,
-        "wandb_flag": False,
-        "epochs": 10,
-        "batch_size": 64,
-        "lr": 0.001,
-        "latent_dim": 16,
-        "K": 10,
-        "hidden_dims_enc": [128, 256],
-        "hidden_dims_dec": [256, 128],
-        "supervised": True,
+        "frame_size_ms": args.frame_size_ms,
+        "material": args.material,
+        "hop_size_percent": args.hop_size_percent,
+        "n_plps": args.n_plps,
+        "wandb_flag": args.wandb_flag,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "lr": args.lr,
+        "latent_dim": args.latent_dim,
+        "K": args.K,
+        "hidden_dims_enc": args.hidden_dims_enc,
+        "hidden_dims_dec": args.hidden_dims_dec,
+        "supervised": args.supervised,
     }
-    data_path = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/PorMaterial_limpios1_2"
+    # Define hyperparams for debugger
+    # hyperparams = {
+    #     "frame_size_ms": 40,
+    #     "material": "VOWELS",
+    #     "hop_size_percent": 0.5,
+    #     "n_plps": 13,
+    #     "wandb_flag": False,
+    #     "epochs": 10,
+    #     "batch_size": 64,
+    #     "lr": 0.001,
+    #     "latent_dim": 16,
+    #     "K": 10,
+    #     "hidden_dims_enc": [128, 256],
+    #     "hidden_dims_dec": [256, 128],
+    #     "supervised": True,
+    # }
+    # data_path = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/PorMaterial_limpios1_2"
 
     print("Reading data...")
     # Read the data
-    # dataset = Dataset_PLPs(args.data_path, hyperparams, args.material)
-    dataset = Dataset_PLPs(data_path, hyperparams, hyperparams["material"])
+    dataset = Dataset_PLPs(args.data_path, hyperparams, args.material)
+    # dataset = Dataset_PLPs(data_path, hyperparams, hyperparams["material"])
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
@@ -177,93 +177,93 @@ def main(args):
 if __name__ == "__main__":
     import argparse
 
-    # parser = argparse.ArgumentParser(description="VAE training")
-    # parser.add_argument(
-    #     "--data_path",
-    #     type=str,
-    #     default="/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/PorMaterial_limpios1_2",
-    #     help="Path to the data",
-    # )
-    # parser.add_argument(
-    #     "--material",
-    #     type=str,
-    #     default="VOWELS",
-    #     choices=["PATAKA", "VOWELS"],
-    #     help="Acoustic material to use",
-    # )
-    # parser.add_argument(
-    #     "--frame_size_ms",
-    #     type=int,
-    #     default=40,
-    #     help="Frame size in milliseconds",
-    # )
-    # parser.add_argument(
-    #     "--hop_size_percent",
-    #     type=float,
-    #     default=0.5,
-    #     help="Hop size in percent",
-    # )
-    # parser.add_argument(
-    #     "--n_plps",
-    #     type=int,
-    #     default=13,
-    #     help="Number of RASTA-PLP coefficients",
-    # )
-    # parser.add_argument(
-    #     "--wandb_flag",
-    #     action="store_true",
-    #     help="Flag to use wandb",
-    # )
-    # parser.add_argument(
-    #     "--epochs",
-    #     type=int,
-    #     default=1,
-    #     help="Number of epochs",
-    # )
-    # parser.add_argument(
-    #     "--batch_size",
-    #     type=int,
-    #     default=32,
-    #     help="Batch size",
-    # )
-    # parser.add_argument(
-    #     "--lr",
-    #     type=float,
-    #     default=0.001,
-    #     help="Learning rate",
-    # )
-    # parser.add_argument(
-    #     "--latent_dim",
-    #     type=int,
-    #     default=2,
-    #     help="Latent dimension",
-    # )
-    # parser.add_argument(
-    #     "--hidden_dims_enc",
-    #     type=list,
-    #     default=[20, 10],
-    #     help="Hidden dimensions of the encoder",
-    # )
-    # parser.add_argument(
-    #     "--hidden_dims_dec",
-    #     type=list,
-    #     default=[10],
-    #     help="Hidden dimensions of the decoder",
-    # )
-    # parser.add_argument(
-    #     "--K",
-    #     type=int,
-    #     default=10,
-    #     help="Number of the codes",
-    # )
-    # parser.add_argument(
-    #     "--supervised",
-    #     action="store_true",
-    #     help="Flag to use supervised training",
-    # )
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="VAE training")
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default="/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/PorMaterial_limpios1_2",
+        help="Path to the data",
+    )
+    parser.add_argument(
+        "--material",
+        type=str,
+        default="VOWELS",
+        choices=["PATAKA", "VOWELS"],
+        help="Acoustic material to use",
+    )
+    parser.add_argument(
+        "--frame_size_ms",
+        type=int,
+        default=40,
+        help="Frame size in milliseconds",
+    )
+    parser.add_argument(
+        "--hop_size_percent",
+        type=float,
+        default=0.5,
+        help="Hop size in percent",
+    )
+    parser.add_argument(
+        "--n_plps",
+        type=int,
+        default=13,
+        help="Number of RASTA-PLP coefficients",
+    )
+    parser.add_argument(
+        "--wandb_flag",
+        action="store_true",
+        help="Flag to use wandb",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=1,
+        help="Number of epochs",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=32,
+        help="Batch size",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=0.001,
+        help="Learning rate",
+    )
+    parser.add_argument(
+        "--latent_dim",
+        type=int,
+        default=2,
+        help="Latent dimension",
+    )
+    parser.add_argument(
+        "--hidden_dims_enc",
+        type=list,
+        default=[20, 10],
+        help="Hidden dimensions of the encoder",
+    )
+    parser.add_argument(
+        "--hidden_dims_dec",
+        type=list,
+        default=[10],
+        help="Hidden dimensions of the decoder",
+    )
+    parser.add_argument(
+        "--K",
+        type=int,
+        default=10,
+        help="Number of the codes",
+    )
+    parser.add_argument(
+        "--supervised",
+        action="store_true",
+        help="Flag to use supervised training",
+    )
+    args = parser.parse_args()
 
-    # main(args)
+    main(args)
 
     # Main debugger
-    main("debug")
+    # main("debug")

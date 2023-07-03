@@ -135,12 +135,14 @@ def plot_latent_space_vowels(
 
     # TODO: repeat this code for VQVAE enc_idx
     if vqvae:
-        plt.figure()
-        unique_codes = np.unique(enc_idx)[0]
+        plt.figure(figsize=(10, 10))
+        unique_codes = np.unique(enc_idx.cpu())
         for i in range(len(unique_codes)):
-            idx = np.argwhere(enc_idx == unique_codes[i]).ravel()
-            plt.scatter(latent_mu[idx, 0], latent_mu[idx, 1], label="Code " + str(i))
+            idx = np.argwhere(enc_idx.cpu() == unique_codes[i]).ravel()
+            plt.scatter(latent_mu[idx, 0], latent_mu[idx, 1], label="Code " + str(i), alpha=0.5)
         plt.legend()
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         plt.title("Latent space by CODE in " + str(name) + " for fold " + str(fold))
         plt.savefig(f"local_results/vqvae/latent_space_code_{fold}_{name}.png")
         if wandb_flag:
@@ -167,10 +169,11 @@ def plot_latent_space_vowels(
     plt.legend()
     if supervised:
         savepath = "local_results/vae_supervised/"
-    elif vqvae:
+    if vqvae:
         savepath = "local_results/vqvae/"
-    else:
+    if not supervised and not vqvae:
         savepath = "local_results/vae_unsupervised/"
+    
     plt.savefig(f"{savepath}latent_space_vowels_{fold}_{name}.png")
     if wandb_flag:
         wandb.log({str(name) + "/latent_space_vowels": plt})
