@@ -240,10 +240,10 @@ class VQVAE(torch.nn.Module):
         mu = self.fc_mu(z)
         return mu
 
-    def decoder(self, z: torch.Tensor) -> torch.Tensor:
-        x = self.dec(z)
+    def decoder(self, z_q: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
+        x = self.dec(z_q) # Decode with quantized latents
         if self.supervised:
-            y = self.clf(z)
+            y = self.clf(z) # Predict class from continuous latents
         else:
             y = None
         return x, y
@@ -251,7 +251,7 @@ class VQVAE(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.encoder(x)
         z_q, vq_loss, enc_idx = self.vq(z)
-        x_hat, y_hat = self.decoder(z_q)
+        x_hat, y_hat = self.decoder(z_q, z)
         return x_hat, y_hat, vq_loss, z, z_q, enc_idx
 
 

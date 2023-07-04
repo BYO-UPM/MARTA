@@ -6,6 +6,7 @@ from scipy.io import wavfile
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import librosa
+from sklearn.preprocessing import StandardScaler
 
 
 class Dataset_PLPs(torch.utils.data.Dataset):
@@ -234,6 +235,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
             train_data, test_size=0.2, random_state=42, stratify=train_data["label"]
         )
 
+
         # Create the dataloaders
         label_counts = train_data["label"].value_counts()
         total_samples = len(train_data)
@@ -242,14 +244,32 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         sampler = torch.utils.data.sampler.WeightedRandomSampler(
             weights=sample_weights, num_samples=len(sample_weights), replacement=True
         )
+        x_train = np.vstack(train_data["plps"])
+        y_train = train_data["label"].values
+        z_train = train_data["vowel"].values
+
+        x_val = np.vstack(val_data["plps"])
+        y_val = val_data["label"].values
+        z_val = val_data["vowel"].values
+
+        x_test = np.vstack(test_data["plps"])
+        y_test = test_data["label"].values
+        z_test = test_data["vowel"].values
+
+        # Normalise the data
+        scaler = StandardScaler()
+        x_train = scaler.fit_transform(x_train)
+        x_val = scaler.transform(x_val)
+        x_test = scaler.transform(x_test)
+
         print(train_data.columns)
         print("Creating dataloaders...")
         train_loader = torch.utils.data.DataLoader(
             dataset=list(
                 zip(
-                    np.vstack(train_data["plps"]),
-                    train_data["label"].values,
-                    train_data["vowel"].values,
+                    x_train,
+                    y_train,
+                    z_train,
                 )
             ),
             batch_size=self.hyperparams["batch_size"],
@@ -258,9 +278,9 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         val_loader = torch.utils.data.DataLoader(
             dataset=list(
                 zip(
-                    np.vstack(val_data["plps"]),
-                    val_data["label"].values,
-                    val_data["vowel"].values,
+                    x_val,
+                    y_val,
+                    z_val,
                 )
             ),
             batch_size=self.hyperparams["batch_size"],
@@ -269,9 +289,9 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         test_loader = torch.utils.data.DataLoader(
             dataset=list(
                 zip(
-                    np.vstack(test_data["plps"]),
-                    test_data["label"].values,
-                    test_data["vowel"].values,
+                    x_test,
+                    y_test,
+                    z_test,
                 )
             ),
             batch_size=self.hyperparams["batch_size"],

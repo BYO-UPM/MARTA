@@ -580,9 +580,12 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         loss_class = torch.nn.BCELoss(reduction="sum")
 
     beta = 0.25
+    eta = 10
 
     loss_train = []
+    loss_rec_train = []
     loss_valid = []
+    loss_rec_valid = []
     loss_vq_train = []
     loss_vq_valid = []
     loss_class_train = []
@@ -617,7 +620,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 else:
                     class_loss = 0
                 # Total loss
-                loss_vq = rec_loss + beta * quant_loss + class_loss
+                loss_vq = rec_loss + beta * quant_loss + eta * class_loss
 
                 # Backward pass
                 loss_vq.backward()
@@ -627,29 +630,44 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 train_vq_loss += quant_loss.item()
                 train_loss += loss_vq.item()
 
-            # Update progress bar
+           
+            # Update lsits
+            loss_rec_train.append(train_rec_loss / len(trainloader))
+            loss_train.append(train_loss / len(trainloader))
+            loss_vq_train.append(train_vq_loss / len(trainloader))
+            loss_class_train.append(train_class_loss / len(trainloader))
+            if wandb_flag:
+                wandb.log(
+                    {
+                        "train/Epoch": e,
+                        "train/Loss": train_loss / len(trainloader),
+                        "train/Rec Loss": loss_rec_train / len(trainloader),
+                        "train/Quant Loss": train_vq_loss / len(trainloader),
+                        "train/Class Loss": train_class_loss / len(trainloader),
+                    }
+                )
+
+             # Update progress bar
             pbar_train.update(1)
             if supervised:
                 pbar_train.set_description(
                     "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
                         e,
-                        loss_vq.item(),
-                        rec_loss.item(),
-                        quant_loss.item(),
-                        class_loss.item(),
-                    )
-                )
-            else: 
-                pbar_train.set_description(
-                    "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
-                        e, loss_vq.item(), rec_loss.item(), quant_loss.item()
+                        loss_train[-1],
+                        loss_rec_train[-1],
+                        loss_vq_train[-1],
+                        loss_class_train[-1],
                     )
                 )
 
-            # Update lsits
-            loss_train.append(train_loss / len(trainloader))
-            loss_vq_train.append(train_vq_loss / len(trainloader))
-            loss_class_train.append(train_class_loss / len(trainloader))
+            else: 
+                pbar_train.set_description(
+                    "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
+                        e, loss_train[-1],
+                        loss_rec_train[-1],
+                        loss_vq_train[-1],
+                    )
+                )
 
             # Validation
             model.eval()
@@ -686,24 +704,37 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     valid_vq_loss += quant_loss.item()
                     valid_loss += loss_vq.item()
 
-                    # Update progress bar
-                    pbar_valid.update(1)
-                    if supervised:
-                        pbar_valid.set_description(
-                            "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
-                                e, loss_vq.item(), rec_loss.item(), quant_loss.item(), class_loss.item()
-                            ))
-                    else:
-                        pbar_valid.set_description(
-                            "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
-                                e, loss_vq.item(), rec_loss.item(), quant_loss.item()
-                            )
-                        )
-
+               
                 # Update lsits
                 loss_valid.append(valid_loss / len(validloader))
                 loss_vq_valid.append(valid_vq_loss / len(validloader))
                 loss_class_valid.append(valid_class_loss / len(validloader))
+                loss_rec_valid.append(valid_rec_loss / len(validloader))
+
+                 # Update progress bar
+                pbar_valid.update(1)
+                if supervised:
+                    pbar_valid.set_description(
+                        "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
+                            e, loss_valid[-1], loss_rec_valid[-1], loss_vq_valid[-1], loss_class_valid[-1],
+                        ))
+                else:
+                    pbar_valid.set_description(
+                        "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
+                            e, loss_valid[-1], loss_rec_valid[-1], loss_vq_valid[-1],
+                        )
+                    )
+
+                if wandb_flag:
+                    wandb.log(
+                        {
+                            "valid/Epoch": e,
+                            "valid/Loss": valid_loss / len(validloader),
+                            "valid/Rec Loss": valid_rec_loss / len(validloader),
+                            "valid/Quant Loss": valid_vq_loss / len(validloader),
+                            "valid/Class Loss": valid_class_loss / len(validloader),
+                        }
+                    )
 
             # If the validation loss is the best, save the model
             if loss_valid[-1] == min(loss_valid):
@@ -759,8 +790,9 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
             bce_loss = 0
         model.train()
 
-        beta_sc = get_beta(e)
-        print("Beta: ", beta_sc)
+        # beta_sc = get_beta(e)
+        # print("Beta: ", beta_sc)
+        beta_sc = 1
 
         with tqdm(trainloader, unit="batch") as tepoch:
             for x, y, z in tepoch:
