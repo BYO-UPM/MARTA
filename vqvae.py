@@ -241,13 +241,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--hidden_dims_enc",
         type=list,
-        default=[20, 10],
+        default=[128, 256],
         help="Hidden dimensions of the encoder",
     )
     parser.add_argument(
         "--hidden_dims_dec",
         type=list,
-        default=[10],
+        default=[128],
         help="Hidden dimensions of the decoder",
     )
     parser.add_argument(

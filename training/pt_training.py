@@ -580,7 +580,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         loss_class = torch.nn.BCELoss(reduction="sum")
 
     beta = 0.25
-    eta = 10
+    eta = 100
 
     loss_train = []
     loss_rec_train = []
@@ -629,6 +629,8 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 train_rec_loss += rec_loss.item()
                 train_vq_loss += quant_loss.item()
                 train_loss += loss_vq.item()
+                 # Update progress bar
+                pbar_train.update(1)
 
            
             # Update lsits
@@ -640,15 +642,14 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 wandb.log(
                     {
                         "train/Epoch": e,
-                        "train/Loss": train_loss / len(trainloader),
-                        "train/Rec Loss": loss_rec_train / len(trainloader),
-                        "train/Quant Loss": train_vq_loss / len(trainloader),
-                        "train/Class Loss": train_class_loss / len(trainloader),
+                        "train/Loss": loss_train[-1],
+                        "train/Rec Loss": loss_rec_train[-1],
+                        "train/Quant Loss":loss_vq_train[-1],
+                        "train/Class Loss": loss_class_train[-1]
                     }
                 )
 
-             # Update progress bar
-            pbar_train.update(1)
+            
             if supervised:
                 pbar_train.set_description(
                     "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
@@ -703,6 +704,8 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     valid_rec_loss += rec_loss.item()
                     valid_vq_loss += quant_loss.item()
                     valid_loss += loss_vq.item()
+                     # Update progress bar
+                    pbar_valid.update(1)
 
                
                 # Update lsits
@@ -711,8 +714,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 loss_class_valid.append(valid_class_loss / len(validloader))
                 loss_rec_valid.append(valid_rec_loss / len(validloader))
 
-                 # Update progress bar
-                pbar_valid.update(1)
+                
                 if supervised:
                     pbar_valid.set_description(
                         "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
@@ -729,10 +731,10 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     wandb.log(
                         {
                             "valid/Epoch": e,
-                            "valid/Loss": valid_loss / len(validloader),
-                            "valid/Rec Loss": valid_rec_loss / len(validloader),
-                            "valid/Quant Loss": valid_vq_loss / len(validloader),
-                            "valid/Class Loss": valid_class_loss / len(validloader),
+                            "valid/Loss": loss_valid[-1],
+                            "valid/Rec Loss": loss_rec_valid[-1],
+                            "valid/Quant Loss": loss_vq_valid[-1],
+                            "valid/Class Loss": loss_class_valid[-1],
                         }
                     )
 
@@ -1117,7 +1119,6 @@ def VAE_tester(model, testloader, test_data, supervised=False, wandb_flag=False)
                         "test/balanced_accuracy_per_patient": np.mean(
                             balanced_accuracy_per_patient
                         ),
-                        "test/auc_per_patient": np.mean(auc_per_patient),
                     }
                 )
             
