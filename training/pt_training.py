@@ -793,6 +793,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
         # beta_sc = get_beta(e)
         # print("Beta: ", beta_sc)
         beta_sc = 1
+        beta_bce = 50
 
         with tqdm(trainloader, unit="batch") as tepoch:
             for x, y, z in tepoch:
@@ -814,7 +815,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 if supervised:
                     bce = loss_class(y_hat, y.view(-1, 1))
                     variational_lower_bound = (
-                        reconstruction_loss + beta_sc * kl_divergence + bce
+                        reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
                     )
                 else:
                     variational_lower_bound = (
@@ -895,7 +896,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         if supervised:
                             bce = loss_class(y_hat, y.view(-1, 1))
                             variational_lower_bound = (
-                                reconstruction_loss + beta_sc * kl_divergence + bce
+                                reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
                             )
                         else:
                             variational_lower_bound = (
@@ -1106,6 +1107,22 @@ def VAE_tester(model, testloader, test_data, supervised=False, wandb_flag=False)
             print(
                 f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
             )
+            if wandb_flag:
+                wandb.log(
+                    {
+                        "test/accuracy": accuracy,
+                        "test/balanced_accuracy": balanced_accuracy,
+                        "test/auc": auc,
+                        "test/accuracy_per_patient": np.mean(accuracy_per_patient),
+                        "test/balanced_accuracy_per_patient": np.mean(
+                            balanced_accuracy_per_patient
+                        ),
+                        "test/auc_per_patient": np.mean(auc_per_patient),
+                    }
+                )
+            
+
+        
 
 
 def VQVAE_tester(model, testloader, test_data, supervised=False, wandb_flag=False):
