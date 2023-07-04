@@ -153,16 +153,12 @@ def plot_latent_space_vowels(
 
     # PLot latent space by vowels
     plt.figure(figsize=(10, 10))
-    idxA = np.argwhere(vowels == 0).ravel()
-    idxE = np.argwhere(vowels == 1).ravel()
-    idxI = np.argwhere(vowels == 2).ravel()
-    idxO = np.argwhere(vowels == 3).ravel()
-    idxU = np.argwhere(vowels == 4).ravel()
-    plt.scatter(latent_mu[idxA, 0], latent_mu[idxA, 1], c="r", label="a", alpha=0.5)
-    plt.scatter(latent_mu[idxE, 0], latent_mu[idxE, 1], c="b", label="e", alpha=0.5)
-    plt.scatter(latent_mu[idxI, 0], latent_mu[idxI, 1], c="g", label="i", alpha=0.5)
-    plt.scatter(latent_mu[idxO, 0], latent_mu[idxO, 1], c="y", label="o", alpha=0.5)
-    plt.scatter(latent_mu[idxU, 0], latent_mu[idxU, 1], c="m", label="u", alpha=0.5)
+    unique_vowels = np.unique(vowels)
+    vowel_dict = {0: "a", 1: "e", 2: "i", 3: "o", 4: "u"}
+    for i in range(len(unique_vowels)):
+        idx = np.argwhere(vowels == unique_vowels[i]).ravel()
+        label = "Vowel " + vowel_dict[unique_vowels[i]]
+        plt.scatter(latent_mu[idx, 0], latent_mu[idx, 1], label=label, alpha=0.5)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
@@ -184,8 +180,8 @@ def plot_latent_space_vowels(
     plt.figure(figsize=(10, 10))
     idxH = np.argwhere(labels == 0).ravel()
     idxPD = np.argwhere(labels == 1).ravel()
-    plt.scatter(latent_mu[idxH, 0], latent_mu[idxH, 1], c="r", label="Healthy", alpha=0.5)
-    plt.scatter(latent_mu[idxPD, 0], latent_mu[idxPD, 1], c="b", label="PD", alpha=0.5)
+    plt.scatter(latent_mu[idxH, 0], latent_mu[idxH, 1], label="Healthy", alpha=0.5)
+    plt.scatter(latent_mu[idxPD, 0], latent_mu[idxPD, 1], label="PD", alpha=0.5)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(f"Latent space in " + str(name) + " for fold {fold} by labels")
