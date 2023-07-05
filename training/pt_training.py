@@ -947,7 +947,8 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             )
 
                     # If the validation loss is the best, save the model
-                    if elbo_validation[-1] == min(elbo_validation):
+                    if elbo_validation[-1] <= min(elbo_validation):
+                        print("Storing the best model at epoch ", e)
                         name = "local_results/mfccs/"
                         if supervised:
                             name += "vae_supervised/"
@@ -964,6 +965,12 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             },
                             name,
                         )
+                    
+                    # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
+                    if e > 50:
+                        if elbo_validation[-1] > max(elbo_validation[-20:-1]):
+                            print("Early stopping")
+                            break
 
     return (
         elbo_training,
@@ -1076,6 +1083,7 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
         )
         # Calculate results in total
         if supervised:
+            print("Results for all frames:")
             y_bin = np.round(y_hat_array)
             accuracy = accuracy_score(y_array, y_bin)
             balanced_accuracy = balanced_accuracy_score(y_array, y_bin)
