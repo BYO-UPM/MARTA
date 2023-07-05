@@ -1,7 +1,7 @@
 from models.pt_models import VAE
 from training.pt_training import VAE_trainer, VAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels
-from data_loaders.pt_data_loader_audiofeatures import Dataset_PLPs
+from data_loaders.pt_data_loader_audiofeatures import Dataset_AudioFeatures
 import torch
 import wandb
 import numpy as np
@@ -27,11 +27,11 @@ def main(args):
 
     print("Reading data...")
     # Read the data
-    dataset = Dataset_PLPs(args.data_path, hyperparams, args.material)
+    dataset = Dataset_AudioFeatures(args.data_path, hyperparams, args.material)
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_plp_vae_" + args.material
+            gname = "rasta_MFCCs_vae_" + args.material
             if hyperparams["supervised"]:
                 gname += "_supervised"
             else:
@@ -81,16 +81,16 @@ def main(args):
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/vae_supervised/VAE_best_model.pt"
+            name = "local_results/mfccs/vae_supervised/VAE_best_model.pt"
         else:
-            name = "local_results/vae_unsupervised/VAE_best_model.pt"
+            name = "local_results/mfccs/vae_unsupervised/VAE_best_model.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
         if hyperparams["n_plps"] > 0:
-            audio_features = "plp"
+            audio_features = "plps"
         elif hyperparams["n_mfccs"] > 0:
-            audio_features = "mfcc"
+            audio_features = "mfccs"
         print("Testing VAE...")
         # Test the model by frame
         VAE_tester(

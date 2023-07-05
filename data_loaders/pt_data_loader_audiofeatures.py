@@ -10,7 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import scale
 
 
-class Dataset_PLPs(torch.utils.data.Dataset):
+class Dataset_AudioFeatures(torch.utils.data.Dataset):
     def __init__(self, data_path, hyperparams, material):
         self.hyperparams = hyperparams
         self.material = material

@@ -740,7 +740,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
             # If the validation loss is the best, save the model
             if loss_valid[-1] == min(loss_valid):
-                name = "local_results/"
+                name = "local_results/mfccs/"
                 if supervised:
                     name += "vqvae/VAE_best_model_supervised"
                 else:
@@ -948,7 +948,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
 
                     # If the validation loss is the best, save the model
                     if elbo_validation[-1] == min(elbo_validation):
-                        name = "local_results/"
+                        name = "local_results/mfccs/"
                         if supervised:
                             name += "vae_supervised/"
                         else:
