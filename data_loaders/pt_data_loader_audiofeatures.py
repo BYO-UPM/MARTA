@@ -398,7 +398,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Normalize the MFCCs
         mfccs = (mfccs - np.mean(mfccs, axis=0)) / np.std(mfccs, axis=0)
-        print(mfccs.shape)
 
         # Compute derivatives
         mfccs_delta = librosa.feature.delta(mfccs)
@@ -406,6 +405,5 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Concatenate the features
         mfcc_features = np.concatenate((mfccs, mfccs_delta, mfccs_delta2), axis=1)
-        print(mfcc_features.shape)
 
         return mfcc_features
