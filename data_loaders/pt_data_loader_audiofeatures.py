@@ -19,7 +19,9 @@ class Dataset_PLPs(torch.utils.data.Dataset):
             self.data_path = data_path
         else:
             raise ValueError("Material not recognized")
-        self.data = self.read_dataset(self.data_path)
+        plps = self.hyperparams["n_plps"] > 0
+        mfcc = self.hyperparams["n_mfccs"] > 0
+        self.data = self.read_dataset(self.data_path, plps=plps, mfcc=mfcc)
 
     def __len__(self):
         return len(self.data)
@@ -218,12 +220,12 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         if mfcc:
             print("Extracting MFCC features...")
             # Extract the MFCC features
-            data["mfcc"] = data.apply(
+            data["mfccs"] = data.apply(
                 lambda x: self.extract_mfcc_with_derivatives(
                     x["norm_signal"],
                     x["sr"],
                     self.hyperparams["frame_size_ms"],
-                    self.hyperparams["n_mfcc"],
+                    self.hyperparams["n_mfccs"],
                 ),
                 axis=1,
             )
@@ -236,7 +238,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         if plps:
             data = data.explode("plps")
         if mfcc:
-            data = data.explode("mfcc")
+            data = data.explode("mfccs")
 
         return data
 
@@ -346,38 +348,43 @@ class Dataset_PLPs(torch.utils.data.Dataset):
 
         return plps.T
 
-    def extract_mfcc_with_derivatives(audio, sample_rate, frame_length_ms, n_mfcc=10):
-        frame_length = int(
-            sample_rate * frame_length_ms * 1e-3
-        )  # Convert ms to samples
+    def extract_mfcc_with_derivatives(self, audio, sample_rate, frame_length_ms, n_mfcc=10):
+        """
+        Extracts Mel-frequency cepstral coefficients (MFCCs) with their first and second derivatives from an audio signal.
+
+        Args:
+            audio (np.ndarray): The audio signal as a 1D numpy array.
+            sample_rate (int): The sample rate of the audio signal.
+            frame_length_ms (float): The length of the frames in milliseconds.
+            n_mfcc (int): The number of MFCCs to extract.
+
+        Returns:
+            np.ndarray: A 2D numpy array of shape (num_frames, num_features) containing the MFCCs and their derivatives.
+        """
+        frame_length = int(sample_rate * frame_length_ms * 1e-3)  # Convert ms to samples
         hop_length = int(frame_length / 2)  # 50% overlap
-        frames = librosa.util.frame(
-            audio, frame_length=frame_length, hop_length=hop_length
-        )
+        frames = librosa.util.frame(audio, frame_length=frame_length, hop_length=hop_length)
+        
         # Apply hanning windows
         frames = frames * np.hanning(frame_length)[:, None]
 
         # N_fft is the next number in power of 2 of the frame size
         n_fft = 2 ** (int(np.log2(frames.shape[1])) + 1)
+        
         # Compute MFCC for each frame
-        mfccs = []
-        for frame in frames:
-            mfcc = librosa.feature.mfcc(
-                y=frame, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft
-            )
-            mfccs.append(mfcc)
-
-        mfccs = np.hstack(mfccs)
+        mfccs = librosa.feature.mfcc(
+            y=frames.T, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft
+        ).T
 
         # Normalize the MFCCs
         # Compute the mean of each feature
-        mean = np.mean(mfcc, axis=0)
+        mean = np.mean(mfccs, axis=0)
 
         # Compute the variance of each feature
-        var = np.var(mfcc, axis=0)
+        var = np.var(mfccs, axis=0)
 
         # Noramlize
-        mfcc = (mfcc - mean) / np.sqrt(var)
+        mfccs = (mfccs - mean) / np.sqrt(var)
 
         # Compute derivatives
         mfccs_delta = librosa.feature.delta(mfccs)

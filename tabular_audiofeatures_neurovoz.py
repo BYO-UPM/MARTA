@@ -1,7 +1,7 @@
 from models.pt_models import VAE
 from training.pt_training import VAE_trainer, VAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels
-from data_loaders.pt_data_loader_plps_mfccs import Dataset_PLPs
+from data_loaders.pt_data_loader_audiofeatures import Dataset_PLPs
 import torch
 import wandb
 import numpy as np
@@ -14,6 +14,7 @@ def main(args):
         "material": args.material,
         "hop_size_percent": args.hop_size_percent,
         "n_plps": args.n_plps,
+        "n_mfccs": args.n_mfccs,
         "wandb_flag": args.wandb_flag,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
@@ -181,8 +182,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_plps",
         type=int,
+        default=0,
+        help="Number of RASTA-PLP coefficients. If 0, use MFCCs",
+    )
+    parser.add_argument(
+        "--n_mfccs",
+        type=int,
         default=13,
-        help="Number of RASTA-PLP coefficients",
+        help="Number of MFCC coefficients. If 0, use RASTA-PLPs",
     )
     parser.add_argument(
         "--wandb_flag",
