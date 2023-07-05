@@ -147,7 +147,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
 
         return data
 
-    def read_dataset(self, path_to_data):
+    def read_dataset(self, path_to_data, plps=False, mfcc=False):
         print("Reading the data...")
 
         if self.material == "PATAKA":
@@ -203,24 +203,40 @@ class Dataset_PLPs(torch.utils.data.Dataset):
             lambda x: self.normalize_audio(x["signal"]), axis=1
         )
 
-        print("Extracting RASTA-PLP features...")
-        # Extract the RASTA-PLP features
-        data["plps"] = data.apply(
-            lambda x: self.extract_rasta_plp_with_derivatives(
-                x["norm_signal"],
-                x["sr"],
-                self.hyperparams["frame_size_ms"],
-                self.hyperparams["n_plps"],
-            ),
-            axis=1,
-        )
+        if plps:
+            print("Extracting RASTA-PLP features...")
+            # Extract the RASTA-PLP features
+            data["plps"] = data.apply(
+                lambda x: self.extract_rasta_plp_with_derivatives(
+                    x["norm_signal"],
+                    x["sr"],
+                    self.hyperparams["frame_size_ms"],
+                    self.hyperparams["n_plps"],
+                ),
+                axis=1,
+            )
+        if mfcc:
+            print("Extracting MFCC features...")
+            # Extract the MFCC features
+            data["mfcc"] = data.apply(
+                lambda x: self.extract_mfcc_with_derivatives(
+                    x["norm_signal"],
+                    x["sr"],
+                    self.hyperparams["frame_size_ms"],
+                    self.hyperparams["n_mfcc"],
+                ),
+                axis=1,
+            )
 
         # Binarise the labels
         data["label"] = data["label"].apply(lambda x: 1 if x == "PD" else 0)
 
         print("Exploding data...")
         # Data explode
-        data = data.explode("plps")
+        if plps:
+            data = data.explode("plps")
+        if mfcc:
+            data = data.explode("mfcc")
 
         return data
 

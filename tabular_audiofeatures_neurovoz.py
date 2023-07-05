@@ -1,7 +1,7 @@
 from models.pt_models import VAE
 from training.pt_training import VAE_trainer, VAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels
-from data_loaders.pt_data_loader_plps import Dataset_PLPs
+from data_loaders.pt_data_loader_plps_mfccs import Dataset_PLPs
 import torch
 import wandb
 import numpy as np
