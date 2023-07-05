@@ -383,23 +383,22 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         # Apply hanning windows
         frames = frames * np.hanning(frame_length)[:, None]
 
-
         # N_fft is the next number in power of 2 of the frame size
         n_fft = 2 ** (int(np.log2(frames.shape[1])) + 1)
         
         # Compute MFCC for each frame
         mfccs = []
-        for frame in frames:
-            print(frame.shape)
+        for frame in frames.T:
             mfcc = librosa.feature.mfcc(
                 y=frame, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft
             )
-            mfccs.append(mfcc)
+            # Normalize the MFCCs
+            mfccs.append(mfcc.T)
 
-        mfccs = np.array(mfccs)
+        mfccs = np.vstack(mfccs)
+
         # Normalize the MFCCs
-        mfccs = scale(mfccs, axis=0)
-
+        mfccs = (mfccs - np.mean(mfccs, axis=0)) / np.std(mfccs, axis=0)
 
         # Compute derivatives
         mfccs_delta = librosa.feature.delta(mfccs)
