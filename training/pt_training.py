@@ -1011,10 +1011,11 @@ def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):
     plt.close(fig)
 
 
-def VAE_tester(model, testloader, test_data, supervised=False, wandb_flag=False):
+def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=False, wandb_flag=False):
     # Set model in evaluation mode
     model.eval()
     print("Evaluating the VAE model")
+
     with torch.no_grad():
         # Get batch size from testloader
         batch_size = testloader.batch_size
@@ -1022,7 +1023,7 @@ def VAE_tester(model, testloader, test_data, supervised=False, wandb_flag=False)
         y_array = np.zeros((batch_size, 1))
         # Create x_array of shape Batch x Output shape
         x_array = np.zeros(
-            (batch_size, test_data["plps"].iloc[0].shape[0])
+            (batch_size, test_data[audio_features].iloc[0].shape[0])
         )  # 32 is the batch size
         x_hat_array = np.zeros(
             x_array.shape
@@ -1126,7 +1127,7 @@ def VAE_tester(model, testloader, test_data, supervised=False, wandb_flag=False)
         
 
 
-def VQVAE_tester(model, testloader, test_data, supervised=False, wandb_flag=False):
+def VQVAE_tester(model, testloader, test_data, audio_features="plps", supervised=False, wandb_flag=False):
     # Set model in evaluation mode
     model.eval()
     print("Evaluating the VQ-VAE model")
@@ -1137,7 +1138,7 @@ def VQVAE_tester(model, testloader, test_data, supervised=False, wandb_flag=Fals
         y_array = np.zeros((batch_size, 1))
         # Create x_array of shape Batch x Output shape
         x_array = np.zeros(
-            (batch_size, test_data["plps"].iloc[0].shape[0])
+            (batch_size, test_data[audio_features].iloc[0].shape[0])
         )  # 32 is the batch size
         x_hat_array = np.zeros(
             x_array.shape

@@ -87,12 +87,17 @@ def main(args):
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
+        if hyperparams["n_plps"] > 0:
+            audio_features = "plp"
+        elif hyperparams["n_mfccs"] > 0:
+            audio_features = "mfcc"
         print("Testing VAE...")
         # Test the model by frame
         VAE_tester(
             model,
             test_loader,
             test_data,
+            audio_features,
             supervised=hyperparams["supervised"],
             wandb_flag=hyperparams["wandb_flag"],
         )

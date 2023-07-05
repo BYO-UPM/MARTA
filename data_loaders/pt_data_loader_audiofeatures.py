@@ -285,7 +285,6 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         x_val = scaler.transform(x_val)
         x_test = scaler.transform(x_test)
 
-        print(train_data.columns)
         print("Creating dataloaders...")
         train_loader = torch.utils.data.DataLoader(
             dataset=list(
@@ -407,4 +406,4 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         # Concatenate the features
         mfcc_features = np.concatenate((mfccs, mfccs_delta, mfccs_delta2))
 
-        return mfcc_features.T
+        return mfcc_features
