@@ -7,21 +7,23 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import librosa
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import scale
 
 
 class Dataset_PLPs(torch.utils.data.Dataset):
     def __init__(self, data_path, hyperparams, material):
         self.hyperparams = hyperparams
         self.material = material
+        self.plps = self.hyperparams["n_plps"] > 0
+        self.mfcc = self.hyperparams["n_mfccs"] > 0
         if self.material == "PATAKA":
             self.data_path = os.path.join(data_path, self.material)
         elif self.material == "VOWELS":
             self.data_path = data_path
         else:
             raise ValueError("Material not recognized")
-        plps = self.hyperparams["n_plps"] > 0
-        mfcc = self.hyperparams["n_mfccs"] > 0
-        self.data = self.read_dataset(self.data_path, plps=plps, mfcc=mfcc)
+        
+        self.data = self.read_dataset(self.data_path)
 
     def __len__(self):
         return len(self.data)
@@ -149,7 +151,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
 
         return data
 
-    def read_dataset(self, path_to_data, plps=False, mfcc=False):
+    def read_dataset(self, path_to_data):
         print("Reading the data...")
 
         if self.material == "PATAKA":
@@ -205,7 +207,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
             lambda x: self.normalize_audio(x["signal"]), axis=1
         )
 
-        if plps:
+        if self.plps:
             print("Extracting RASTA-PLP features...")
             # Extract the RASTA-PLP features
             data["plps"] = data.apply(
@@ -217,7 +219,7 @@ class Dataset_PLPs(torch.utils.data.Dataset):
                 ),
                 axis=1,
             )
-        if mfcc:
+        if self.mfcc:
             print("Extracting MFCC features...")
             # Extract the MFCC features
             data["mfccs"] = data.apply(
@@ -235,9 +237,9 @@ class Dataset_PLPs(torch.utils.data.Dataset):
 
         print("Exploding data...")
         # Data explode
-        if plps:
+        if self.plps:
             data = data.explode("plps")
-        if mfcc:
+        if self.mfcc:
             data = data.explode("mfccs")
 
         return data
@@ -262,15 +264,18 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         sampler = torch.utils.data.sampler.WeightedRandomSampler(
             weights=sample_weights, num_samples=len(sample_weights), replacement=True
         )
-        x_train = np.vstack(train_data["plps"])
+        if self.plps: audio_features = "plps"
+        if self.mfcc: audio_features = "mfccs"
+
+        x_train = np.vstack(train_data[audio_features])
         y_train = train_data["label"].values
         z_train = train_data["vowel"].values
 
-        x_val = np.vstack(val_data["plps"])
+        x_val = np.vstack(val_data[audio_features])
         y_val = val_data["label"].values
         z_val = val_data["vowel"].values
 
-        x_test = np.vstack(test_data["plps"])
+        x_test = np.vstack(test_data[audio_features])
         y_test = test_data["label"].values
         z_test = test_data["vowel"].values
 
@@ -330,6 +335,16 @@ class Dataset_PLPs(torch.utils.data.Dataset):
     def extract_rasta_plp_with_derivatives(
         self, audio, sample_rate, frame_length_ms, n_plps=10
     ):
+        """ Extracts RASTA-PLP features with their first and second derivatives
+
+        Args:
+            audio (np.array): audio signal
+            sample_rate (int): sample rate of the audio signal
+            frame_length_ms (int): frame length in milliseconds
+            n_plps (int): number of RASTA-PLP features to extract
+        Returns:
+            np.array: RASTA-PLP features with their first and second derivatives
+        """
         # Compute the PLPs
         plps = rastaplp(
             audio,
@@ -364,27 +379,27 @@ class Dataset_PLPs(torch.utils.data.Dataset):
         frame_length = int(sample_rate * frame_length_ms * 1e-3)  # Convert ms to samples
         hop_length = int(frame_length / 2)  # 50% overlap
         frames = librosa.util.frame(audio, frame_length=frame_length, hop_length=hop_length)
-        
+
         # Apply hanning windows
         frames = frames * np.hanning(frame_length)[:, None]
+
 
         # N_fft is the next number in power of 2 of the frame size
         n_fft = 2 ** (int(np.log2(frames.shape[1])) + 1)
         
         # Compute MFCC for each frame
-        mfccs = librosa.feature.mfcc(
-            y=frames.T, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft
-        ).T
+        mfccs = []
+        for frame in frames:
+            print(frame.shape)
+            mfcc = librosa.feature.mfcc(
+                y=frame, sr=sample_rate, n_mfcc=n_mfcc, n_fft=n_fft
+            )
+            mfccs.append(mfcc)
 
+        mfccs = np.array(mfccs)
         # Normalize the MFCCs
-        # Compute the mean of each feature
-        mean = np.mean(mfccs, axis=0)
+        mfccs = scale(mfccs, axis=0)
 
-        # Compute the variance of each feature
-        var = np.var(mfccs, axis=0)
-
-        # Noramlize
-        mfccs = (mfccs - mean) / np.sqrt(var)
 
         # Compute derivatives
         mfccs_delta = librosa.feature.delta(mfccs)
