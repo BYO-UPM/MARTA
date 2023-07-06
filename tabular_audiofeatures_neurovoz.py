@@ -31,7 +31,7 @@ def main(args):
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_MFCCs_vae_" + args.material
+            gname = "rasta_PLPs_vae_" + args.material
             if hyperparams["supervised"]:
                 gname += "_supervised"
             else:
@@ -81,9 +81,9 @@ def main(args):
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/mfccs/vae_supervised/VAE_best_model.pt"
+            name = "local_results/plps/vae_supervised/VAE_best_model.pt"
         else:
-            name = "local_results/mfccs/vae_unsupervised/VAE_best_model.pt"
+            name = "local_results/plps/vae_unsupervised/VAE_best_model.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_mfccs",
         type=int,
-        default=13,
+        default=0,
         help="Number of MFCC coefficients. If 0, use RASTA-PLPs",
     )
     parser.add_argument(

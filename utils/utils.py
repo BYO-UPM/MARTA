@@ -87,7 +87,7 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
         for cls in class_labels
     ]
     plt.legend(class_handles, classes)
-    plt.savefig(f"local_results/mfccs/latent_space_{fold}_{name}.png")
+    plt.savefig(f"local_results/plps/latent_space_{fold}_{name}.png")
     if wandb_flag:
         wandb.log({str(name) + "/latent_space": plt})
     plt.show()
@@ -144,7 +144,7 @@ def plot_latent_space_vowels(
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.title("Latent space by CODE in " + str(name) + " for fold " + str(fold))
-        plt.savefig(f"local_results/mfccs/vqvae/latent_space_code_{fold}_{name}.png")
+        plt.savefig(f"local_results/plps/vqvae/latent_space_code_{fold}_{name}.png")
         if wandb_flag:
             wandb.log({str(name) + "/latent_space_code": plt})
         plt.show()
@@ -164,11 +164,11 @@ def plot_latent_space_vowels(
     plt.title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
     plt.legend()
     if supervised:
-        savepath = "local_results/mfccs/vae_supervised/"
+        savepath = "local_results/plps/vae_supervised/"
     if vqvae:
-        savepath = "local_results/mfccs/vqvae/"
+        savepath = "local_results/plps/vqvae/"
     if not supervised and not vqvae:
-        savepath = "local_results/mfccs/vae_unsupervised/"
+        savepath = "local_results/plps/vae_unsupervised/"
     
     plt.savefig(f"{savepath}latent_space_vowels_{fold}_{name}.png")
     if wandb_flag:
