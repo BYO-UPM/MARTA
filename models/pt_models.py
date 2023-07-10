@@ -239,10 +239,10 @@ class VQVAE(torch.nn.Module):
     def reset_usage(self):
         self.vq.reset_usage()
         
-    def decoder(self, z_q: torch.Tensor) -> torch.Tensor:
+    def decoder(self, z_q: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
         x = self.dec(z_q) # Decode with quantized latents
         if self.supervised:
-            y = self.clf(z_q) # Predict class from quantized latents
+            y = self.clf(z) # Predict class from quantized latents
         else:
             y = None
         return x, y
@@ -250,7 +250,7 @@ class VQVAE(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.encoder(x)
         z_q, vq_loss, enc_idx = self.vq(z)
-        x_hat, y_hat = self.decoder(z_q)
+        x_hat, y_hat = self.decoder(z_q, z)
         self.usage=self.vq.usage
         return x_hat, y_hat, vq_loss, z, z_q, enc_idx
 

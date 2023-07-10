@@ -579,7 +579,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
     if supervised:
         loss_class = torch.nn.BCELoss(reduction="sum")
 
-    eta = 100
+    eta = 1
 
     loss_train = []
     loss_rec_train = []
@@ -1331,5 +1331,19 @@ def VQVAE_tester(model, testloader, test_data, audio_features="plps", supervised
             print(
                 f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
             )
+
+            if wandb_flag:
+                wandb.log(
+                    {
+                        "test/mse": mse,
+                        "test/accuracy_per_patient": np.mean(accuracy_per_patient),
+                        "test/balanced_accuracy_per_patient": np.mean(
+                            balanced_accuracy_per_patient
+                        ),
+                        "test/auc": auc,
+                        "test/accuracy": accuracy,
+                        "test/balanced_accuracy": balanced_accuracy,
+                    }
+                )
 
     return x_array, x_hat_array, z_array, z_q_array, enc_idx_array, vowel_array
