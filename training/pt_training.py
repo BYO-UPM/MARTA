@@ -579,7 +579,6 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
     if supervised:
         loss_class = torch.nn.BCELoss(reduction="sum")
 
-    beta = 0.25
     eta = 100
 
     loss_train = []
@@ -597,6 +596,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         train_vq_loss = 0
         train_loss = 0
         train_class_loss = 0
+        codes_usage = np.zeros(model.K)
 
         with tqdm(total=len(trainloader)) as pbar_train:
             for x, y, z in trainloader:
@@ -611,8 +611,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
                 # Reconstruction loss
                 rec_loss = loss(x_hat, x)
-                # Latent loss
-                quant_loss = vq_loss
+
                 # If supervised, add classification loss
                 if supervised:
                     class_loss = loss_class(y_hat, y.reshape(-1, 1))
@@ -620,24 +619,52 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 else:
                     class_loss = 0
                 # Total loss
-                loss_vq = rec_loss + beta * quant_loss + eta * class_loss
+                loss_vq = rec_loss + vq_loss + eta * class_loss
 
                 # Backward pass
                 loss_vq.backward()
                 opt.step()
                 # Update losses
                 train_rec_loss += rec_loss.item()
-                train_vq_loss += quant_loss.item()
+                train_vq_loss += vq_loss.item()
                 train_loss += loss_vq.item()
                  # Update progress bar
                 pbar_train.update(1)
 
-           
+                # Update codes usage
+                codes_usage += model.usage.detach().cpu().numpy()
+
             # Update lsits
             loss_rec_train.append(train_rec_loss / len(trainloader))
             loss_train.append(train_loss / len(trainloader))
             loss_vq_train.append(train_vq_loss / len(trainloader))
             loss_class_train.append(train_class_loss / len(trainloader))
+
+            # Codes_usage is a list of K elements, each element is the number of times a code has been used
+            # Plot a histogram of the codes usage
+            fig1 = plt.figure()
+            plt.bar(np.arange(model.K), codes_usage)
+            plt.title("Codes usage")
+            plt.xlabel("Code")
+            plt.ylabel("Usage")
+            # Normalise codes usage and plot the probability distribution
+            codes_usage_norm = codes_usage / np.sum(codes_usage)
+            fig2 = plt.figure()
+            plt.bar(np.arange(model.K), codes_usage_norm)
+            # Plot a horizontal line at 1/K and at a label that says "Uniform distribution"
+            plt.axhline(1 / model.K, color="r", linestyle="dashed")
+            plt.text(
+                0,
+                1 / model.K,
+                "Uniform distribution",
+                horizontalalignment="left",
+                verticalalignment="bottom",
+            )
+            plt.legend(["Codes usage", "Uniform distribution"])
+            plt.title("Codes usage normalized")
+            plt.xlabel("Code")
+            plt.ylabel("Usage")
+
             if wandb_flag:
                 wandb.log(
                     {
@@ -645,10 +672,20 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                         "train/Loss": loss_train[-1],
                         "train/Rec Loss": loss_rec_train[-1],
                         "train/Quant Loss":loss_vq_train[-1],
-                        "train/Class Loss": loss_class_train[-1]
+                        "train/Class Loss": loss_class_train[-1],
                     }
                 )
+                # Log the image
+                wandb.log({"train/Codes usage": fig1})
+                wandb.log({"train/Codes usage normalized": fig2})
+            plt.close(fig1)
+            plt.close(fig2)
 
+            
+            # Reset usage
+            model.reset_usage()
+            # Plot reconstruction
+            check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
             
             if supervised:
                 pbar_train.set_description(
@@ -676,6 +713,8 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             valid_vq_loss = 0
             valid_loss = 0
             valid_class_loss = 0
+            
+            val_codes_usage = np.zeros(model.K)
 
             with tqdm(total=len(validloader)) as pbar_valid:
                 for x, y, z in validloader:
@@ -698,7 +737,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     else:
                         class_loss = 0
                     # Total loss
-                    loss_vq = rec_loss + beta * quant_loss + class_loss
+                    loss_vq = rec_loss + quant_loss + eta * class_loss
 
                     # Update losses
                     valid_rec_loss += rec_loss.item()
@@ -707,13 +746,45 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                      # Update progress bar
                     pbar_valid.update(1)
 
+                    # Update codes usage
+                    val_codes_usage += model.usage.detach().cpu().numpy()
+
                
                 # Update lsits
                 loss_valid.append(valid_loss / len(validloader))
                 loss_vq_valid.append(valid_vq_loss / len(validloader))
                 loss_class_valid.append(valid_class_loss / len(validloader))
                 loss_rec_valid.append(valid_rec_loss / len(validloader))
+                val_codes_usage_norm = val_codes_usage / np.sum(val_codes_usage)
 
+                fig1 = plt.figure()
+                plt.bar(np.arange(model.K), codes_usage)
+                plt.title("Codes usage")
+                plt.xlabel("Code")
+                plt.ylabel("Usage")
+                # Normalise codes usage and plot the probability distribution
+                codes_usage_norm = codes_usage / np.sum(codes_usage)
+                fig2 = plt.figure()
+                plt.bar(np.arange(model.K), codes_usage_norm)
+                # Plot a horizontal line at 1/K and at a label that says "Uniform distribution"
+                plt.axhline(1 / model.K, color="r", linestyle="dashed")
+                plt.text(
+                    0,
+                    1 / model.K,
+                    "Uniform distribution",
+                    horizontalalignment="left",
+                    verticalalignment="bottom",
+                )
+                plt.legend(["Codes usage", "Uniform distribution"])
+                plt.title("Codes usage normalized")
+                plt.xlabel("Code")
+                plt.ylabel("Usage")
+                if wandb_flag:
+                    # Log the image
+                    wandb.log({"valid/Codes usage": fig1})
+                    wandb.log({"valid/Codes usage normalized": fig2})
+                plt.close(fig1)
+                plt.close(fig2)
                 
                 if supervised:
                     pbar_valid.set_description(
@@ -726,6 +797,11 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                             e, loss_valid[-1], loss_rec_valid[-1], loss_vq_valid[-1],
                         )
                     )
+
+                # Reset usage
+                model.reset_usage()
+                # Plot reconstruction
+                check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
 
                 if wandb_flag:
                     wandb.log(
@@ -740,6 +816,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
             # If the validation loss is the best, save the model
             if loss_valid[-1] == min(loss_valid):
+                print("Saving the best model at epoch {}".format(e))
                 name = "local_results/plps/"
                 if supervised:
                     name += "vqvae/VAE_best_model_supervised"
@@ -753,6 +830,12 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     },
                     name,
                 )
+
+             # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
+            if e > 50:
+                if loss_valid[-1] > max(loss_valid[-20:-1]):
+                    print("Early stopping")
+                    break
 
     return (
         loss_train,

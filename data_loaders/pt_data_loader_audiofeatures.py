@@ -6,7 +6,7 @@ from scipy.io import wavfile
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import librosa
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.preprocessing import scale
 
 
@@ -280,10 +280,17 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         z_test = test_data["vowel"].values
 
         # Normalise the data
-        scaler = StandardScaler()
+        # scaler = StandardScaler()
+        # x_train = scaler.fit_transform(x_train)
+        # x_val = scaler.transform(x_val)
+        # x_test = scaler.transform(x_test)
+
+        # Min max scaler between -1 and 1
+        scaler = MinMaxScaler(feature_range=(-1, 1))
         x_train = scaler.fit_transform(x_train)
         x_val = scaler.transform(x_val)
         x_test = scaler.transform(x_test)
+
 
         print("Creating dataloaders...")
         train_loader = torch.utils.data.DataLoader(
@@ -294,6 +301,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     z_train,
                 )
             ),
+            drop_last=False,
             batch_size=self.hyperparams["batch_size"],
             sampler=sampler,
         )
@@ -305,6 +313,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     z_val,
                 )
             ),
+            drop_last=False,
             batch_size=self.hyperparams["batch_size"],
             shuffle=False,
         )
@@ -316,6 +325,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     z_test,
                 )
             ),
+            drop_last=False,
             batch_size=self.hyperparams["batch_size"],
             shuffle=False,
         )

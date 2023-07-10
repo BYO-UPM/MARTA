@@ -135,7 +135,6 @@ class VectorQuantizer(torch.nn.Module):
 
     def update_usage(self, min_enc):
         self.usage[min_enc] = self.usage[min_enc] + 1  # if code is used add 1 to usage
-        self.usage /= 2 # decay all codes usage
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         latents_shape = z.shape
@@ -143,11 +142,7 @@ class VectorQuantizer(torch.nn.Module):
         flat_latents = z.view(-1, self.D)
 
         # Calclate L2 distance between latents and embedding weights
-        dist = (
-            torch.sum(flat_latents ** 2, dim=1, keepdim=True)
-            + torch.sum(self.embedding.weight ** 2, dim=1)
-            - 2 * torch.matmul(flat_latents, self.embedding.weight.t())
-        )
+        dist = torch.cdist(flat_latents, self.embedding.weight)
 
         # Get the index of the closest embedding
         enc_idx = torch.argmin(dist, dim=1)
@@ -164,15 +159,15 @@ class VectorQuantizer(torch.nn.Module):
         self.update_usage(enc_idx)
 
         # Compute VQ loss
-        embedding_loss = torch.nn.functional.mse_loss(
-            z_q.detach(), z
+        e_loss = torch.nn.functional.mse_loss(
+            z_q.detach(), z, reduction="sum"
         )
-        commitment_loss = torch.nn.functional.mse_loss(
-            z_q, z.detach()
-        )
-
+        q_loss = torch.nn.functional.mse_loss(
+            z_q, z.detach(), reduction="sum"
+        ) 
+    
         # Loss
-        vq_loss = embedding_loss + self.commitment_cost * commitment_loss
+        vq_loss = q_loss + self.commitment_cost * e_loss
 
         # Straight-through estimator
         z_q = (
@@ -204,6 +199,7 @@ class VQVAE(torch.nn.Module):
         self.commitment_cost = commitment_cost
         self.supervised = supervised
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.usage = torch.ones(self.K).to(self.device)
 
         encoder_layers = []
         for i in range(len(hidden_dims_enc)):
@@ -240,10 +236,13 @@ class VQVAE(torch.nn.Module):
         mu = self.fc_mu(z)
         return mu
 
-    def decoder(self, z_q: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
+    def reset_usage(self):
+        self.vq.reset_usage()
+        
+    def decoder(self, z_q: torch.Tensor) -> torch.Tensor:
         x = self.dec(z_q) # Decode with quantized latents
         if self.supervised:
-            y = self.clf(z) # Predict class from continuous latents
+            y = self.clf(z_q) # Predict class from quantized latents
         else:
             y = None
         return x, y
@@ -251,7 +250,8 @@ class VQVAE(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.encoder(x)
         z_q, vq_loss, enc_idx = self.vq(z)
-        x_hat, y_hat = self.decoder(z_q, z)
+        x_hat, y_hat = self.decoder(z_q)
+        self.usage=self.vq.usage
         return x_hat, y_hat, vq_loss, z, z_q, enc_idx
 
 

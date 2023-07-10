@@ -3,7 +3,7 @@ import copy
 from models.pt_models import VQVAE
 from training.pt_training import VQVAE_trainer, VQVAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels
-from data_loaders.pt_data_loader_audiofeatures import Dataset_PLPs
+from data_loaders.pt_data_loader_audiofeatures import Dataset_AudioFeatures
 import torch
 import wandb
 import numpy as np
@@ -16,6 +16,7 @@ def main(args):
         "material": args.material,
         "hop_size_percent": args.hop_size_percent,
         "n_plps": args.n_plps,
+        "n_mfccs": args.n_mfccs,
         "wandb_flag": args.wandb_flag,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
@@ -46,12 +47,12 @@ def main(args):
 
     print("Reading data...")
     # Read the data
-    dataset = Dataset_PLPs(args.data_path, hyperparams, args.material)
-    # dataset = Dataset_PLPs(data_path, hyperparams, hyperparams["material"])
+    dataset = Dataset_AudioFeatures(args.data_path, hyperparams, args.material)
+    # dataset = Dataset_AudioFeatures(data_path, hyperparams, hyperparams["material"])
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_plp_VQVAE_" + hyperparams["material"]
+            gname = "rasta_PLPs_VQVAE_" + hyperparams["material"]  + str(hyperparams["K"]) + "_K"
             if hyperparams["supervised"]:
                 gname += "_supervised"
             else:
@@ -85,6 +86,7 @@ def main(args):
             supervised=hyperparams["supervised"],
         )
 
+
         # model = torch.compile(model)
 
         print("Training VQVAE...")
@@ -102,18 +104,23 @@ def main(args):
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/vqvae/VAE_best_model_supervised.pt"
+            name = "local_results/plps/vqvae/VAE_best_model_supervised.pt"
         else:
-            name = "local_results/vqvae/VAE_best_model_unsupervised.pt"
+            name = "local_results/plps/vqvae/VAE_best_model_unsupervised.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
-
+        
+        if hyperparams["n_plps"] > 0:
+            audio_features = "plps"
+        elif hyperparams["n_mfccs"] > 0:
+            audio_features = "mfccs"
         print("Testing VAE...")
         # Test the model
         x_array, x_hat_array, z_array, z_q_array, enc_idx_array, vowel_array = VQVAE_tester(
             model,
             test_loader,
             test_data,
+            audio_features,
             supervised=hyperparams["supervised"],
             wandb_flag=hyperparams["wandb_flag"],
         )
@@ -206,7 +213,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_plps",
         type=int,
-        default=13,
+        default=0,
         help="Number of RASTA-PLP coefficients",
     )
     parser.add_argument(
@@ -235,31 +242,37 @@ if __name__ == "__main__":
     parser.add_argument(
         "--latent_dim",
         type=int,
-        default=2,
+        default=32,
         help="Latent dimension",
     )
     parser.add_argument(
         "--hidden_dims_enc",
         type=list,
-        default=[128, 256],
+        default=[10, 20],
         help="Hidden dimensions of the encoder",
     )
     parser.add_argument(
         "--hidden_dims_dec",
         type=list,
-        default=[128],
+        default=[10],
         help="Hidden dimensions of the decoder",
     )
     parser.add_argument(
         "--K",
         type=int,
-        default=10,
+        default=128,
         help="Number of the codes",
     )
     parser.add_argument(
         "--supervised",
         action="store_true",
         help="Flag to use supervised training",
+    )
+    parser.add_argument(
+        "--n_mfccs",
+        type=int,
+        default=0,
+        help="Number of MFCCs",
     )
     args = parser.parse_args()
 
