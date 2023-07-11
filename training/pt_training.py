@@ -852,7 +852,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
     opt = torch.optim.Adam(model.parameters(), lr)
     loss = torch.nn.MSELoss(reduction="sum")
     if supervised:
-        loss_class = torch.nn.BCELoss(reduction="sum")
+        loss_class = torch.nn.CrossEntropyLoss(reduction="sum")
 
     elbo_training = []
     kl_div_training = []
@@ -885,7 +885,8 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 tepoch.set_description(f"Epoch {e}")
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
-                y = y.to(model.device).to(torch.float32)
+                # y = y.to(model.device).to(torch.float32)
+                z = z.to(model.device).to(torch.float32)
 
                 # Gradient to zero
                 opt.zero_grad()
@@ -898,7 +899,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 reconstruction_loss = loss(x_hat, x)
                 kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
                 if supervised:
-                    bce = loss_class(y_hat, y.view(-1, 1))
+                    bce = loss_class(y_hat, z.view(-1, 1))
                     variational_lower_bound = (
                         reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
                     )
@@ -930,7 +931,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 f"Epoch {e}: Train ELBO: {elbo_training[-1]:.2f}, Train KL divergence: {kl_div_training[-1]:.2f}, Train reconstruction loss: {rec_loss_training[-1]:.2f}"
             )
             if supervised:
-                print(f"Train BCE loss: {bce_loss_training[-1]:.2f}")
+                print(f"Train CrossEntropy loss: {bce_loss_training[-1]:.2f}")
 
             # Plot reconstruction
             check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
@@ -967,6 +968,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         # Move data to device
                         x = x.to(model.device).to(torch.float32)
                         y = y.to(model.device).to(torch.float32)
+                        z = z.to(model.device).to(torch.float32)
 
                         # Forward pass
                         if supervised:
@@ -979,7 +981,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             1 + logvar - mu.pow(2) - logvar.exp()
                         )
                         if supervised:
-                            bce = loss_class(y_hat, y.view(-1, 1))
+                            bce = loss_class(y_hat, z.view(-1, 1))
                             variational_lower_bound = (
                                 reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
                             )
@@ -1007,7 +1009,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         f"Epoch {e}: Valid ELBO: {elbo_validation[-1]:.2f}, Valid KL divergence: {kl_div_validation[-1]:.2f}, Valid reconstruction loss: {rec_loss_validation[-1]:.2f}"
                     )
                     if supervised:
-                        print(f"Valid BCE loss: {bce_loss_validation[-1]:.2f}")
+                        print(f"Valid CrossEntropy loss: {bce_loss_validation[-1]:.2f}")
 
                     # Plot reconstruction
                     check_reconstruction(x, x_hat, wandb_flag, train_flag=False)

@@ -66,9 +66,6 @@ class VAE(torch.nn.Module):
         if self.supervised:
             self.dec_sup = torch.nn.Sequential(
                 torch.nn.Linear(self.latent_dim, 5),
-                torch.nn.ReLU(),
-                torch.nn.Linear(5, 1),
-                torch.nn.Sigmoid(),
             )
 
         self.to(self.device)
@@ -225,7 +222,9 @@ class VQVAE(torch.nn.Module):
 
         if self.supervised:
             self.clf = torch.nn.Sequential(
-                torch.nn.Linear(self.latent_dim, 1),
+                torch.nn.Linear(self.latent_dim, 5),
+                torch.nn.ReLU(),
+                torch.nn.Linear(5, 1),
                 torch.nn.Sigmoid(),
             )
 

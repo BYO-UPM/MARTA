@@ -33,7 +33,7 @@ def main(args):
         if hyperparams["wandb_flag"]:
             gname = "rasta_PLPs_vae_" + args.material
             if hyperparams["supervised"]:
-                gname += "_supervised"
+                gname += "_supervised_by_VOWELS"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--material",
         type=str,
-        default="PATAKA",
+        default="VOWELS",
         choices=["PATAKA", "VOWELS"],
         help="Acoustic material to use",
     )
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=100,
+        default=300,
         help="Number of epochs",
     )
     parser.add_argument(
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--latent_dim",
         type=int,
-        default=2,
+        default=10,
         help="Latent dimension",
     )
     parser.add_argument(
