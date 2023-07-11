@@ -878,7 +878,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
         # beta_sc = get_beta(e)
         # print("Beta: ", beta_sc)
         beta_sc = 1
-        beta_bce = 50
+        beta_bce = 1
 
         with tqdm(trainloader, unit="batch") as tepoch:
             for x, y, z in tepoch:
@@ -886,7 +886,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
                 # y = y.to(model.device).to(torch.float32)
-                z = z.to(model.device).to(torch.float32)
+                z = z.type(torch.LongTensor).to(model.device)
 
                 # Gradient to zero
                 opt.zero_grad()
@@ -899,7 +899,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 reconstruction_loss = loss(x_hat, x)
                 kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
                 if supervised:
-                    bce = loss_class(y_hat, z.view(-1, 1))
+                    bce = loss_class(y_hat, z)
                     variational_lower_bound = (
                         reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
                     )
@@ -967,8 +967,8 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                     for x, y, z in tepoch:
                         # Move data to device
                         x = x.to(model.device).to(torch.float32)
-                        y = y.to(model.device).to(torch.float32)
-                        z = z.to(model.device).to(torch.float32)
+                        # y = y.to(model.device).to(torch.float32)
+                        z = z.type(torch.LongTensor).to(model.device)
 
                         # Forward pass
                         if supervised:
@@ -981,7 +981,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             1 + logvar - mu.pow(2) - logvar.exp()
                         )
                         if supervised:
-                            bce = loss_class(y_hat, z.view(-1, 1))
+                            bce = loss_class(y_hat, z)
                             variational_lower_bound = (
                                 reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
                             )
