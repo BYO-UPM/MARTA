@@ -280,16 +280,16 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         z_test = test_data["vowel"].values
 
         # Normalise the data
-        # scaler = StandardScaler()
-        # x_train = scaler.fit_transform(x_train)
-        # x_val = scaler.transform(x_val)
-        # x_test = scaler.transform(x_test)
-
-        # Min max scaler between -1 and 1
-        scaler = MinMaxScaler(feature_range=(-1, 1))
+        scaler = StandardScaler()
         x_train = scaler.fit_transform(x_train)
         x_val = scaler.transform(x_val)
         x_test = scaler.transform(x_test)
+
+        # Min max scaler between -1 and 1
+        # scaler = MinMaxScaler(feature_range=(-1, 1))
+        # x_train = scaler.fit_transform(x_train)
+        # x_val = scaler.transform(x_val)
+        # x_test = scaler.transform(x_test)
 
 
         print("Creating dataloaders...")

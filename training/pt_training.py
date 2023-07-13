@@ -852,7 +852,10 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
     opt = torch.optim.Adam(model.parameters(), lr)
     loss = torch.nn.MSELoss(reduction="sum")
     if supervised:
-        loss_class = torch.nn.CrossEntropyLoss(reduction="sum")
+        if model.n_classes == 2:
+            loss_class = torch.nn.BCEWithLogitsLoss(reduction="sum")
+        else:
+            loss_class = torch.nn.CrossEntropyLoss(reduction="sum")
 
     elbo_training = []
     kl_div_training = []
@@ -878,15 +881,17 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
         # beta_sc = get_beta(e)
         # print("Beta: ", beta_sc)
         beta_sc = 1
-        beta_bce = 1
+        beta_bce = 20
 
         with tqdm(trainloader, unit="batch") as tepoch:
             for x, y, z in tepoch:
                 tepoch.set_description(f"Epoch {e}")
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
-                # y = y.to(model.device).to(torch.float32)
-                z = z.type(torch.LongTensor).to(model.device)
+                if model.n_classes == 2:
+                    y = y.to(model.device).to(torch.float32)
+                else:
+                    z = z.type(torch.LongTensor).to(model.device)
 
                 # Gradient to zero
                 opt.zero_grad()
@@ -940,7 +945,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
             if wandb_flag:
                 wandb.log(
                     {
-                        "train/ELBO": elbo_training[-1],
+                        "train/ELBO": -elbo_training[-1],
                         "train/KL_div": kl_div_training[-1],
                         "train/rec_loss": rec_loss_training[-1],
                         "train/epoch": e,
@@ -967,8 +972,10 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                     for x, y, z in tepoch:
                         # Move data to device
                         x = x.to(model.device).to(torch.float32)
-                        # y = y.to(model.device).to(torch.float32)
-                        z = z.type(torch.LongTensor).to(model.device)
+                        if model.n_classes == 2:
+                            y = y.to(model.device).to(torch.float32)
+                        else:
+                            z = z.type(torch.LongTensor).to(model.device)
 
                         # Forward pass
                         if supervised:
@@ -1018,7 +1025,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                     if wandb_flag:
                         wandb.log(
                             {
-                                "valid/ELBO": elbo_validation[-1],
+                                "valid/ELBO": -elbo_validation[-1],
                                 "valid/KL_div": kl_div_validation[-1],
                                 "valid/rec_loss": rec_loss_validation[-1],
                                 "valid/epoch": e,
@@ -1112,6 +1119,7 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
         # Get batch size from testloader
         batch_size = testloader.batch_size
         y_hat_array = np.zeros((batch_size, 1))
+        z_array = np.zeros((batch_size, 1))
         y_array = np.zeros((batch_size, 1))
         # Create x_array of shape Batch x Output shape
         x_array = np.zeros(
@@ -1124,17 +1132,27 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
             for x, y, z in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
-                y = y.to(model.device).to(torch.float32)
+                if model.n_classes == 2:
+                    y = y.to(model.device).to(torch.float32)
+                else:
+                    z = z.type(torch.LongTensor).to(model.device)
 
                 # Forward pass
                 if supervised:
                     x_hat, y_hat, mu, logvar = model(x)
-                    # Concatenate predictions
+                    # Concatenate true values
                     y_array = np.concatenate((y_array, y.cpu().detach().numpy().reshape(-1, 1)))
-                    
-                    y_hat_array = np.concatenate(
-                        (y_hat_array, y_hat.cpu().detach().numpy())
-                    )
+                    # Concatenate true values (vowels)
+                    z_array = np.concatenate((z_array, z.cpu().detach().numpy().reshape(-1, 1)))
+
+                    # Concatenate predictions (labels)
+                    if model.n_classes == 2:
+                        y_hat_array = np.concatenate(
+                            (y_hat_array, y_hat.cpu().detach().numpy())
+                        )
+                    # Concatenate predictions (vowels)
+                    else:
+                        y_hat_array = np.concatenate((y_hat_array, np.argmax(y_hat.cpu().detach().numpy(), axis=1).reshape(-1, 1)))
                 else:
                     x_hat, mu, logvar = model(x)
 

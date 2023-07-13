@@ -152,17 +152,22 @@ def plot_latent_space_vowels(
 
 
     # PLot latent space by vowels
-    plt.figure(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(20, 20))
     unique_vowels = np.unique(vowels)
     vowel_dict = {0: "a", 1: "e", 2: "i", 3: "o", 4: "u"}
+    colors = ["red", "blue", "green", "orange", "purple"]
     for i in range(len(unique_vowels)):
         idx = np.argwhere(vowels == unique_vowels[i]).ravel()
         label = "Vowel " + vowel_dict[unique_vowels[i]]
-        plt.scatter(latent_mu[idx, 0], latent_mu[idx, 1], label=label, alpha=0.5)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
-    plt.legend()
+        # Get for each vowel, the label
+        idxH = np.argwhere(labels[idx] == 0).ravel()
+        idxPD = np.argwhere(labels[idx] == 1).ravel()
+        ax.scatter(latent_mu[idxH, 0], latent_mu[idxH, 1], label=label , marker='$H$', c=colors[i], alpha=0.5)
+        ax.scatter(latent_mu[idxPD, 0], latent_mu[idxPD, 1], label=label, marker='$P$', alpha=0.5, c=colors[i])
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
+    ax.legend()
     if supervised:
         savepath = "local_results/plps/vae_supervised/"
     if vqvae:
@@ -170,28 +175,26 @@ def plot_latent_space_vowels(
     if not supervised and not vqvae:
         savepath = "local_results/plps/vae_unsupervised/"
     
-    plt.savefig(f"{savepath}latent_space_vowels_{fold}_{name}.png")
+    fig.savefig(savepath + f"latent_space_vowels_{fold}_{name}.png")
     if wandb_flag:
-        wandb.log({str(name) + "/latent_space_vowels": plt})
-    plt.show()
-    plt.close()
+        wandb.log({str(name) + "/latent_space_vowels": wandb.Image(fig)})
+    plt.close(fig)
 
     # Plot latent space by labels
-    plt.figure(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(20, 20))
     idxH = np.argwhere(labels == 0).ravel()
     idxPD = np.argwhere(labels == 1).ravel()
-    plt.scatter(latent_mu[idxH, 0], latent_mu[idxH, 1], label="Healthy", alpha=0.5)
-    plt.scatter(latent_mu[idxPD, 0], latent_mu[idxPD, 1], label="PD", alpha=0.5)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(f"Latent space in " + str(name) + " for fold {fold} by labels")
+    ax.scatter(latent_mu[idxH, 0], latent_mu[idxH, 1], label="Healthy", alpha=0.5)
+    ax.scatter(latent_mu[idxPD, 0], latent_mu[idxPD, 1], label="PD", alpha=0.5)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Latent space in " + str(name) + " for fold {fold} by labels")
     # Create a custom legend where 0="healthy", 1="PD"
-    plt.legend()
+    ax.legend()
     save_path = savepath + f"latent_space_labels_{fold}_{name}.png"
-    plt.savefig(
+    fig.savefig(
         save_path,
     )
     if wandb_flag:
-        wandb.log({str(name) + "/latent_space_labels": plt})
-    plt.show()
-    plt.close()
+        wandb.log({str(name) + "/latent_space_labels":  wandb.Image(fig)})
+    plt.close(fig)

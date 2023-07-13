@@ -36,11 +36,13 @@ class VAE(torch.nn.Module):
         hidden_dims_enc=[20, 10],
         hidden_dims_dec=[20],
         supervised=False,
+        n_classes=5,
     ):
         super(VAE, self).__init__()
         self.embedding_input = embedding_input
         self.latent_dim = copy.deepcopy(latent_dim)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.n_classes = n_classes
 
         encoder_layers = []
         for i in range(len(hidden_dims_enc)):
@@ -64,9 +66,19 @@ class VAE(torch.nn.Module):
         )
         self.supervised = supervised
         if self.supervised:
-            self.dec_sup = torch.nn.Sequential(
-                torch.nn.Linear(self.latent_dim, 5),
-            )
+            if self.n_classes == 2:
+                self.dec_sup = torch.nn.Sequential(
+                    torch.nn.Linear(self.latent_dim, 5),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(5, 1),
+                    torch.nn.Sigmoid(),
+                )
+            else:
+                self.dec_sup = torch.nn.Sequential(
+                    torch.nn.Linear(self.latent_dim, 10),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(10, n_classes),
+                )
 
         self.to(self.device)
 

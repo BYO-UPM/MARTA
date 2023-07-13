@@ -23,6 +23,7 @@ def main(args):
         "hidden_dims_enc": args.hidden_dims_enc,
         "hidden_dims_dec": args.hidden_dims_dec,
         "supervised": args.supervised,
+        "n_classes": args.n_classes,
     }
 
     print("Reading data...")
@@ -62,6 +63,7 @@ def main(args):
             hidden_dims_enc=hyperparams["hidden_dims_enc"],
             hidden_dims_dec=hyperparams["hidden_dims_dec"],
             supervised=hyperparams["supervised"],
+            n_classes=hyperparams["n_classes"],
         )
 
         model = torch.compile(model)
@@ -228,19 +230,25 @@ if __name__ == "__main__":
     parser.add_argument(
         "--hidden_dims_enc",
         type=list,
-        default=[20, 10],
+        default=[64, 128],
         help="Hidden dimensions of the encoder",
     )
     parser.add_argument(
         "--hidden_dims_dec",
         type=list,
-        default=[10],
+        default=[128, 64],
         help="Hidden dimensions of the decoder",
     )
     parser.add_argument(
         "--supervised",
         action="store_true",
         help="Flag to use supervised training",
+    )
+    parser.add_argument(
+        "--n_classes",
+        type=int,
+        choices=[2, 5]
+        help="Number of classes to supervise. Only used if supervised=True. 2 for PD, 5 for VOWELS.",
     )
     args = parser.parse_args()
 
