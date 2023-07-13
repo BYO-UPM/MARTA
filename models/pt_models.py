@@ -98,7 +98,7 @@ class VAE(torch.nn.Module):
 
     def decoder_supervised(self, z, mu):
         x_hat = self.dec(z)
-        y_hat = self.dec_sup(mu)  # TODO: check if its better to use z or mu
+        y_hat = self.dec_sup(z)  # TODO: check if its better to use z or mu
         return x_hat, y_hat
 
     def forward(self, x):

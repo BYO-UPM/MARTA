@@ -958,7 +958,6 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         "train/ELBO": -elbo_training[-1],
                         "train/KL_div": kl_div_training[-1],
                         "train/rec_loss": rec_loss_training[-1],
-                        "train/epoch": e,
                     }
                 )
                 if supervised:  # if supervised we also have BCE loss
@@ -1043,7 +1042,6 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                                 "valid/ELBO": -elbo_validation[-1],
                                 "valid/KL_div": kl_div_validation[-1],
                                 "valid/rec_loss": rec_loss_validation[-1],
-                                "valid/epoch": e,
                             }
                         )
                         if supervised:  # if supervised we also have BCE loss
@@ -1072,6 +1070,9 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             },
                             name,
                         )
+
+                    if wandb_flag:
+                        wandb.log("Epoch", e)
 
                     # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
                     if e > 50:

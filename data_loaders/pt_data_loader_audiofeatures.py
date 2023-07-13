@@ -22,7 +22,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             self.data_path = data_path
         else:
             raise ValueError("Material not recognized")
-        
+
         self.data = self.read_dataset(self.data_path)
 
     def __len__(self):
@@ -255,7 +255,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             train_data, test_size=0.2, random_state=42, stratify=train_data["label"]
         )
 
-
         # Create the dataloaders
         label_counts = train_data["label"].value_counts()
         total_samples = len(train_data)
@@ -264,8 +263,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         sampler = torch.utils.data.sampler.WeightedRandomSampler(
             weights=sample_weights, num_samples=len(sample_weights), replacement=True
         )
-        if self.plps: audio_features = "plps"
-        if self.mfcc: audio_features = "mfccs"
+        if self.plps:
+            audio_features = "plps"
+        if self.mfcc:
+            audio_features = "mfccs"
 
         x_train = np.vstack(train_data[audio_features])
         y_train = train_data["label"].values
@@ -290,7 +291,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # x_train = scaler.fit_transform(x_train)
         # x_val = scaler.transform(x_val)
         # x_test = scaler.transform(x_test)
-
 
         print("Creating dataloaders...")
         train_loader = torch.utils.data.DataLoader(
@@ -344,7 +344,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
     def extract_rasta_plp_with_derivatives(
         self, audio, sample_rate, frame_length_ms, n_plps=10
     ):
-        """ Extracts RASTA-PLP features with their first and second derivatives
+        """Extracts RASTA-PLP features with their first and second derivatives
 
         Args:
             audio (np.array): audio signal
@@ -372,7 +372,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return plps.T
 
-    def extract_mfcc_with_derivatives(self, audio, sample_rate, frame_length_ms, n_mfcc=10):
+    def extract_mfcc_with_derivatives(
+        self, audio, sample_rate, frame_length_ms, n_mfcc=10
+    ):
         """
         Extracts Mel-frequency cepstral coefficients (MFCCs) with their first and second derivatives from an audio signal.
 
@@ -385,16 +387,20 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         Returns:
             np.ndarray: A 2D numpy array of shape (num_frames, num_features) containing the MFCCs and their derivatives.
         """
-        frame_length = int(sample_rate * frame_length_ms * 1e-3)  # Convert ms to samples
+        frame_length = int(
+            sample_rate * frame_length_ms * 1e-3
+        )  # Convert ms to samples
         hop_length = int(frame_length / 2)  # 50% overlap
-        frames = librosa.util.frame(audio, frame_length=frame_length, hop_length=hop_length)
+        frames = librosa.util.frame(
+            audio, frame_length=frame_length, hop_length=hop_length
+        )
 
         # Apply hanning windows
         frames = frames * np.hanning(frame_length)[:, None]
 
         # N_fft is the next number in power of 2 of the frame size
         n_fft = 2 ** (int(np.log2(frames.shape[1])) + 1)
-        
+
         # Compute MFCC for each frame
         mfccs = []
         for frame in frames.T:
