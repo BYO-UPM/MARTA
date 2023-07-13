@@ -628,7 +628,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 train_rec_loss += rec_loss.item()
                 train_vq_loss += vq_loss.item()
                 train_loss += loss_vq.item()
-                 # Update progress bar
+                # Update progress bar
                 pbar_train.update(1)
 
                 # Update codes usage
@@ -671,7 +671,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                         "train/Epoch": e,
                         "train/Loss": loss_train[-1],
                         "train/Rec Loss": loss_rec_train[-1],
-                        "train/Quant Loss":loss_vq_train[-1],
+                        "train/Quant Loss": loss_vq_train[-1],
                         "train/Class Loss": loss_class_train[-1],
                     }
                 )
@@ -681,12 +681,11 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             plt.close(fig1)
             plt.close(fig2)
 
-            
             # Reset usage
             model.reset_usage()
             # Plot reconstruction
             check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
-            
+
             if supervised:
                 pbar_train.set_description(
                     "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
@@ -698,10 +697,11 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     )
                 )
 
-            else: 
+            else:
                 pbar_train.set_description(
                     "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
-                        e, loss_train[-1],
+                        e,
+                        loss_train[-1],
                         loss_rec_train[-1],
                         loss_vq_train[-1],
                     )
@@ -713,7 +713,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             valid_vq_loss = 0
             valid_loss = 0
             valid_class_loss = 0
-            
+
             val_codes_usage = np.zeros(model.K)
 
             with tqdm(total=len(validloader)) as pbar_valid:
@@ -732,7 +732,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     quant_loss = vq_loss
                     # If supervised, add classification loss
                     if supervised:
-                        class_loss = loss_class(y_hat, y.reshape(-1,1))
+                        class_loss = loss_class(y_hat, y.reshape(-1, 1))
                         valid_class_loss += class_loss.item()
                     else:
                         class_loss = 0
@@ -743,13 +743,12 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     valid_rec_loss += rec_loss.item()
                     valid_vq_loss += quant_loss.item()
                     valid_loss += loss_vq.item()
-                     # Update progress bar
+                    # Update progress bar
                     pbar_valid.update(1)
 
                     # Update codes usage
                     val_codes_usage += model.usage.detach().cpu().numpy()
 
-               
                 # Update lsits
                 loss_valid.append(valid_loss / len(validloader))
                 loss_vq_valid.append(valid_vq_loss / len(validloader))
@@ -785,16 +784,24 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     wandb.log({"valid/Codes usage normalized": fig2})
                 plt.close(fig1)
                 plt.close(fig2)
-                
+
                 if supervised:
                     pbar_valid.set_description(
                         "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}; Class Loss: {:.5f}".format(
-                            e, loss_valid[-1], loss_rec_valid[-1], loss_vq_valid[-1], loss_class_valid[-1],
-                        ))
+                            e,
+                            loss_valid[-1],
+                            loss_rec_valid[-1],
+                            loss_vq_valid[-1],
+                            loss_class_valid[-1],
+                        )
+                    )
                 else:
                     pbar_valid.set_description(
                         "Epoch: {}; Loss: {:.5f}; Rec Loss: {:.5f}; Quant Loss: {:.5f}".format(
-                            e, loss_valid[-1], loss_rec_valid[-1], loss_vq_valid[-1],
+                            e,
+                            loss_valid[-1],
+                            loss_rec_valid[-1],
+                            loss_vq_valid[-1],
                         )
                     )
 
@@ -831,7 +838,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     name,
                 )
 
-             # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
+            # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
             if e > 50:
                 if loss_valid[-1] > max(loss_valid[-20:-1]):
                     print("Early stopping")
@@ -853,7 +860,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
     loss = torch.nn.MSELoss(reduction="sum")
     if supervised:
         if model.n_classes == 2:
-            loss_class = torch.nn.BCEWithLogitsLoss(reduction="sum")
+            loss_class = torch.nn.BCELoss(reduction="sum")
         else:
             loss_class = torch.nn.CrossEntropyLoss(reduction="sum")
 
@@ -881,7 +888,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
         # beta_sc = get_beta(e)
         # print("Beta: ", beta_sc)
         beta_sc = 1
-        beta_bce = 20
+        beta_bce = 50
 
         with tqdm(trainloader, unit="batch") as tepoch:
             for x, y, z in tepoch:
@@ -904,7 +911,10 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                 reconstruction_loss = loss(x_hat, x)
                 kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
                 if supervised:
-                    bce = loss_class(y_hat, z)
+                    if model.n_classes == 2:
+                        bce = loss_class(y_hat, y.view(-1, 1))
+                    else:
+                        bce = loss_class(y_hat, z)
                     variational_lower_bound = (
                         reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
                     )
@@ -988,9 +998,14 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             1 + logvar - mu.pow(2) - logvar.exp()
                         )
                         if supervised:
-                            bce = loss_class(y_hat, z)
+                            if model.n_classes == 2:
+                                bce = loss_class(y_hat, y.view(-1, 1))
+                            else:
+                                bce = loss_class(y_hat, z)
                             variational_lower_bound = (
-                                reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
+                                reconstruction_loss
+                                + beta_sc * kl_divergence
+                                + beta_bce * bce
                             )
                         else:
                             variational_lower_bound = (
@@ -1057,7 +1072,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             },
                             name,
                         )
-                    
+
                     # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
                     if e > 50:
                         if elbo_validation[-1] > max(elbo_validation[-20:-1]):
@@ -1110,7 +1125,14 @@ def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):
     plt.close(fig)
 
 
-def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=False, wandb_flag=False):
+def VAE_tester(
+    model,
+    testloader,
+    test_data,
+    audio_features="plps",
+    supervised=False,
+    wandb_flag=False,
+):
     # Set model in evaluation mode
     model.eval()
     print("Evaluating the VAE model")
@@ -1125,9 +1147,7 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
         x_array = np.zeros(
             (batch_size, test_data[audio_features].iloc[0].shape[0])
         )  # 32 is the batch size
-        x_hat_array = np.zeros(
-            x_array.shape
-        ) 
+        x_hat_array = np.zeros(x_array.shape)
         with tqdm(testloader, unit="batch") as tepoch:
             for x, y, z in tepoch:
                 # Move data to device
@@ -1141,9 +1161,13 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
                 if supervised:
                     x_hat, y_hat, mu, logvar = model(x)
                     # Concatenate true values
-                    y_array = np.concatenate((y_array, y.cpu().detach().numpy().reshape(-1, 1)))
+                    y_array = np.concatenate(
+                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
+                    )
                     # Concatenate true values (vowels)
-                    z_array = np.concatenate((z_array, z.cpu().detach().numpy().reshape(-1, 1)))
+                    z_array = np.concatenate(
+                        (z_array, z.cpu().detach().numpy().reshape(-1, 1))
+                    )
 
                     # Concatenate predictions (labels)
                     if model.n_classes == 2:
@@ -1152,7 +1176,14 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
                         )
                     # Concatenate predictions (vowels)
                     else:
-                        y_hat_array = np.concatenate((y_hat_array, np.argmax(y_hat.cpu().detach().numpy(), axis=1).reshape(-1, 1)))
+                        y_hat_array = np.concatenate(
+                            (
+                                y_hat_array,
+                                np.argmax(y_hat.cpu().detach().numpy(), axis=1).reshape(
+                                    -1, 1
+                                ),
+                            )
+                        )
                 else:
                     x_hat, mu, logvar = model(x)
 
@@ -1168,7 +1199,7 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
         if supervised:
             y_array = y_array[batch_size:]
             y_hat_array = y_hat_array[batch_size:]
-        
+
         # Calculate mse between x and x_hat
         mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
         # Results for all frames
@@ -1205,9 +1236,7 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
                 y_hat_patient = y_hat_array[test_data.id_patient == i]
 
                 # Calculate the metrics
-                accuracy_patient = accuracy_score(
-                    y_patient, np.round(y_hat_patient)
-                )
+                accuracy_patient = accuracy_score(y_patient, np.round(y_hat_patient))
                 balanced_accuracy_patient = balanced_accuracy_score(
                     y_patient, np.round(y_hat_patient)
                 )
@@ -1233,12 +1262,16 @@ def VAE_tester(model, testloader, test_data, audio_features="plps", supervised=F
                         ),
                     }
                 )
-            
-
-        
 
 
-def VQVAE_tester(model, testloader, test_data, audio_features="plps", supervised=False, wandb_flag=False):
+def VQVAE_tester(
+    model,
+    testloader,
+    test_data,
+    audio_features="plps",
+    supervised=False,
+    wandb_flag=False,
+):
     # Set model in evaluation mode
     model.eval()
     print("Evaluating the VQ-VAE model")
@@ -1251,18 +1284,12 @@ def VQVAE_tester(model, testloader, test_data, audio_features="plps", supervised
         x_array = np.zeros(
             (batch_size, test_data[audio_features].iloc[0].shape[0])
         )  # 32 is the batch size
-        x_hat_array = np.zeros(
-            x_array.shape
-        ) 
-        z_array = np.zeros(
-            (batch_size, model.latent_dim))
-        z_q_array = np.zeros(
-            (batch_size, model.latent_dim))
-        enc_idx_array = np.zeros(
-            (batch_size, 1))
-        vowel_array = np.zeros(
-            (batch_size, 1))
-        
+        x_hat_array = np.zeros(x_array.shape)
+        z_array = np.zeros((batch_size, model.latent_dim))
+        z_q_array = np.zeros((batch_size, model.latent_dim))
+        enc_idx_array = np.zeros((batch_size, 1))
+        vowel_array = np.zeros((batch_size, 1))
+
         with tqdm(testloader, unit="batch") as tepoch:
             for x, y, v in tepoch:
                 # Move data to device
@@ -1273,13 +1300,15 @@ def VQVAE_tester(model, testloader, test_data, audio_features="plps", supervised
                 if supervised:
                     x_hat, y_hat, vq_loss, z, z_q, enc_idx = model(x)
                     # Concatenate predictions
-                    y_array = np.concatenate((y_array, y.cpu().detach().numpy().reshape(-1, 1)))
-                    
+                    y_array = np.concatenate(
+                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
+                    )
+
                     y_hat_array = np.concatenate(
                         (y_hat_array, y_hat.cpu().detach().numpy())
                     )
                 else:
-                    x_hat, y_hat, vq_loss, z, z_q, enc_idx  = model(x)
+                    x_hat, y_hat, vq_loss, z, z_q, enc_idx = model(x)
 
                 # Concatenate predictions
                 x_hat_array = np.concatenate(
@@ -1288,10 +1317,17 @@ def VQVAE_tester(model, testloader, test_data, audio_features="plps", supervised
                 x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
                 # Concatenate latent variables
                 z_array = np.concatenate((z_array, z.cpu().detach().numpy()), axis=0)
-                z_q_array = np.concatenate((z_q_array, z_q.cpu().detach().numpy()), axis=0)
+                z_q_array = np.concatenate(
+                    (z_q_array, z_q.cpu().detach().numpy()), axis=0
+                )
 
-                enc_idx_array = np.concatenate((enc_idx_array, enc_idx.cpu().detach().numpy().reshape(-1,1)), axis=0)
-                vowel_array = np.concatenate((vowel_array, v.cpu().detach().numpy().reshape(-1, 1)), axis=0)
+                enc_idx_array = np.concatenate(
+                    (enc_idx_array, enc_idx.cpu().detach().numpy().reshape(-1, 1)),
+                    axis=0,
+                )
+                vowel_array = np.concatenate(
+                    (vowel_array, v.cpu().detach().numpy().reshape(-1, 1)), axis=0
+                )
 
         # Remove the first batch_size elements
         x_array = x_array[batch_size:]
@@ -1299,7 +1335,7 @@ def VQVAE_tester(model, testloader, test_data, audio_features="plps", supervised
         if supervised:
             y_array = y_array[batch_size:]
             y_hat_array = y_hat_array[batch_size:]
-        
+
         # Calculate mse between x and x_hat
         mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
         # Results for all frames
@@ -1335,9 +1371,7 @@ def VQVAE_tester(model, testloader, test_data, audio_features="plps", supervised
                 y_hat_patient = y_hat_array[test_data.id_patient == i]
 
                 # Calculate the metrics
-                accuracy_patient = accuracy_score(
-                    y_patient, np.round(y_hat_patient)
-                )
+                accuracy_patient = accuracy_score(y_patient, np.round(y_hat_patient))
                 balanced_accuracy_patient = balanced_accuracy_score(
                     y_patient, np.round(y_hat_patient)
                 )

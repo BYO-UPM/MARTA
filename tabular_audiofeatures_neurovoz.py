@@ -224,19 +224,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--latent_dim",
         type=int,
-        default=10,
+        default=2,
         help="Latent dimension",
     )
     parser.add_argument(
         "--hidden_dims_enc",
         type=list,
-        default=[64, 128],
+        default=[20, 10],
         help="Hidden dimensions of the encoder",
     )
     parser.add_argument(
         "--hidden_dims_dec",
         type=list,
-        default=[128, 64],
+        default=[10],
         help="Hidden dimensions of the decoder",
     )
     parser.add_argument(
@@ -247,7 +247,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_classes",
         type=int,
-        choices=[2, 5]
+        choices=[2, 5],
+        default=2,
         help="Number of classes to supervise. Only used if supervised=True. 2 for PD, 5 for VOWELS.",
     )
     args = parser.parse_args()

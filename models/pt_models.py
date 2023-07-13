@@ -98,7 +98,7 @@ class VAE(torch.nn.Module):
 
     def decoder_supervised(self, z, mu):
         x_hat = self.dec(z)
-        y_hat = self.dec_sup(mu)
+        y_hat = self.dec_sup(mu)  # TODO: check if its better to use z or mu
         return x_hat, y_hat
 
     def forward(self, x):
@@ -113,7 +113,13 @@ class VAE(torch.nn.Module):
 
 
 class VectorQuantizer(torch.nn.Module):
-    def __init__(self, num_embeddings: int, embedding_dim: int, commitment_cost: float, usage_threshold: float):
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        commitment_cost: float,
+        usage_threshold: float,
+    ):
         super(VectorQuantizer, self).__init__()
         self.K = num_embeddings
         self.D = embedding_dim
@@ -125,7 +131,7 @@ class VectorQuantizer(torch.nn.Module):
 
         self.register_buffer("cluster_size", torch.zeros(self.K))
         self.register_buffer("embed_avg", torch.zeros(self.K, self.D))
-        self.register_buffer('usage', torch.ones(self.K), persistent=False)
+        self.register_buffer("usage", torch.ones(self.K), persistent=False)
 
     def random_restart(self):
         # Get dead embeddings
@@ -137,10 +143,10 @@ class VectorQuantizer(torch.nn.Module):
             self.embed_usage[dead_embeddings] = self.embed_usage[rand_codes]
             self.cluster_size[dead_embeddings] = self.cluster_size[rand_codes]
             self.embed_avg[dead_embeddings] = self.embed_avg[rand_codes]
-    
+
     def reset_usage(self):
         self.embed_usage = torch.zeros(self.K)
-        self.usage.zero_() #  reset usage between epochs
+        self.usage.zero_()  #  reset usage between epochs
 
     def update_usage(self, min_enc):
         self.usage[min_enc] = self.usage[min_enc] + 1  # if code is used add 1 to usage
@@ -168,20 +174,14 @@ class VectorQuantizer(torch.nn.Module):
         self.update_usage(enc_idx)
 
         # Compute VQ loss
-        e_loss = torch.nn.functional.mse_loss(
-            z_q.detach(), z, reduction="sum"
-        )
-        q_loss = torch.nn.functional.mse_loss(
-            z_q, z.detach(), reduction="sum"
-        ) 
-    
+        e_loss = torch.nn.functional.mse_loss(z_q.detach(), z, reduction="sum")
+        q_loss = torch.nn.functional.mse_loss(z_q, z.detach(), reduction="sum")
+
         # Loss
         vq_loss = q_loss + self.commitment_cost * e_loss
 
         # Straight-through estimator
-        z_q = (
-            z + (z_q - z).detach()
-        )
+        z_q = z + (z_q - z).detach()
 
         # Calculate avg
         avg_probs = torch.mean(encoding_ohe, dim=0)
@@ -219,7 +219,9 @@ class VQVAE(torch.nn.Module):
         self.enc = torch.nn.Sequential(*encoder_layers)
         self.fc_mu = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
 
-        self.vq = VectorQuantizer(self.K, self.latent_dim, self.commitment_cost, usage_threshold=1e-3)
+        self.vq = VectorQuantizer(
+            self.K, self.latent_dim, self.commitment_cost, usage_threshold=1e-3
+        )
 
         latent_dim = self.latent_dim
         decoder_layers = []
@@ -249,11 +251,11 @@ class VQVAE(torch.nn.Module):
 
     def reset_usage(self):
         self.vq.reset_usage()
-        
+
     def decoder(self, z_q: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
-        x = self.dec(z_q) # Decode with quantized latents
+        x = self.dec(z_q)  # Decode with quantized latents
         if self.supervised:
-            y = self.clf(z) # Predict class from quantized latents
+            y = self.clf(z)  # Predict class from quantized latents
         else:
             y = None
         return x, y
@@ -262,7 +264,7 @@ class VQVAE(torch.nn.Module):
         z = self.encoder(x)
         z_q, vq_loss, enc_idx = self.vq(z)
         x_hat, y_hat = self.decoder(z_q, z)
-        self.usage=self.vq.usage
+        self.usage = self.vq.usage
         return x_hat, y_hat, vq_loss, z, z_q, enc_idx
 
 
