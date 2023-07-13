@@ -27,7 +27,4 @@ Directories for saving check point models, data and results are keeping local.
 
 # TODO list
 
-- [ ] Store in wandb for VAE supervised results per patient
-- [ ] Store in wandb for VAE unsupervised results per patient
-- [ ] Relaunch both VAEs when storing in wandb
-- [ ] Log VQVAE results in wandb
+- [ ] Supervise by vowels
