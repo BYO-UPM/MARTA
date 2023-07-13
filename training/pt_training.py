@@ -1072,7 +1072,11 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                         )
 
                     if wandb_flag:
-                        wandb.log("Epoch", e)
+                        wandb.log(
+                            {
+                                "Epoch": e,
+                            }
+                        )
 
                     # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
                     if e > 50:
