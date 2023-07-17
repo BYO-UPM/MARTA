@@ -75,9 +75,9 @@ class VAE(torch.nn.Module):
                 )
             else:
                 self.dec_sup = torch.nn.Sequential(
-                    torch.nn.Linear(self.latent_dim, 10),
+                    torch.nn.Linear(self.latent_dim, 5),
                     torch.nn.ReLU(),
-                    torch.nn.Linear(10, n_classes),
+                    torch.nn.Linear(5, n_classes),
                 )
 
         self.to(self.device)
