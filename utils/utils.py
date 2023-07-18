@@ -1,7 +1,9 @@
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
 import torch
+import pandas as pd
 import wandb
+from matplotlib import pyplot as plt
 
 
 def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
@@ -36,7 +38,6 @@ def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
 
 
 def plot_latent_space(model, data, fold, wandb_flag, name="default"):
-    from matplotlib import pyplot as plt
 
     # Generate mu and sigma in training
     model.eval()
@@ -97,7 +98,6 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
 def plot_latent_space_vowels(
     model, data, fold, wandb_flag, name="default", supervised=False, vqvae=False
 ):
-    from matplotlib import pyplot as plt
 
     # Generate mu and sigma in training
     model.eval()
@@ -291,3 +291,118 @@ def plot_latent_space_vowels(
     if wandb_flag:
         wandb.log({str(name) + "/latent_space_labels": wandb.Image(fig)})
     plt.close(fig)
+
+
+def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=False):
+    model.eval()
+    with torch.no_grad():
+        if not vqvae:
+            latent_mu, latent_sigma = model.encoder(
+                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+            )
+        else:
+            latent_mu = model.encoder(
+                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+            )
+            latent_code, vq_loss, enc_idx = model.vq(latent_mu)
+
+    latent_mu.detach().cpu().numpy()
+    if vqvae:
+        latent_code = latent_code.detach().cpu().numpy()
+
+    labels = data["label"].values
+    vowels = data["vowel"].values
+
+    idxH = np.argwhere(labels == 0).ravel()
+    idxPD = np.argwhere(labels == 1).ravel()
+
+    idxAH = np.argwhere(vowels[idxH] == 0).ravel()
+    idxEH = np.argwhere(vowels[idxH] == 1).ravel()
+    idxIH = np.argwhere(vowels[idxH] == 2).ravel()
+    idxOH = np.argwhere(vowels[idxH] == 3).ravel()
+    idxUH = np.argwhere(vowels[idxH] == 4).ravel()
+
+    idxAPD = np.argwhere(vowels[idxPD] == 0).ravel()
+    idxEPD = np.argwhere(vowels[idxPD] == 1).ravel()
+    idxIPD = np.argwhere(vowels[idxPD] == 2).ravel()
+    idxOPD = np.argwhere(vowels[idxPD] == 3).ravel()
+    idxUPD = np.argwhere(vowels[idxPD] == 4).ravel()
+
+    # Calculate distances between vowels
+    distances = []
+    # L2 distance between A healthy and A PD
+    distances.append(
+        np.mean(np.linalg.norm(latent_mu[idxAH] - latent_mu[idxAPD], axis=1, ord=2))
+    )
+    # L2 distance between E healthy and E PD
+    distances.append(
+        np.mean(np.linalg.norm(latent_mu[idxEH] - latent_mu[idxEPD], axis=1, ord=2))
+    )
+    # L2 distance between I healthy and I PD
+    distances.append(
+        np.mean(np.linalg.norm(latent_mu[idxIH] - latent_mu[idxIPD], axis=1, ord=2))
+    )
+    # L2 distance between O healthy and O PD
+    distances.append(
+        np.mean(np.linalg.norm(latent_mu[idxOH] - latent_mu[idxOPD], axis=1, ord=2))
+    )
+    # L2 distance between U healthy and U PD
+    distances.append(
+        np.mean(np.linalg.norm(latent_mu[idxUH] - latent_mu[idxUPD], axis=1, ord=2))
+    )
+
+    # Calculate now a non parametric distance between vowels: Minkowski distance
+    distances_minkowski = []
+    # Minkowski distance between A healthy and A PD of p=2
+    distances_minkowski.append(
+        np.mean(np.abs(latent_mu[idxAH] - latent_mu[idxAPD]) ** 2, axis=1) ** (1 / 2)
+    )
+    # Minkowski distance between E healthy and E PD of p=2
+    distances_minkowski.append(
+        np.mean(np.abs(latent_mu[idxEH] - latent_mu[idxEPD]) ** 2, axis=1) ** (1 / 2)
+    )
+    # Minkowski distance between I healthy and I PD of p=2
+    distances_minkowski.append(
+        np.mean(np.abs(latent_mu[idxIH] - latent_mu[idxIPD]) ** 2, axis=1) ** (1 / 2)
+    )
+    # Minkowski distance between O healthy and O PD of p=2
+    distances_minkowski.append(
+        np.mean(np.abs(latent_mu[idxOH] - latent_mu[idxOPD]) ** 2, axis=1) ** (1 / 2)
+    )
+    # Minkowski distance between U healthy and U PD of p=2
+    distances_minkowski.append(
+        np.mean(np.abs(latent_mu[idxUH] - latent_mu[idxUPD]) ** 2, axis=1) ** (1 / 2)
+    )
+
+    # Generate a dataframe with the distances
+    distances_df = pd.DataFrame(
+        {
+            "vowel": ["A", "E", "I", "O", "U"],
+            "distance": distances,
+            "distance_minkowski": distances_minkowski,
+        }
+    )
+
+    # Plot the distances
+    fig, ax = plt.subplots()
+    ax.bar(
+        distances_df["vowel"],
+        distances_df["distance"],
+        label="L2 distance",
+        alpha=0.5,
+        color="blue",
+    )
+    ax.bar(
+        distances_df["vowel"],
+        distances_df["distance_minkowski"],
+        label="Minkowski distance",
+        alpha=0.5,
+        color="red",
+    )
+    ax.set_xlabel("Vowel")
+    ax.set_ylabel("Distance")
+    ax.set_title(f"Distances between vowels in fold {fold}")
+    ax.legend()
+
+    if wandb_flag:
+        wandb.log({str(name) + "/distances": wandb.Image(fig)})

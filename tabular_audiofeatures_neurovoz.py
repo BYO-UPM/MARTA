@@ -1,6 +1,6 @@
 from models.pt_models import VAE
 from training.pt_training import VAE_trainer, VAE_tester
-from utils.utils import plot_latent_space, plot_latent_space_vowels
+from utils.utils import plot_latent_space, plot_latent_space_vowels, calculate_distances
 from data_loaders.pt_data_loader_audiofeatures import Dataset_AudioFeatures
 import torch
 import wandb
@@ -129,6 +129,7 @@ def main(args):
                 name="test",
                 supervised=hyperparams["supervised"],
             )
+            calculate_distances(model, df, fold, hyperparams["wandb_flag"], name="test")
 
         df = pd.DataFrame(columns=["plps", "label", "vowel"])
         df["plps"] = [t[0] for t in train_loader.dataset]
