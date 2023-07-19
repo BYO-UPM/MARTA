@@ -38,7 +38,6 @@ def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
 
 
 def plot_latent_space(model, data, fold, wandb_flag, name="default"):
-
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
@@ -98,7 +97,6 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
 def plot_latent_space_vowels(
     model, data, fold, wandb_flag, name="default", supervised=False, vqvae=False
 ):
-
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
@@ -294,6 +292,12 @@ def plot_latent_space_vowels(
 
 
 def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=False):
+    # Import KDE
+    from scipy.stats import gaussian_kde
+
+    # Import jensen-shannon distance
+    from scipy.spatial.distance import jensenshannon
+
     model.eval()
     with torch.no_grad():
         if not vqvae:
@@ -306,7 +310,7 @@ def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=Fal
             )
             latent_code, vq_loss, enc_idx = model.vq(latent_mu)
 
-    latent_mu.detach().cpu().numpy()
+    latent_mu = latent_mu.detach().cpu().numpy()
     if vqvae:
         latent_code = latent_code.detach().cpu().numpy()
 
@@ -328,81 +332,53 @@ def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=Fal
     idxOPD = np.argwhere(vowels[idxPD] == 3).ravel()
     idxUPD = np.argwhere(vowels[idxPD] == 4).ravel()
 
-    # Calculate distances between vowels
-    distances = []
-    # L2 distance between A healthy and A PD
-    distances.append(
-        np.mean(np.linalg.norm(latent_mu[idxAH] - latent_mu[idxAPD], axis=1, ord=2))
-    )
-    # L2 distance between E healthy and E PD
-    distances.append(
-        np.mean(np.linalg.norm(latent_mu[idxEH] - latent_mu[idxEPD], axis=1, ord=2))
-    )
-    # L2 distance between I healthy and I PD
-    distances.append(
-        np.mean(np.linalg.norm(latent_mu[idxIH] - latent_mu[idxIPD], axis=1, ord=2))
-    )
-    # L2 distance between O healthy and O PD
-    distances.append(
-        np.mean(np.linalg.norm(latent_mu[idxOH] - latent_mu[idxOPD], axis=1, ord=2))
-    )
-    # L2 distance between U healthy and U PD
-    distances.append(
-        np.mean(np.linalg.norm(latent_mu[idxUH] - latent_mu[idxUPD], axis=1, ord=2))
-    )
+    all_idx = [
+        idxAH,
+        idxEH,
+        idxIH,
+        idxOH,
+        idxUH,
+        idxAPD,
+        idxEPD,
+        idxIPD,
+        idxOPD,
+        idxUPD,
+    ]
 
-    # Calculate now a non parametric distance between vowels: Minkowski distance
-    distances_minkowski = []
-    # Minkowski distance between A healthy and A PD of p=2
-    distances_minkowski.append(
-        np.mean(np.abs(latent_mu[idxAH] - latent_mu[idxAPD]) ** 2, axis=1) ** (1 / 2)
-    )
-    # Minkowski distance between E healthy and E PD of p=2
-    distances_minkowski.append(
-        np.mean(np.abs(latent_mu[idxEH] - latent_mu[idxEPD]) ** 2, axis=1) ** (1 / 2)
-    )
-    # Minkowski distance between I healthy and I PD of p=2
-    distances_minkowski.append(
-        np.mean(np.abs(latent_mu[idxIH] - latent_mu[idxIPD]) ** 2, axis=1) ** (1 / 2)
-    )
-    # Minkowski distance between O healthy and O PD of p=2
-    distances_minkowski.append(
-        np.mean(np.abs(latent_mu[idxOH] - latent_mu[idxOPD]) ** 2, axis=1) ** (1 / 2)
-    )
-    # Minkowski distance between U healthy and U PD of p=2
-    distances_minkowski.append(
-        np.mean(np.abs(latent_mu[idxUH] - latent_mu[idxUPD]) ** 2, axis=1) ** (1 / 2)
-    )
+    distances = np.zeros((10, 10))
+    for i in range(len(all_idx)):
+        kde1 = gaussian_kde(latent_mu[all_idx[i]].T)
+        for j in range(len(all_idx)):
+            kde2 = gaussian_kde(latent_mu[all_idx[j]].T)
 
-    # Generate a dataframe with the distances
-    distances_df = pd.DataFrame(
-        {
-            "vowel": ["A", "E", "I", "O", "U"],
-            "distance": distances,
-            "distance_minkowski": distances_minkowski,
-        }
-    )
+            # Sample the same amount of points from both KDEs (i.e., the maximum possible)
+            n_samples = min(len(all_idx[i]), len(all_idx[j]))
+            idx1 = np.random.choice(all_idx[i], n_samples, replace=False)
+            idx2 = np.random.choice(all_idx[j], n_samples, replace=False)
 
-    # Plot the distances
-    fig, ax = plt.subplots()
-    ax.bar(
-        distances_df["vowel"],
-        distances_df["distance"],
-        label="L2 distance",
-        alpha=0.5,
-        color="blue",
+            # Calculate the jensen-shannon distance
+            distances[i, j] = jensenshannon(
+                kde1(latent_mu[idx1].T), kde2(latent_mu[idx2].T)
+            )
+
+    # Plot the distances as a heatmap using seaborn
+    import seaborn as sns
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    sns.heatmap(distances, annot=True, ax=ax)
+    ax.set_title(f"Jensen-Shannon distance between all vowels in fold {fold}")
+    ax.set_xticklabels(
+        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
     )
-    ax.bar(
-        distances_df["vowel"],
-        distances_df["distance_minkowski"],
-        label="Minkowski distance",
-        alpha=0.5,
-        color="red",
+    ax.set_yticklabels(
+        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
     )
-    ax.set_xlabel("Vowel")
-    ax.set_ylabel("Distance")
-    ax.set_title(f"Distances between vowels in fold {fold}")
-    ax.legend()
+    ax.set_xlabel("Vowels (Healthy / PD)")
+    ax.set_ylabel("Vowels (Healthy / PD)")
+    save_path = "local_results/plps/vae_supervised/" + f"distances_{fold}_{name}.png"
+    fig.savefig(save_path)
 
     if wandb_flag:
         wandb.log({str(name) + "/distances": wandb.Image(fig)})
+
+    plt.close()

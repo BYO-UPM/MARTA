@@ -11,9 +11,9 @@ from sklearn.preprocessing import scale
 
 
 class Dataset_AudioFeatures(torch.utils.data.Dataset):
-    def __init__(self, data_path, hyperparams, material):
+    def __init__(self, data_path, hyperparams):
         self.hyperparams = hyperparams
-        self.material = material
+        self.material = hyperparams["material"].upper()
         self.plps = self.hyperparams["n_plps"] > 0
         self.mfcc = self.hyperparams["n_mfccs"] > 0
         if self.material == "PATAKA":
