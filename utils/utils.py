@@ -351,15 +351,22 @@ def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=Fal
         for j in range(len(all_idx)):
             kde2 = gaussian_kde(latent_mu[all_idx[j]].T)
 
-            # Sample the same amount of points from both KDEs (i.e., the maximum possible)
-            n_samples = min(len(all_idx[i]), len(all_idx[j]))
-            idx1 = np.random.choice(all_idx[i], n_samples, replace=False)
-            idx2 = np.random.choice(all_idx[j], n_samples, replace=False)
+            # Sample from a uniform distribution of the limits of the latent_mu space
+            x = np.linspace(
+                np.min(latent_mu[:, 0]), np.max(latent_mu[:, 0]), 1000, endpoint=False
+            )
+            y = np.linspace(
+                np.min(latent_mu[:, 1]), np.max(latent_mu[:, 1]), 1000, endpoint=False
+            )
+            X, Y = np.meshgrid(x, y)
+            positions = np.vstack([X.ravel(), Y.ravel()])
+
+            # Calculate logprob of each kde
+            logprob1 = kde1.logpdf(positions)
+            logprob2 = kde2.logpdf(positions)
 
             # Calculate the jensen-shannon distance
-            distances[i, j] = jensenshannon(
-                kde1(latent_mu[idx1].T), kde2(latent_mu[idx2].T)
-            )
+            distances[i, j] = jensenshannon(logprob1, logprob2)
 
     # Plot the distances as a heatmap using seaborn
     import seaborn as sns
@@ -375,7 +382,51 @@ def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=Fal
     )
     ax.set_xlabel("Vowels (Healthy / PD)")
     ax.set_ylabel("Vowels (Healthy / PD)")
-    save_path = "local_results/plps/vae_supervised/" + f"distances_{fold}_{name}.png"
+    save_path = "local_results/plps/vae_supervised/" + f"js_dist_{fold}_{name}.png"
+    fig.savefig(save_path)
+
+    if wandb_flag:
+        wandb.log({str(name) + "/distances": wandb.Image(fig)})
+
+    plt.close()
+
+    dist2 = np.zeros((10, 10))
+    for i in range(len(all_idx)):
+        kde1 = gaussian_kde(latent_mu[all_idx[i]].T)
+        for j in range(len(all_idx)):
+            kde2 = gaussian_kde(latent_mu[all_idx[j]].T)
+
+            x1 = latent_mu[all_idx[i]].T
+            x2 = latent_mu[all_idx[j]].T
+
+            # Distance between kde1 and kde2: logprob(x2 | kde1) - logprob(x2 | kde2)
+            d1 = kde1.logpdf(x2) - kde2.logpdf(x2)
+
+            # Check if x2 | kde2 is almost zero
+            print(np.sum(kde2.logpdf(x2)))
+
+            # Distance between kde2 and kde1: logprob(x1 | kde2) - logprob(x1 | kde1)
+            d2 = kde2.logpdf(x1) - kde1.logpdf(x1)
+
+            print(np.sum(kde1.logpdf(x1)))
+
+            # symmetric distance
+            dist2[i, j] = np.mean([d1, d2])
+
+    # Plot the distances as a heatmap using seaborn
+    fig, ax = plt.subplots(figsize=(10, 10))
+    sns.heatmap(dist2, annot=True, ax=ax)
+    ax.set_title(f"Symmetric distance between all vowels in fold {fold}")
+    ax.set_xticklabels(
+        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
+    )
+    ax.set_yticklabels(
+        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
+    )
+
+    ax.set_xlabel("Vowels (Healthy / PD)")
+    ax.set_ylabel("Vowels (Healthy / PD)")
+    save_path = "local_results/plps/vae_supervised/" + f"sym_dist_{fold}_{name}.png"
     fig.savefig(save_path)
 
     if wandb_flag:
