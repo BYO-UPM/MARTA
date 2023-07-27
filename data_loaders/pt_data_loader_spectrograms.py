@@ -8,6 +8,8 @@ from sklearn.model_selection import train_test_split
 import librosa
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.preprocessing import scale
+import torchaudio
+from torchaudio import transforms
 
 
 class Dataset_AudioFeatures(torch.utils.data.Dataset):
@@ -168,19 +170,27 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # Read the .wav files and store the signals and sampling rates
         data["signal"], data["sr"] = zip(*data["file_path"].map(librosa.load))
 
-        # Normalize the audio
+        # Normalize the audio
         data["signal"] = data["signal"].apply(self.normalize_audio)
 
-        # Get spectrograms of the signals
-        data["spectrogram"] = data["signal"].apply(
-            lambda x: librosa.stft(
-                x,
-                n_fft=self.hyperparams["n_fft"],
-                hop_length=self.hyperparams["hop_length"],
-                win_length=self.hyperparams["win_length"],
+        if self.spectrogram:
+            win_length = int(data["sr"].iloc[0] * 0.040)  # 40ms
+            hop_length = int(data["sr"].iloc[0] * 0.020)  # 10ms
+            # n_fft is the next power of 2 greater than win_length
+            n_fft = 2 ** (win_length - 1).bit_length()
+            # Calculate spectorgram with torchaudio and normalize with transforms
+            pipeline = torch.nn.Sequential(
+                transforms.MelSpectrogram(
+                    sample_rate=data["sr"].iloc[0],
+                    n_fft=n_fft,
+                    win_length=win_length,
+                    hop_length=hop_length,
+                    window_fn=torch.hann_window,
+                ),
+                transforms.AmplitudeToDB(),
             )
-        )
-        
+            data["signal"] = data["signal"].apply(torch.from_numpy)
+            data["spect"] = data["signal"].apply(pipeline)
 
         return data
 
@@ -207,6 +217,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             audio_features = "plps"
         if self.mfcc:
             audio_features = "mfccs"
+        if self.spectrogram:
+            audio_features = "signal"
 
         x_train = np.vstack(train_data[audio_features])
         y_train = train_data["label"].values
@@ -221,10 +233,28 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         z_test = test_data["vowel"].values
 
         # Normalise the data
-        scaler = StandardScaler()
-        x_train = scaler.fit_transform(x_train)
-        x_val = scaler.transform(x_val)
-        x_test = scaler.transform(x_test)
+        if not self.spectrogram:
+            scaler = StandardScaler()
+            x_train = scaler.fit_transform(x_train)
+            x_val = scaler.transform(x_val)
+            x_test = scaler.transform(x_test)
+        else:
+            # Calculate spectorgram with torchaudio and normalize with transforms
+            pipeline = transforms.Compose(
+                [
+                    transforms.MelSpectrogram(
+                        sample_rate=self.data["sr"].iloc[0],
+                        n_fft=512,
+                        win_length=self.data["sr"].iloc[0] * 0.040,  # 40ms
+                        hop_length=self.data["sr"].iloc[0] * 0.020,  # 10ms
+                        window_fn=torch.hann_window,
+                    ),
+                    transforms.AmplitudeToDB(),
+                ]
+            )
+            x_train = torch.stack([pipeline(torch.from_numpy(x)) for x in x_train])
+            x_val = torch.stack([pipeline(torch.from_numpy(x)) for x in x_val])
+            x_test = torch.stack([pipeline(torch.from_numpy(x)) for x in x_test])
 
         # Min max scaler between -1 and 1
         # scaler = MinMaxScaler(feature_range=(-1, 1))

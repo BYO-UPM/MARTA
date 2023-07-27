@@ -20,15 +20,15 @@ def main(args):
         "frame_size_ms": 40,
         "material": "VOWELS",
         "hop_size_percent": 0.5,
-        "n_plps": 13,
+        "n_plps": 0,
         "n_mfccs": 0,
         "wandb_flag": True,
         "epochs": 300,
-        "batch_size": 32,
+        "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 2,
-        "hidden_dims_enc": [10, 20],
-        "hidden_dims_dec": [10],
+        "hidden_dims_enc": [64, 128, 256, 128, 32],
+        "hidden_dims_dec": [32, 128, 256, 128, 64],
         "supervised": True,
         "n_classes": 5,
     }
@@ -44,7 +44,10 @@ def main(args):
         if hyperparams["wandb_flag"]:
             gname = "rasta_PLPs_vae_" + hyperparams["material"]
             if hyperparams["supervised"]:
-                gname += "_supervised_by_VOWELS"
+                if hyperparams["n_classes"] == 2:
+                    gname += "_supervised_by_PD"
+                elif hyperparams["n_classes"] == 5:
+                    gname += "_supervised_by_VOWELS"
             else:
                 gname += "_UNsupervised"
             wandb.finish()

@@ -887,7 +887,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
 
         # beta_sc = get_beta(e)
         # print("Beta: ", beta_sc)
-        beta_sc = 1
+        beta_sc = 0.1
         beta_bce = 50
 
         with tqdm(trainloader, unit="batch") as tepoch:

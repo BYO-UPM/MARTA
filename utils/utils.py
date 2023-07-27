@@ -292,6 +292,7 @@ def plot_latent_space_vowels(
 
 
 def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=False):
+    print("Calculating distances...")
     # Import KDE
     from scipy.stats import gaussian_kde
 
@@ -346,20 +347,20 @@ def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=Fal
     ]
 
     distances = np.zeros((10, 10))
+    print("Calculating jensen-shannon distances sampling uniformly from the space...")
     for i in range(len(all_idx)):
         kde1 = gaussian_kde(latent_mu[all_idx[i]].T)
         for j in range(len(all_idx)):
             kde2 = gaussian_kde(latent_mu[all_idx[j]].T)
 
-            # Sample from a uniform distribution of the limits of the latent_mu space
-            x = np.linspace(
-                np.min(latent_mu[:, 0]), np.max(latent_mu[:, 0]), 1000, endpoint=False
+            # Sample from a uniform distribution of the limits of the latent_mu space which can be N-Dimensional
+            positions = np.random.uniform(
+                low=latent_mu.min(),
+                high=latent_mu.max(),
+                size=(1000, latent_mu.shape[1]),
             )
-            y = np.linspace(
-                np.min(latent_mu[:, 1]), np.max(latent_mu[:, 1]), 1000, endpoint=False
-            )
-            X, Y = np.meshgrid(x, y)
-            positions = np.vstack([X.ravel(), Y.ravel()])
+
+            positions = positions.T
 
             # Calculate logprob of each kde
             logprob1 = kde1.logpdf(positions)
@@ -369,6 +370,7 @@ def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=Fal
             distances[i, j] = jensenshannon(logprob1, logprob2)
 
     # Plot the distances as a heatmap using seaborn
+    print("Plotting distances...")
     import seaborn as sns
 
     fig, ax = plt.subplots(figsize=(10, 10))
@@ -386,50 +388,132 @@ def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=Fal
     fig.savefig(save_path)
 
     if wandb_flag:
-        wandb.log({str(name) + "/distances": wandb.Image(fig)})
+        wandb.log({str(name) + "/js_distances": wandb.Image(fig)})
 
     plt.close()
+    # print("Calculating symmetric distances...")
+    # dist2 = np.zeros((10, 10))
+    # for i in range(len(all_idx)):
+    #     kde1 = gaussian_kde(latent_mu[all_idx[i]].T)
+    #     for j in range(len(all_idx)):
+    #         kde2 = gaussian_kde(latent_mu[all_idx[j]].T)
 
-    dist2 = np.zeros((10, 10))
-    for i in range(len(all_idx)):
-        kde1 = gaussian_kde(latent_mu[all_idx[i]].T)
-        for j in range(len(all_idx)):
-            kde2 = gaussian_kde(latent_mu[all_idx[j]].T)
+    #         x1 = latent_mu[all_idx[i]].T
+    #         x2 = latent_mu[all_idx[j]].T
 
-            x1 = latent_mu[all_idx[i]].T
-            x2 = latent_mu[all_idx[j]].T
+    #         # Distance between kde1 and kde2: logprob(x2 | kde1) - logprob(x2 | kde2)
+    #         d1 = np.mean(kde1.logpdf(x2) - kde2.logpdf(x2))
 
-            # Distance between kde1 and kde2: logprob(x2 | kde1) - logprob(x2 | kde2)
-            d1 = kde1.logpdf(x2) - kde2.logpdf(x2)
+    #         # Distance between kde2 and kde1: logprob(x1 | kde2) - logprob(x1 | kde1)
+    #         d2 = np.mean(kde2.logpdf(x1) - kde1.logpdf(x1))
 
-            # Check if x2 | kde2 is almost zero
-            print(np.sum(kde2.logpdf(x2)))
+    #         # symmetric distance
+    #         dist2[i, j] = np.abs((d1 + d2)) / 2
 
-            # Distance between kde2 and kde1: logprob(x1 | kde2) - logprob(x1 | kde1)
-            d2 = kde2.logpdf(x1) - kde1.logpdf(x1)
+    # # Plot the distances as a heatmap using seaborn
+    # print("Plotting distances...")
+    # fig, ax = plt.subplots(figsize=(10, 10))
+    # sns.heatmap(dist2, annot=True, ax=ax)
+    # ax.set_title(f"Symmetric distance between all vowels in fold {fold}")
+    # ax.set_xticklabels(
+    #     ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
+    # )
+    # ax.set_yticklabels(
+    #     ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
+    # )
 
-            print(np.sum(kde1.logpdf(x1)))
+    # ax.set_xlabel("Vowels (Healthy / PD)")
+    # ax.set_ylabel("Vowels (Healthy / PD)")
+    # save_path = "local_results/plps/vae_supervised/" + f"sym_dist_{fold}_{name}.png"
+    # fig.savefig(save_path)
 
-            # symmetric distance
-            dist2[i, j] = np.mean([d1, d2])
+    # if wandb_flag:
+    #     wandb.log({str(name) + "/sym_distances": wandb.Image(fig)})
 
-    # Plot the distances as a heatmap using seaborn
+    # plt.close()
+
+
+def get_formants(audio, sr, n_formants=2):
+    import librosa
+    from scipy.signal import lfilter, hamming
+
+    y = audio
+
+    # Hamming window
+    y = y * np.hamming(len(y))
+
+    # Pre-emphasis to enhance high-frequency content
+    y = lfilter([1], [1.0, 0.63], y)
+
+    # LPC analysis to estimate the formants
+    order = int(2 + sr / 1000)
+    a_coeffs = librosa.lpc(y, order=order)
+
+    # Compute the roots of the LPC coefficients to get formant frequencies
+    roots = np.roots(a_coeffs)
+    roots = roots[roots.imag >= 0.01]  # Discard complex roots
+    formant_frequencies = np.sort(
+        np.arctan2(roots.imag, roots.real) * (sr / (2 * np.pi))
+    )
+
+    return formant_frequencies[:2]
+
+
+def plot_formants(self, dataset):
+    dataset.data["formants"] = dataset.data.apply(
+        lambda x: get_formants(x["norm_signal"], x["sr"]), axis=1
+    )
+
+    # Formants is a list of 2 elements, so we need to create two columns
+    dataset.data["formant1"] = dataset.data.apply(lambda x: x["formants"][0], axis=1)
+    dataset.data["formant2"] = dataset.data.apply(lambda x: x["formants"][1], axis=1)
+
+    # compute the mean for each formant grouping by vowels and labels
+    formants = (
+        dataset.data.groupby(["vowel", "label"])
+        .mean()[["formant1", "formant2"]]
+        .reset_index()
+    )
+
+    # Plot the vowel diagram where x-axis is F1 and y-axis is F2. The vowels label is the vowel column and the label column is the color
+
+    import matplotlib.pyplot as plt
+
+    # Create a figure and axes
     fig, ax = plt.subplots(figsize=(10, 10))
-    sns.heatmap(dist2, annot=True, ax=ax)
-    ax.set_title(f"Symmetric distance between all vowels in fold {fold}")
-    ax.set_xticklabels(
-        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
-    )
-    ax.set_yticklabels(
-        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
-    )
 
-    ax.set_xlabel("Vowels (Healthy / PD)")
-    ax.set_ylabel("Vowels (Healthy / PD)")
-    save_path = "local_results/plps/vae_supervised/" + f"sym_dist_{fold}_{name}.png"
-    fig.savefig(save_path)
+    # Iterate through each vowel category and plot using plt.scatter with a label
+    for vowel in range(5):
+        data = formants[formants["vowel"] == vowel].iloc[0]
+        label = data["label"]
+        marker = ["$A$", "$E$", "$I$", "$O$", "$U$"][vowel]
+        ax.scatter(
+            data["formant2"],
+            data["formant1"],
+            c="blue",
+            marker=marker,
+            s=500,
+            label="PD" if label == 1 else "Healthy",
+        )
 
-    if wandb_flag:
-        wandb.log({str(name) + "/distances": wandb.Image(fig)})
+        data = formants[formants["vowel"] == vowel].iloc[1]
+        label = data["label"]
+        marker = ["$A$", "$E$", "$I$", "$O$", "$U$"][vowel]
+        ax.scatter(
+            data["formant2"],
+            data["formant1"],
+            c="red",
+            marker=marker,
+            s=1000,
+            label="PD" if label == 1 else "Healthy",
+        )
 
-    plt.close()
+    # Invert both axes to make them decreasing
+    ax.invert_xaxis()
+    ax.invert_yaxis()
+
+    # Add a legend
+    ax.legend()
+
+    # Show the combined plot
+    plt.show()
