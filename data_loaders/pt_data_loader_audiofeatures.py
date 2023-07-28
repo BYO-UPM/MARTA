@@ -265,8 +265,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         )
         if self.plps:
             audio_features = "plps"
+            print("Using RASTA-PLP features...")
         if self.mfcc:
             audio_features = "mfccs"
+            print("Using MFCC features...")
 
         x_train = np.vstack(train_data[audio_features])
         y_train = train_data["label"].values

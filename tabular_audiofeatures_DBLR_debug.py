@@ -25,13 +25,13 @@ def main(args):
         "n_mfccs": 0,
         "wandb_flag": False,
         "epochs": 300,
-        "batch_size": 32,
+        "batch_size": 64,
         "lr": 1e-3,
-        "latent_dim": 2,
-        "hidden_dims_enc": [10, 20],
-        "hidden_dims_dec": [10],
+        "latent_dim": 32,
+        "hidden_dims_enc": [64, 128, 64],
+        "hidden_dims_dec": [64, 128, 64],
         "supervised": True,
-        "n_classes": 2,
+        "n_classes": 5,
     }
 
     print("Reading data...")
@@ -45,7 +45,7 @@ def main(args):
         if hyperparams["wandb_flag"]:
             gname = "rasta_PLPs_vae_" + hyperparams["material"]
             if hyperparams["supervised"]:
-                gname += "_supervised_by_VOWELS"
+                gname += "_supervised_by_VOWELS_deeper"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
