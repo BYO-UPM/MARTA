@@ -1,13 +1,10 @@
 import torch
 import numpy as np
 import os
-from .rasta_py.rasta import rastaplp
-from scipy.io import wavfile
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import librosa
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.preprocessing import scale
+from sklearn.preprocessing import StandardScaler
 import torchaudio
 from torchaudio import transforms
 
@@ -18,6 +15,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         self.material = hyperparams["material"].upper()
         self.plps = self.hyperparams["n_plps"] > 0
         self.mfcc = self.hyperparams["n_mfccs"] > 0
+        self.spectrogram = self.hyperparams["spectrogram"]
         if self.material == "PATAKA":
             self.data_path = os.path.join(data_path, self.material)
         elif self.material == "VOWELS":
@@ -165,6 +163,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             data["fold"] = data.groupby("id_patient").cumcount() % 10
             # Categorise the vowels to 0,1,2,3,4
             data["vowel"] = data["vowel"].astype("category").cat.codes
+            # Categorise label to 0 and 1
+            data["label"] = data["label"].astype("category").cat.codes
 
         print("Reading the .wav files...")
         # Read the .wav files and store the signals and sampling rates
@@ -173,24 +173,54 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # Normalize the audio
         data["signal"] = data["signal"].apply(self.normalize_audio)
 
+        # Frame the signals into 400ms frames with 50% overlap
+        frame_length = int(data["sr"].iloc[0] * 0.4)  # 400ms
+        hop_length = int(data["sr"].iloc[0] * 0.2)  # 200ms
+        data["signal_framed"] = data["signal"].apply(
+            lambda x: librosa.util.frame(
+                x, frame_length=frame_length, hop_length=hop_length, axis=0
+            )
+        )
+
         if self.spectrogram:
             win_length = int(data["sr"].iloc[0] * 0.040)  # 40ms
-            hop_length = int(data["sr"].iloc[0] * 0.020)  # 10ms
-            # n_fft is the next power of 2 greater than win_length
-            n_fft = 2 ** (win_length - 1).bit_length()
+            hop_length = int(data["sr"].iloc[0] * 0.010)  # 10ms
+            n_fft = 2048
+            n_mels = 65
+
             # Calculate spectorgram with torchaudio and normalize with transforms
-            pipeline = torch.nn.Sequential(
-                transforms.MelSpectrogram(
-                    sample_rate=data["sr"].iloc[0],
-                    n_fft=n_fft,
-                    win_length=win_length,
-                    hop_length=hop_length,
-                    window_fn=torch.hann_window,
-                ),
-                transforms.AmplitudeToDB(),
+            mel_spec = torchaudio.transforms.MelSpectrogram(
+                sample_rate=data["sr"].iloc[0],
+                n_fft=n_fft,
+                win_length=win_length,
+                hop_length=hop_length,
+                n_mels=n_mels,
+                center=True,
+                pad_mode="reflect",
+                power=2.0,
+                norm="slaney",
+                onesided=True,
+                mel_scale="htk",
             )
-            data["signal"] = data["signal"].apply(torch.from_numpy)
-            data["spect"] = data["signal"].apply(pipeline)
+            # Power to db
+            power_to_db = torchaudio.transforms.AmplitudeToDB(
+                stype="power", top_db=None
+            )
+            # Calculate the spectrogram for each frame
+            data["spectrogram"] = data["signal_framed"].apply(
+                lambda x: mel_spec(torch.tensor(x).unsqueeze(0))
+            )
+            # First, reshape the "spectrogram" column to be a list of tensors instead of a single tensor
+            data["spectrogram"] = data["spectrogram"].apply(
+                lambda x: x.reshape(-1, x.shape[2], x.shape[3])
+            )
+
+            # Explode the DataFrame by "n_frames"
+            data = data.explode("spectrogram")
+            data.reset_index(drop=True, inplace=True)
+
+            # Calculate the power to db for each frame
+            data["spectrogram"] = data["spectrogram"].apply(lambda x: power_to_db(x))
 
         return data
 
@@ -218,43 +248,39 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         if self.mfcc:
             audio_features = "mfccs"
         if self.spectrogram:
-            audio_features = "signal"
+            audio_features = "spectrogram"
 
-        x_train = np.vstack(train_data[audio_features])
+        # Make sure that x_train is shape N, Channels, Height, Width (N,C,H,W) where C is 1
+        x_train = np.stack(train_data[audio_features].values)
+        x_train = np.expand_dims(x_train, axis=1)
         y_train = train_data["label"].values
         z_train = train_data["vowel"].values
 
-        x_val = np.vstack(val_data[audio_features])
+        x_val = np.stack(val_data[audio_features])
+        x_val = np.expand_dims(x_val, axis=1)
         y_val = val_data["label"].values
         z_val = val_data["vowel"].values
 
-        x_test = np.vstack(test_data[audio_features])
+        x_test = np.stack(test_data[audio_features])
+        x_test = np.expand_dims(x_test, axis=1)
         y_test = test_data["label"].values
         z_test = test_data["vowel"].values
 
-        # Normalise the data
-        if not self.spectrogram:
-            scaler = StandardScaler()
-            x_train = scaler.fit_transform(x_train)
-            x_val = scaler.transform(x_val)
-            x_test = scaler.transform(x_test)
-        else:
-            # Calculate spectorgram with torchaudio and normalize with transforms
-            pipeline = transforms.Compose(
-                [
-                    transforms.MelSpectrogram(
-                        sample_rate=self.data["sr"].iloc[0],
-                        n_fft=512,
-                        win_length=self.data["sr"].iloc[0] * 0.040,  # 40ms
-                        hop_length=self.data["sr"].iloc[0] * 0.020,  # 10ms
-                        window_fn=torch.hann_window,
-                    ),
-                    transforms.AmplitudeToDB(),
-                ]
-            )
-            x_train = torch.stack([pipeline(torch.from_numpy(x)) for x in x_train])
-            x_val = torch.stack([pipeline(torch.from_numpy(x)) for x in x_val])
-            x_test = torch.stack([pipeline(torch.from_numpy(x)) for x in x_test])
+        # Normalise the spectrograms which are 2D using standard scaler
+        std = StandardScaler()
+
+        x_train = np.stack(
+            [
+                std.fit_transform(x.reshape(-1, x.shape[1])).reshape(x.shape)
+                for x in x_train
+            ]
+        )
+        x_val = np.stack(
+            [std.transform(x.reshape(-1, x.shape[1])).reshape(x.shape) for x in x_val]
+        )
+        x_test = np.stack(
+            [std.transform(x.reshape(-1, x.shape[1])).reshape(x.shape) for x in x_test]
+        )
 
         # Min max scaler between -1 and 1
         # scaler = MinMaxScaler(feature_range=(-1, 1))

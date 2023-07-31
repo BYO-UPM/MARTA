@@ -9,7 +9,7 @@ import pandas as pd
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # Print the cuda device to use
 print("Using cuda device: ", torch.cuda.current_device())
@@ -26,11 +26,11 @@ def main(args):
         "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
-        "latent_dim": 2,
+        "latent_dim": 16,
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
         "supervised": True,
-        "n_classes": 5,
+        "n_classes": 2,
     }
 
     print("Reading data...")
@@ -45,9 +45,9 @@ def main(args):
             gname = "rasta_PLPs_vae_" + hyperparams["material"]
             if hyperparams["supervised"]:
                 if hyperparams["n_classes"] == 2:
-                    gname += "_supervised_by_PD_deeper"
+                    gname += "_supervised_by_PD_deeper_deeplatentSpace"
                 elif hyperparams["n_classes"] == 5:
-                    gname += "_supervised_by_VOWELS_deeper"
+                    gname += "_supervised_by_VOWELS_deeper_deeplatentSpace"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
