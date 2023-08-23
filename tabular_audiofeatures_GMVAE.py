@@ -22,7 +22,7 @@ def main(args):
         "hop_size_percent": 0.5,
         "n_plps": 13,
         "n_mfccs": 0,
-        "wandb_flag": False,
+        "wandb_flag": True,
         "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
@@ -42,12 +42,12 @@ def main(args):
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_PLPs_vae_" + hyperparams["material"]
+            gname = "rasta_PLPs_GMVAE_" + hyperparams["material"]
             if hyperparams["supervised"]:
                 if hyperparams["n_classes"] == 2:
-                    gname += "_supervised_by_PD_deeper_deeplatentSpace64_moreBCE"
+                    gname += "_naive"
                 elif hyperparams["n_classes"] == 5:
-                    gname += "_supervised_by_VOWELS_deeper_deeplatentSpace64_moreBCE"
+                    gname += "_naive"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -108,68 +108,64 @@ def main(args):
         elif hyperparams["n_mfccs"] > 0:
             audio_features = "mfccs"
         print("Testing VAE...")
-        # Test the model by frame
-        VAE_tester(
-            model,
-            test_loader,
-            test_data,
-            audio_features,
-            supervised=hyperparams["supervised"],
-            wandb_flag=hyperparams["wandb_flag"],
-        )
 
-        # Create an empty pd dataframe with two columns: data and label
-        df = pd.DataFrame(columns=["plps", "label", "vowel"])
-        df["plps"] = [t[0] for t in test_loader.dataset]
-        df["label"] = [t[1] for t in test_loader.dataset]
-        df["vowel"] = [t[2] for t in test_loader.dataset]
+        if hyperparams["wandb_flag"]:
+            wandb.finish()
 
-        if hyperparams["material"] == "PATAKA":
-            # Plot the latent space in test
-            plot_latent_space(
-                model,
-                df,
-                fold,
-                hyperparams["wandb_flag"],
-                name="test",
-                supervised=hyperparams["supervised"],
-            )
-        elif hyperparams["material"] == "VOWELS":
-            plot_latent_space_vowels(
-                model,
-                df,
-                fold,
-                hyperparams["wandb_flag"],
-                name="test",
-                supervised=hyperparams["supervised"],
-            )
-            calculate_distances(model, df, fold, hyperparams["wandb_flag"], name="test")
+        # Test the model by frame (not implemented yet)
 
-        df = pd.DataFrame(columns=["plps", "label", "vowel"])
-        df["plps"] = [t[0] for t in train_loader.dataset]
-        df["label"] = [t[1] for t in train_loader.dataset]
-        df["vowel"] = [t[2] for t in train_loader.dataset]
+        # # Create an empty pd dataframe with two columns: data and label
+        # df = pd.DataFrame(columns=["plps", "label", "vowel"])
+        # df["plps"] = [t[0] for t in test_loader.dataset]
+        # df["label"] = [t[1] for t in test_loader.dataset]
+        # df["vowel"] = [t[2] for t in test_loader.dataset]
 
-        # Plot the latent space in train
-        if hyperparams["material"] == "PATAKA":
-            # Plot the latent space in test
-            plot_latent_space(
-                model,
-                df,
-                fold,
-                hyperparams["wandb_flag"],
-                supervised=hyperparams["supervised"],
-                name="train",
-            )
-        elif hyperparams["material"] == "VOWELS":
-            plot_latent_space_vowels(
-                model,
-                df,
-                fold,
-                hyperparams["wandb_flag"],
-                supervised=hyperparams["supervised"],
-                name="train",
-            )
+        # if hyperparams["material"] == "PATAKA":
+        #     # Plot the latent space in test
+        #     plot_latent_space(
+        #         model,
+        #         df,
+        #         fold,
+        #         hyperparams["wandb_flag"],
+        #         name="test",
+        #         supervised=hyperparams["supervised"],
+        #     )
+        # elif hyperparams["material"] == "VOWELS":
+        #     plot_latent_space_vowels(
+        #         model,
+        #         df,
+        #         fold,
+        #         hyperparams["wandb_flag"],
+        #         name="test",
+        #         supervised=hyperparams["supervised"],
+        #     )
+        #     calculate_distances(model, df, fold, hyperparams["wandb_flag"], name="test")
+
+        # df = pd.DataFrame(columns=["plps", "label", "vowel"])
+        # df["plps"] = [t[0] for t in train_loader.dataset]
+        # df["label"] = [t[1] for t in train_loader.dataset]
+        # df["vowel"] = [t[2] for t in train_loader.dataset]
+
+        # # Plot the latent space in train
+        # if hyperparams["material"] == "PATAKA":
+        #     # Plot the latent space in test
+        #     plot_latent_space(
+        #         model,
+        #         df,
+        #         fold,
+        #         hyperparams["wandb_flag"],
+        #         supervised=hyperparams["supervised"],
+        #         name="train",
+        #     )
+        # elif hyperparams["material"] == "VOWELS":
+        #     plot_latent_space_vowels(
+        #         model,
+        #         df,
+        #         fold,
+        #         hyperparams["wandb_flag"],
+        #         supervised=hyperparams["supervised"],
+        #         name="train",
+        #     )
 
 
 if __name__ == "__main__":

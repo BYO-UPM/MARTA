@@ -766,7 +766,7 @@ class GMVAE(torch.nn.Module):
 
         total_loss = self.w1 * rec_loss + self.w2 * gaussian_loss + self.w3 * clf_loss
 
-        return total_loss, rec_loss, gaussian_loss, clf_loss
+        return total_loss, rec_loss, gaussian_loss, clf_loss, x, x_rec
 
     def trainloop(
         self,
