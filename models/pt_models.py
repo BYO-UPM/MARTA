@@ -658,12 +658,12 @@ class VQVAE(torch.nn.Module):
 
 
 class GMVAE(torch.nn.Module):
-    def __init__(self, x_dim, y_dim, z_dim, K=10, hidden_dims=[20, 10]):
+    def __init__(self, x_dim, z_dim, K=10, hidden_dims=[20, 10]):
         super().__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.x_dim = x_dim
-        self.y_dim = y_dim
+        self.y_dim = K
         self.z_dim = z_dim
 
         # ===== Inference =====
@@ -673,6 +673,7 @@ class GMVAE(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_dims[0], hidden_dims[1]),
             torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dims[1], self.y_dim),
         ).to(self.device)
 
         # q(z | x, y)
@@ -714,24 +715,26 @@ class GMVAE(torch.nn.Module):
         # q(y | x)
         qy_logits = self.inference_qy_x(x)
         # gumbel softmax (if hard=True, it becomes one-hot vector, otherwise soft)
-        qy = torch.nn.F.gumbel_softmax(qy_logits, tau=1.0, hard=True)
+        qy = torch.nn.functional.gumbel_softmax(qy_logits, tau=1.0, hard=True)
 
         # q(z | x, y)
         # concat x and y
         xy = torch.cat([x, qy], dim=1)
         qz_mu, qz_logvar = torch.chunk(self.inference_qz_xy(xy), 2, dim=1)
 
-        z = self.reparameterize(qz_mu, qz_logvar)
+        z = self.reparametrize(qz_mu, qz_logvar)
 
         return z, qy_logits, qy, qz_mu, qz_logvar
 
     def log_normal(self, x, mu, var):
-        return -0.5 * (torch.log(var) + torch.log(2 * torch.pi) + (x - mu) ** 2 / var)
+        return -0.5 * (
+            torch.log(var) + torch.log(2 * torch.tensor(torch.pi)) + (x - mu) ** 2 / var
+        )
 
     def generate(self, z, y) -> torch.Tensor:
         # p(z | y)
         y_mu, y_logvar = torch.chunk(self.generative_pz_y(y), 2, dim=1)
-        y_var = torch.nn.F.softplus(y_logvar)
+        y_var = torch.nn.functional.softplus(y_logvar)
 
         # p(x | z)
         x_rec = self.generative_px_z(z)
@@ -739,7 +742,7 @@ class GMVAE(torch.nn.Module):
         return x_rec, y_mu, y_var
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z, qy_logits, qy, qz_mu, qz_logvar = self.inference(x)
+        z, qy_logits, qy, qz_mu, qz_logvar = self.infere(x)
         x_rec, y_mu, y_var = self.generate(z, qy)
 
         return x_rec, y_mu, y_var, qy_logits, qy, qz_mu, qz_logvar, z
@@ -752,33 +755,95 @@ class GMVAE(torch.nn.Module):
 
         # Gaussian loss
         gaussian_loss = torch.sum(
-            self.log_normal(z, qz_mu, qz_logvar) - self.log_normal(z, y_mu, y_var)
+            self.log_normal(z, qz_mu, torch.exp(qz_logvar))
+            - self.log_normal(z, y_mu, y_var)
         )
 
         # classification loss
-        clf_loss = torch.sum(torch.sum(qy * qy_logits, dim=-1))
+        log_q = torch.log_softmax(qy_logits, dim=-1)
+        entropy = -torch.mean(torch.sum(qy * log_q, dim=-1))
+        clf_loss = -entropy - torch.log(torch.tensor(0.1))
 
         total_loss = self.w1 * rec_loss + self.w2 * gaussian_loss + self.w3 * clf_loss
 
         return total_loss, rec_loss, gaussian_loss, clf_loss
 
-    def train(self, train_loader, optimizer, epoch):
-        self.train()
-        train_loss = 0
+    def trainloop(
+        self,
+        train_loader=None,
+        epochs=None,
+        optimizer=None,
+        valid_loader=None,
+        wandb_flag=False,
+        supervised=False,
+    ):
+        for e in range(epochs):
+            self.train()
+            train_loss = 0
+            rec_loss = 0
+            gaussian_loss = 0
+            clf_loss = 0
+            for batch_idx, (data, labels, vowels) in enumerate(train_loader):
+                # Make sure dtype is Tensor float
+                data = data.to(self.device).float()
+                labels = labels.to(self.device).float()
+                vowels = vowels.to(self.device).float()
 
-        for batch_idx, (data, labels) in enumerate(train_loader):
-            data = data.to(self.device)
-            labels = labels.to(self.device)
+                optimizer.zero_grad()
+                loss, rec_loss_b, gaussian_loss_b, clf_loss_b = self.loss(data)
+                loss.backward()
+                optimizer.step()
 
-            optimizer.zero_grad()
-            loss, rec_loss, gaussian_loss, clf_loss = self.loss(data)
-            loss.backward()
-            optimizer.step()
+                train_loss += loss.item()
+                rec_loss += rec_loss_b.item()
+                gaussian_loss += gaussian_loss_b.item()
+                clf_loss += clf_loss_b.item()
 
-            train_loss += loss.item()
+            if valid_loader is not None:
+                self.eval()
+                valid_loss = 0
+                val_rec_loss = 0
+                val_gaussian_loss = 0
+                val_clf_loss = 0
 
-        print(
-            "====> Epoch: {} Average loss: {:.4f}".format(
-                epoch, train_loss / len(train_loader.dataset)
+                for batch_idx, (data, labels, vowels) in enumerate(valid_loader):
+                    # Make sure dtype is Tensor float
+                    data = data.to(self.device).float()
+                    labels = labels.to(self.device).float()
+                    vowels = vowels.to(self.device).float()
+
+                    loss, rec_loss, gaussian_loss, clf_loss = self.loss(data)
+                    valid_loss += loss.item()
+                    val_rec_loss += rec_loss.item()
+                    val_gaussian_loss += gaussian_loss.item()
+                    val_clf_loss += clf_loss.item()
+
+            print(
+                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
+                    e,
+                    train_loss / len(train_loader.dataset),
+                    rec_loss / len(train_loader.dataset),
+                    gaussian_loss / len(train_loader.dataset),
+                    clf_loss / len(train_loader.dataset),
+                )
             )
-        )
+            if valid_loader is not None:
+                print(
+                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
+                        e,
+                        valid_loss / len(valid_loader.dataset),
+                        val_rec_loss / len(valid_loader.dataset),
+                        val_gaussian_loss / len(valid_loader.dataset),
+                        val_clf_loss / len(valid_loader.dataset),
+                    )
+                )
+
+            # Store best model
+            if e == 0:
+                best_loss = valid_loss
+                best_model = copy.deepcopy(self)
+            else:
+                if valid_loss < best_loss:
+                    best_loss = valid_loss
+                    best_model = copy.deepcopy(self)
+                    print("Best model updated")

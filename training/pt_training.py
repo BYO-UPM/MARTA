@@ -889,6 +889,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
         # print("Beta: ", beta_sc)
         beta_sc = 0.1
         beta_bce = 50
+        beta_rec = 0.5
 
         with tqdm(trainloader, unit="batch") as tepoch:
             for x, y, z in tepoch:
@@ -916,11 +917,13 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                     else:
                         bce = loss_class(y_hat, z)
                     variational_lower_bound = (
-                        reconstruction_loss + beta_sc * kl_divergence + beta_bce * bce
+                        beta_rec * reconstruction_loss
+                        + beta_sc * kl_divergence
+                        + beta_bce * bce
                     )
                 else:
                     variational_lower_bound = (
-                        reconstruction_loss + beta_sc * kl_divergence
+                        beta_rec * reconstruction_loss + beta_sc * kl_divergence
                     )
                 # Backward pass
                 variational_lower_bound.backward()
@@ -1002,13 +1005,13 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
                             else:
                                 bce = loss_class(y_hat, z)
                             variational_lower_bound = (
-                                reconstruction_loss
+                                beta_rec * reconstruction_loss
                                 + beta_sc * kl_divergence
                                 + beta_bce * bce
                             )
                         else:
                             variational_lower_bound = (
-                                reconstruction_loss + beta_sc * kl_divergence
+                                beta_rec * reconstruction_loss + beta_sc * kl_divergence
                             )
 
                         # Update losses storing
@@ -1092,6 +1095,109 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
         kl_div_validation,
         rec_loss_validation,
     )
+
+
+def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag):
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    valid_loss_store = []
+
+    for e in range(epochs):
+        model.train()
+        train_loss = 0
+        rec_loss = 0
+        gaussian_loss = 0
+        clf_loss = 0
+
+        for batch_idx, (data, labels, vowels) in enumerate(trainloader):
+            # Make sure dtype is Tensor float
+            data = data.to(model.device).float()
+            labels = labels.to(model.device).float()
+            vowels = vowels.to(model.device).float()
+
+            optimizer.zero_grad()
+            loss, rec_loss_b, gaussian_loss_b, clf_loss_b = model.loss(data)
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item()
+            rec_loss += rec_loss_b.item()
+            gaussian_loss += gaussian_loss_b.item()
+            clf_loss += clf_loss_b.item()
+
+        if validloader is not None:
+            model.eval()
+            valid_loss = 0
+            val_rec_loss = 0
+            val_gaussian_loss = 0
+            val_clf_loss = 0
+
+            for batch_idx, (data, labels, vowels) in enumerate(validloader):
+                # Make sure dtype is Tensor float
+                data = data.to(model.device).float()
+                labels = labels.to(model.device).float()
+                vowels = vowels.to(model.device).float()
+
+                loss, rec_loss, gaussian_loss, clf_loss = model.loss(data)
+                valid_loss += loss.item()
+                val_rec_loss += rec_loss.item()
+                val_gaussian_loss += gaussian_loss.item()
+                val_clf_loss += clf_loss.item()
+
+        print(
+            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
+                e,
+                train_loss / len(trainloader.dataset),
+                rec_loss / len(trainloader.dataset),
+                gaussian_loss / len(trainloader.dataset),
+                clf_loss / len(trainloader.dataset),
+            )
+        )
+        if validloader is not None:
+            print(
+                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
+                    e,
+                    valid_loss / len(validloader.dataset),
+                    val_rec_loss / len(validloader.dataset),
+                    val_gaussian_loss / len(validloader.dataset),
+                    val_clf_loss / len(validloader.dataset),
+                )
+            )
+            valid_loss_store.append(valid_loss / len(validloader.dataset))
+
+        # Store best model
+        # If the validation loss is the best, save the model
+        if valid_loss_store[-1] <= min(valid_loss_store):
+            print("Storing the best model at epoch ", e)
+            name = "local_results/plps/"
+            if supervised:
+                name += "vae_supervised/"
+            else:
+                name += "vae_unsupervised/"
+            # check if the folder exists if not create it
+            if not os.path.exists(name):
+                os.makedirs(name)
+            name += "VAE_best_model.pt"
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                },
+                name,
+            )
+
+        if wandb_flag:
+            wandb.log(
+                {
+                    "Epoch": e,
+                }
+            )
+
+        # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
+        if e > 50:
+            if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
+                print("Early stopping")
+                break
 
 
 def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):

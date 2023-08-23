@@ -1,5 +1,5 @@
-from models.pt_models import VAE
-from training.pt_training import VAE_trainer, VAE_tester
+from models.pt_models import GMVAE
+from training.pt_training import GMVAE_trainer
 from utils.utils import plot_latent_space, plot_latent_space_vowels, calculate_distances
 from data_loaders.pt_data_loader_audiofeatures import Dataset_AudioFeatures
 import torch
@@ -9,7 +9,7 @@ import pandas as pd
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 # Print the cuda device to use
 print("Using cuda device: ", torch.cuda.current_device())
@@ -22,7 +22,7 @@ def main(args):
         "hop_size_percent": 0.5,
         "n_plps": 13,
         "n_mfccs": 0,
-        "wandb_flag": True,
+        "wandb_flag": False,
         "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
@@ -70,28 +70,29 @@ def main(args):
 
         print("Defining models...")
         # Create the model
-        model = VAE(
-            train_loader.dataset[0][0].shape[0],
-            latent_dim=hyperparams["latent_dim"],
-            hidden_dims_enc=hyperparams["hidden_dims_enc"],
-            hidden_dims_dec=hyperparams["hidden_dims_dec"],
-            supervised=hyperparams["supervised"],
-            n_classes=hyperparams["n_classes"],
+        model = GMVAE(
+            x_dim=train_loader.dataset[0][0].shape[0],
+            z_dim=hyperparams["latent_dim"],
+            K=hyperparams["n_classes"],
+            hidden_dims=hyperparams["hidden_dims_enc"],
         )
 
         model = torch.compile(model)
 
+        opt = torch.optim.Adam(model.parameters(), lr=hyperparams["lr"])
+
         print("Training VAE...")
         # Train the model
-        VAE_trainer(
-            model,
-            train_loader,
-            val_loader,
+        GMVAE_trainer(
+            model=model,
+            trainloader=train_loader,
+            validloader=val_loader,
             epochs=hyperparams["epochs"],
             lr=hyperparams["lr"],
-            wandb_flag=hyperparams["wandb_flag"],
             supervised=hyperparams["supervised"],
+            wandb_flag=hyperparams["wandb_flag"],
         )
+
         print("Training finished!")
 
         # Restoring best model
