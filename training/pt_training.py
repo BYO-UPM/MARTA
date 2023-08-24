@@ -22,6 +22,7 @@ import wandb
 from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+from utils.utils import cluster_acc, nmi
 
 
 class StratifiedBatchSampler:
@@ -1102,6 +1103,9 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
     valid_loss_store = []
 
+    true_label_list = []
+    pred_label_list = []
+
     for e in range(epochs):
         model.train()
         train_loss = 0
@@ -1116,7 +1120,15 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             vowels = vowels.to(model.device).float()
 
             optimizer.zero_grad()
-            loss, rec_loss_b, gaussian_loss_b, clf_loss_b, x, x_hat = model.loss(data)
+            (
+                loss,
+                rec_loss_b,
+                gaussian_loss_b,
+                clf_loss_b,
+                x,
+                x_hat,
+                y_pred,
+            ) = model.loss(data)
             loss.backward()
             optimizer.step()
 
@@ -1125,49 +1137,28 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             gaussian_loss += gaussian_loss_b.item()
             clf_loss += clf_loss_b.item()
 
+            true_label_list.append(labels.cpu().numpy())
+            pred_label_list.append(y_pred.cpu().numpy())
+
+        # Check reconstruction of X
         check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+        # Check unsupervised cluster accuracy and NMI
+        true_label = torch.tensor(np.concatenate(true_label_list))
+        pred_label = torch.tensor(np.concatenate(pred_label_list))
+        acc = cluster_acc(pred_label, true_label)
+        nmi_score = nmi(pred_label, true_label)
+
         print(
-            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
+            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                 e,
                 train_loss / len(trainloader.dataset),
                 rec_loss / len(trainloader.dataset),
                 gaussian_loss / len(trainloader.dataset),
                 clf_loss / len(trainloader.dataset),
+                acc,
+                nmi_score,
             )
         )
-
-        if validloader is not None:
-            model.eval()
-            valid_loss = 0
-            val_rec_loss = 0
-            val_gaussian_loss = 0
-            val_clf_loss = 0
-
-            for batch_idx, (data, labels, vowels) in enumerate(validloader):
-                # Make sure dtype is Tensor float
-                data = data.to(model.device).float()
-                labels = labels.to(model.device).float()
-                vowels = vowels.to(model.device).float()
-
-                loss, rec_loss_v, gaussian_loss_v, clf_loss_v, x, x_hat = model.loss(
-                    data
-                )
-                valid_loss += loss.item()
-                val_rec_loss += rec_loss_v.item()
-                val_gaussian_loss += gaussian_loss_v.item()
-                val_clf_loss += clf_loss_v.item()
-
-            print(
-                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
-                    e,
-                    valid_loss / len(validloader.dataset),
-                    val_rec_loss / len(validloader.dataset),
-                    val_gaussian_loss / len(validloader.dataset),
-                    val_clf_loss / len(validloader.dataset),
-                )
-            )
-            valid_loss_store.append(valid_loss / len(validloader.dataset))
-
         if wandb_flag:
             wandb.log(
                 {
@@ -1176,8 +1167,77 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     "train/Rec Loss": rec_loss / len(trainloader.dataset),
                     "train/Gaussian Loss": gaussian_loss / len(trainloader.dataset),
                     "train/Clf Loss": clf_loss / len(trainloader.dataset),
+                    "train/UAcc": acc,
+                    "train/NMI": nmi_score,
                 }
             )
+
+        if validloader is not None:
+            model.eval()
+            valid_loss = 0
+            val_rec_loss = 0
+            val_gaussian_loss = 0
+            val_clf_loss = 0
+
+            true_label_list = []
+            pred_label_list = []
+
+            for batch_idx, (data, labels, vowels) in enumerate(validloader):
+                # Make sure dtype is Tensor float
+                data = data.to(model.device).float()
+                labels = labels.to(model.device).float()
+                vowels = vowels.to(model.device).float()
+
+                (
+                    loss,
+                    rec_loss_v,
+                    gaussian_loss_v,
+                    clf_loss_v,
+                    x,
+                    x_hat,
+                    y_pred,
+                ) = model.loss(data)
+                valid_loss += loss.item()
+                val_rec_loss += rec_loss_v.item()
+                val_gaussian_loss += gaussian_loss_v.item()
+                val_clf_loss += clf_loss_v.item()
+
+                true_label_list.append(labels.cpu().numpy())
+                pred_label_list.append(y_pred.cpu().numpy())
+
+            # Check reconstruction of X
+            check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+            # Check unsupervised cluster accuracy and NMI
+            true_label = torch.tensor(np.concatenate(true_label_list))
+            pred_label = torch.tensor(np.concatenate(pred_label_list))
+            acc = cluster_acc(pred_label, true_label)
+            nmi_score = nmi(pred_label, true_label)
+
+            print(
+                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                    e,
+                    valid_loss / len(validloader.dataset),
+                    val_rec_loss / len(validloader.dataset),
+                    val_gaussian_loss / len(validloader.dataset),
+                    val_clf_loss / len(validloader.dataset),
+                    acc,
+                    nmi_score,
+                )
+            )
+            valid_loss_store.append(valid_loss / len(validloader.dataset))
+            if wandb_flag:
+                wandb.log(
+                    {
+                        "valid/Epoch": e,
+                        "valid/Loss": valid_loss / len(validloader.dataset),
+                        "valid/Rec Loss": val_rec_loss / len(validloader.dataset),
+                        "valid/Gaussian Loss": val_gaussian_loss
+                        / len(validloader.dataset),
+                        "valid/Clf Loss": val_clf_loss / len(validloader.dataset),
+                        "valid/UAcc": acc,
+                        "valid/NMI": nmi_score,
+                    }
+                )
 
         # Store best model
         # If the validation loss is the best, save the model
@@ -1198,17 +1258,6 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     "optimizer_state_dict": optimizer.state_dict(),
                 },
                 name,
-            )
-
-        if wandb_flag:
-            wandb.log(
-                {
-                    "valid/Epoch": e,
-                    "valid/Loss": valid_loss / len(validloader.dataset),
-                    "valid/Rec Loss": val_rec_loss / len(validloader.dataset),
-                    "valid/Gaussian Loss": val_gaussian_loss / len(validloader.dataset),
-                    "valid/Clf Loss": val_clf_loss / len(validloader.dataset),
-                }
             )
 
         check_reconstruction(x, x_hat, wandb_flag, train_flag=False)

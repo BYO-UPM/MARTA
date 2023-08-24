@@ -701,8 +701,8 @@ class GMVAE(torch.nn.Module):
         ).to(self.device)
 
         self.w1 = 1
-        self.w2 = 1
-        self.w3 = 1
+        self.w2 = 3
+        self.w3 = 10
 
         self.to(self.device)
 
@@ -762,11 +762,16 @@ class GMVAE(torch.nn.Module):
         # classification loss
         log_q = torch.log_softmax(qy_logits, dim=-1)
         entropy = -torch.mean(torch.sum(qy * log_q, dim=-1))
-        clf_loss = -entropy - torch.log(torch.tensor(0.1))
+        clf_loss = -entropy - torch.log(
+            1 / torch.tensor(self.y_dim)
+        )  # Entropy minus prior over y
 
         total_loss = self.w1 * rec_loss + self.w2 * gaussian_loss + self.w3 * clf_loss
 
-        return total_loss, rec_loss, gaussian_loss, clf_loss, x, x_rec
+        # obtain predictions
+        _, y_pred = torch.max(qy_logits, dim=-1)
+
+        return total_loss, rec_loss, gaussian_loss, clf_loss, x, x_rec, y_pred
 
     def trainloop(
         self,

@@ -680,7 +680,7 @@ def get_formants(audio, sr, n_formants=2):
     return formant_frequencies[:2]
 
 
-def plot_formants(self, dataset):
+def plot_formants(dataset):
     dataset.data["formants"] = dataset.data.apply(
         lambda x: get_formants(x["norm_signal"], x["sr"]), axis=1
     )
@@ -738,3 +738,26 @@ def plot_formants(self, dataset):
 
     # Show the combined plot
     plt.show()
+
+    # VaDE (Variational Deep Embedding:A Generative Approach to Clustering)
+
+
+def cluster_acc(Y_pred, Y):
+    from scipy.optimize import linear_sum_assignment
+
+    Y_pred, Y = np.array(Y_pred).astype(np.int64), np.array(Y).astype(np.int64)
+    assert Y_pred.size == Y.size
+    D = max(Y_pred.max(), Y.max()) + 1
+    w = np.zeros((D, D), dtype=np.int64)
+    for i in range(Y_pred.size):
+        w[Y_pred[i], Y[i]] += 1
+    row, col = linear_sum_assignment(w.max() - w)
+    return sum([w[row[i], col[i]] for i in range(row.shape[0])]) * 1.0 / Y_pred.size
+
+
+def nmi(Y_pred, Y):
+    from sklearn.metrics.cluster import normalized_mutual_info_score
+
+    Y_pred, Y = np.array(Y_pred), np.array(Y)
+    assert Y_pred.size == Y.size
+    return normalized_mutual_info_score(Y_pred, Y, average_method="arithmetic")
