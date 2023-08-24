@@ -1126,6 +1126,15 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             clf_loss += clf_loss_b.item()
 
         check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+        print(
+            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
+                e,
+                train_loss / len(trainloader.dataset),
+                rec_loss / len(trainloader.dataset),
+                gaussian_loss / len(trainloader.dataset),
+                clf_loss / len(trainloader.dataset),
+            )
+        )
 
         if validloader is not None:
             model.eval()
@@ -1140,21 +1149,24 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 labels = labels.to(model.device).float()
                 vowels = vowels.to(model.device).float()
 
-                loss, rec_loss, gaussian_loss, clf_loss, x, x_hat = model.loss(data)
+                loss, rec_loss_v, gaussian_loss_v, clf_loss_v, x, x_hat = model.loss(
+                    data
+                )
                 valid_loss += loss.item()
-                val_rec_loss += rec_loss.item()
-                val_gaussian_loss += gaussian_loss.item()
-                val_clf_loss += clf_loss.item()
+                val_rec_loss += rec_loss_v.item()
+                val_gaussian_loss += gaussian_loss_v.item()
+                val_clf_loss += clf_loss_v.item()
 
-        print(
-            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
-                e,
-                train_loss / len(trainloader.dataset),
-                rec_loss / len(trainloader.dataset),
-                gaussian_loss / len(trainloader.dataset),
-                clf_loss / len(trainloader.dataset),
+            print(
+                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
+                    e,
+                    valid_loss / len(validloader.dataset),
+                    val_rec_loss / len(validloader.dataset),
+                    val_gaussian_loss / len(validloader.dataset),
+                    val_clf_loss / len(validloader.dataset),
+                )
             )
-        )
+            valid_loss_store.append(valid_loss / len(validloader.dataset))
 
         if wandb_flag:
             wandb.log(
@@ -1166,18 +1178,6 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     "train/Clf Loss": clf_loss / len(trainloader.dataset),
                 }
             )
-
-        if validloader is not None:
-            print(
-                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
-                    e,
-                    valid_loss / len(validloader.dataset),
-                    val_rec_loss / len(validloader.dataset),
-                    val_gaussian_loss / len(validloader.dataset),
-                    val_clf_loss / len(validloader.dataset),
-                )
-            )
-            valid_loss_store.append(valid_loss / len(validloader.dataset))
 
         # Store best model
         # If the validation loss is the best, save the model
