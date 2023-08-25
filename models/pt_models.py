@@ -667,20 +667,22 @@ class GMVAE(torch.nn.Module):
         self.z_dim = z_dim
 
         # ===== Inference =====
-        # q(y | x)
-        self.inference_qy_x = torch.nn.Sequential(
+        # Deterministic x_hat = g(x)
+        self.inference_gx = torch.nn.Sequential(
             torch.nn.Linear(self.x_dim, hidden_dims[0]),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[0], hidden_dims[1]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[1], self.y_dim),
         ).to(self.device)
 
-        # q(z | x, y)
+        # q(y | x_hat)
+        self.inference_qy_x = torch.nn.Sequential(
+            torch.nn.Linear(hidden_dims[0], self.y_dim),
+        ).to(self.device)
+
+        # q(z | x_hat, y)
         self.inference_qz_xy = torch.nn.Sequential(
-            torch.nn.Linear(self.x_dim + self.y_dim, hidden_dims[0]),
+            torch.nn.Linear(hidden_dims[0] + self.y_dim, hidden_dims[1]),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[0], hidden_dims[1]),
+            torch.nn.Linear(hidden_dims[1], hidden_dims[1]),
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_dims[1], self.z_dim * 2),
         ).to(self.device)
@@ -712,14 +714,17 @@ class GMVAE(torch.nn.Module):
         return eps * std + mu
 
     def infere(self, x: torch.Tensor) -> torch.Tensor:
+        # x_hat = g(x)
+        x_hat = self.inference_gx(x)
+
         # q(y | x)
-        qy_logits = self.inference_qy_x(x)
+        qy_logits = self.inference_qy_x(x_hat)
         # gumbel softmax (if hard=True, it becomes one-hot vector, otherwise soft)
         qy = torch.nn.functional.gumbel_softmax(qy_logits, tau=1.0, hard=True)
 
         # q(z | x, y)
         # concat x and y
-        xy = torch.cat([x, qy], dim=1)
+        xy = torch.cat([x_hat, qy], dim=1)
         qz_mu, qz_logvar = torch.chunk(self.inference_qz_xy(xy), 2, dim=1)
 
         z = self.reparametrize(qz_mu, qz_logvar)
@@ -733,45 +738,45 @@ class GMVAE(torch.nn.Module):
 
     def generate(self, z, y) -> torch.Tensor:
         # p(z | y)
-        y_mu, y_logvar = torch.chunk(self.generative_pz_y(y), 2, dim=1)
-        y_var = torch.nn.functional.softplus(y_logvar)
+        z_mu, z_logvar = torch.chunk(self.generative_pz_y(y), 2, dim=1)
+        z_var = torch.nn.functional.softplus(z_logvar)
 
         # p(x | z)
         x_rec = self.generative_px_z(z)
 
-        return x_rec, y_mu, y_var
+        return x_rec, z_mu, z_var
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z, qy_logits, qy, qz_mu, qz_logvar = self.infere(x)
-        x_rec, y_mu, y_var = self.generate(z, qy)
+        x_rec, z_mu, z_var = self.generate(z, qy)
 
-        return x_rec, y_mu, y_var, qy_logits, qy, qz_mu, qz_logvar, z
+        return x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z
 
     def loss(self, x: torch.Tensor) -> torch.Tensor:
-        x_rec, y_mu, y_var, qy_logits, qy, qz_mu, qz_logvar, z = self.forward(x)
+        x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z = self.forward(x)
 
         # reconstruction loss
         rec_loss = torch.nn.functional.mse_loss(x_rec, x, reduction="sum")
 
-        # Gaussian loss
+        # Gaussian loss = KL divergence between q(z|x,y) and p(z|y)
         gaussian_loss = torch.sum(
-            self.log_normal(z, qz_mu, torch.exp(qz_logvar))
-            - self.log_normal(z, y_mu, y_var)
+            self.log_normal(z, qz_mu, torch.exp(qz_logvar))  # q_phi(z|x,y)
+            - self.log_normal(z, z_mu, z_var)  # p_theta(z|y)
         )
 
-        # classification loss
+        # Cat loss = KL divergence between q(y|x) and p(y)
         log_q = torch.log_softmax(qy_logits, dim=-1)
-        entropy = -torch.mean(torch.sum(qy * log_q, dim=-1))
-        clf_loss = -entropy - torch.log(
-            1 / torch.tensor(self.y_dim)
-        )  # Entropy minus prior over y
+        entropy = -torch.mean(torch.sum(qy * log_q, dim=-1))  # H(q(y|x))
+        cat_loss = -entropy - torch.log(
+            1 / torch.tensor(self.y_dim)  # p(y)
+        )  # KL(q(y|x) || p(y)) = H(q(y|x)) - H(p(y))
 
-        total_loss = self.w1 * rec_loss + self.w2 * gaussian_loss + self.w3 * clf_loss
+        total_loss = self.w1 * rec_loss + self.w2 * gaussian_loss + self.w3 * cat_loss
 
         # obtain predictions
         _, y_pred = torch.max(qy_logits, dim=-1)
 
-        return total_loss, rec_loss, gaussian_loss, clf_loss, x, x_rec, y_pred
+        return total_loss, rec_loss, gaussian_loss, cat_loss, x, x_rec, y_pred
 
     def trainloop(
         self,

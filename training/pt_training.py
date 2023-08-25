@@ -1581,3 +1581,142 @@ def VQVAE_tester(
                 )
 
     return x_array, x_hat_array, z_array, z_q_array, enc_idx_array, vowel_array
+
+
+def GMVAE_tester(
+    model,
+    testloader,
+    test_data,
+    audio_features="plps",
+    supervised=False,
+    wandb_flag=False,
+):
+    # Set model in evaluation mode
+    model.eval()
+    print("Evaluating the VAE model")
+
+    with torch.no_grad():
+        # Get batch size from testloader
+        batch_size = testloader.batch_size
+        y_hat_array = np.zeros((batch_size, 1))
+        z_array = np.zeros((batch_size, 1))
+        y_array = np.zeros((batch_size, 1))
+        # Create x_array of shape Batch x Output shape
+        x_array = np.zeros(
+            (batch_size, test_data[audio_features].iloc[0].shape[0])
+        )  # 32 is the batch size
+        x_hat_array = np.zeros(x_array.shape)
+        with tqdm(testloader, unit="batch") as tepoch:
+            for x, y, z in tepoch:
+                # Move data to device
+                x = x.to(model.device).to(torch.float32)
+                if model.y_dim == 2:
+                    y = y.to(model.device).to(torch.float32)
+                else:
+                    z = z.type(torch.LongTensor).to(model.device)
+
+                # Forward pass
+                if supervised:
+                    x_hat, y_hat, mu, logvar = model(x)
+                    # Concatenate true values
+                    y_array = np.concatenate(
+                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
+                    )
+                    # Concatenate true values (vowels)
+                    z_array = np.concatenate(
+                        (z_array, z.cpu().detach().numpy().reshape(-1, 1))
+                    )
+
+                    # Concatenate predictions (labels)
+                    if model.n_classes == 2:
+                        y_hat_array = np.concatenate(
+                            (y_hat_array, y_hat.cpu().detach().numpy())
+                        )
+                    # Concatenate predictions (vowels)
+                    else:
+                        y_hat_array = np.concatenate(
+                            (
+                                y_hat_array,
+                                np.argmax(y_hat.cpu().detach().numpy(), axis=1).reshape(
+                                    -1, 1
+                                ),
+                            )
+                        )
+                else:
+                    x_hat, _, _, _, _, _, _, _ = model.forward(x)
+
+                # Concatenate predictions
+                x_hat_array = np.concatenate(
+                    (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
+                )
+                x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
+
+        # Remove the first batch_size elements
+        x_array = x_array[batch_size:]
+        x_hat_array = x_hat_array[batch_size:]
+        if supervised:
+            y_array = y_array[batch_size:]
+            y_hat_array = y_hat_array[batch_size:]
+
+        # Calculate mse between x and x_hat
+        mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
+        # Results for all frames
+        print(f"Reconstruction loss: {mse}")
+
+        # Results per patient
+        rec_loss_per_patient = []
+        for i in test_data["id_patient"].unique():
+            idx = test_data["id_patient"] == i
+            rec_loss_per_patient.append(((x_array[idx] - x_hat_array[idx]) ** 2).mean())
+
+        print("Results per patient in mean and std:")
+        print(
+            f"Reconstruction loss: {np.mean(rec_loss_per_patient)} +- {np.std(rec_loss_per_patient)}"
+        )
+        # Calculate results in total
+        if supervised:
+            print("Results for all frames:")
+            y_bin = np.round(y_hat_array)
+            accuracy = accuracy_score(y_array, y_bin)
+            balanced_accuracy = balanced_accuracy_score(y_array, y_bin)
+            auc = roc_auc_score(y_array, y_hat_array)
+            print("Results for all frames:")
+            print(
+                f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
+            )
+
+            # Calculate results per patient
+            accuracy_per_patient = []
+            balanced_accuracy_per_patient = []
+            for i in test_data["id_patient"].unique():
+                # Get the predictions for the patient
+                y_patient = y_array[test_data.id_patient == i]
+                y_hat_patient = y_hat_array[test_data.id_patient == i]
+
+                # Calculate the metrics
+                accuracy_patient = accuracy_score(y_patient, np.round(y_hat_patient))
+                balanced_accuracy_patient = balanced_accuracy_score(
+                    y_patient, np.round(y_hat_patient)
+                )
+
+                # Store the results
+                accuracy_per_patient.append(accuracy_patient)
+                balanced_accuracy_per_patient.append(balanced_accuracy_patient)
+
+            # Print the results
+            print("Results per patient in mean and std:")
+            print(
+                f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
+            )
+            if wandb_flag:
+                wandb.log(
+                    {
+                        "test/accuracy": accuracy,
+                        "test/balanced_accuracy": balanced_accuracy,
+                        "test/auc": auc,
+                        "test/accuracy_per_patient": np.mean(accuracy_per_patient),
+                        "test/balanced_accuracy_per_patient": np.mean(
+                            balanced_accuracy_per_patient
+                        ),
+                    }
+                )

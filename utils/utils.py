@@ -95,20 +95,31 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
 
 
 def plot_latent_space_vowels(
-    model, data, fold, wandb_flag, name="default", supervised=False, vqvae=False
+    model,
+    data,
+    fold,
+    wandb_flag,
+    name="default",
+    supervised=False,
+    vqvae=False,
+    gmvae=False,
 ):
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
-        if not vqvae:
-            latent_mu, latent_sigma = model.encoder(
-                torch.Tensor(np.vstack(data["plps"])).to(model.device)
-            )
-        else:
+        if vqvae:
             latent_mu = model.encoder(
                 torch.Tensor(np.vstack(data["plps"])).to(model.device)
             )
             latent_code, vq_loss, enc_idx = model.vq(latent_mu)
+        elif gmvae:
+            _, _, _, latent_mu, latent_sigma = model.infere(
+                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+            )
+        else:
+            latent_mu, latent_sigma = model.encoder(
+                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+            )
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu.shape[1] > 2:
@@ -182,6 +193,8 @@ def plot_latent_space_vowels(
     ax.set_ylabel(ylabel)
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
     ax.legend()
+    if gmvae:
+        savepath = "local_results/plps/gmvae/"
     if supervised:
         savepath = "local_results/plps/vae_supervised/"
     if vqvae:
@@ -259,12 +272,6 @@ def plot_latent_space_vowels(
     ax.set_ylabel(ylabel)
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
     ax.legend()
-    if supervised:
-        savepath = "local_results/plps/vae_supervised/"
-    if vqvae:
-        savepath = "local_results/plps/vqvae/"
-    if not supervised and not vqvae:
-        savepath = "local_results/plps/vae_unsupervised/"
 
     fig.savefig(savepath + f"latent_space_vowels_{fold}_{name}_inverse.png")
     if wandb_flag:
@@ -512,7 +519,9 @@ def plot_latent_space_vowels_3D(
     plt.close(fig)
 
 
-def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=False):
+def calculate_distances(
+    model, data, fold, wandb_flag, name="default", vqvae=False, gmvae=False
+):
     print("Calculating distances...")
     # Import KDE
     from scipy.stats import gaussian_kde
@@ -522,15 +531,19 @@ def calculate_distances(model, data, fold, wandb_flag, name="default", vqvae=Fal
 
     model.eval()
     with torch.no_grad():
-        if not vqvae:
-            latent_mu, latent_sigma = model.encoder(
-                torch.Tensor(np.vstack(data["plps"])).to(model.device)
-            )
-        else:
+        if vqvae:
             latent_mu = model.encoder(
                 torch.Tensor(np.vstack(data["plps"])).to(model.device)
             )
             latent_code, vq_loss, enc_idx = model.vq(latent_mu)
+        elif gmvae:
+            _, _, _, latent_mu, latent_sigma = model.infere(
+                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+            )
+        else:
+            latent_mu, latent_sigma = model.encoder(
+                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+            )
 
     latent_mu = latent_mu.detach().cpu().numpy()
     if vqvae:

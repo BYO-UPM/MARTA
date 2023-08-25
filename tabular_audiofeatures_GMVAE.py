@@ -1,5 +1,5 @@
 from models.pt_models import GMVAE
-from training.pt_training import GMVAE_trainer
+from training.pt_training import GMVAE_trainer, GMVAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels, calculate_distances
 from data_loaders.pt_data_loader_audiofeatures import Dataset_AudioFeatures
 import torch
@@ -26,10 +26,10 @@ def main(args):
         "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
-        "latent_dim": 64,
+        "latent_dim": 2,
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
-        "supervised": True,
+        "supervised": False,
         "n_classes": 5,
     }
 
@@ -43,11 +43,11 @@ def main(args):
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
             gname = "rasta_PLPs_GMVAE_" + hyperparams["material"]
-            if hyperparams["supervised"]:
+            if hyperparams["n_classes"] > 0:
                 if hyperparams["n_classes"] == 2:
-                    gname += "_naive"
+                    gname += "_naive_PD"
                 elif hyperparams["n_classes"] == 5:
-                    gname += "_naive"
+                    gname += "_naive_vowels"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -109,37 +109,45 @@ def main(args):
             audio_features = "mfccs"
         print("Testing VAE...")
 
-        if hyperparams["wandb_flag"]:
-            wandb.finish()
-
         # Test the model by frame (not implemented yet)
+        GMVAE_tester(
+            model=model,
+            testloader=test_loader,
+            test_data=test_data,
+            audio_features=audio_features,
+            supervised=hyperparams["supervised"],
+            wandb_flag=hyperparams["wandb_flag"],
+        )
 
-        # # Create an empty pd dataframe with two columns: data and label
-        # df = pd.DataFrame(columns=["plps", "label", "vowel"])
-        # df["plps"] = [t[0] for t in test_loader.dataset]
-        # df["label"] = [t[1] for t in test_loader.dataset]
-        # df["vowel"] = [t[2] for t in test_loader.dataset]
+        # Create an empty pd dataframe with two columns: data and label
+        df = pd.DataFrame(columns=["plps", "label", "vowel"])
+        df["plps"] = [t[0] for t in test_loader.dataset]
+        df["label"] = [t[1] for t in test_loader.dataset]
+        df["vowel"] = [t[2] for t in test_loader.dataset]
 
-        # if hyperparams["material"] == "PATAKA":
-        #     # Plot the latent space in test
-        #     plot_latent_space(
-        #         model,
-        #         df,
-        #         fold,
-        #         hyperparams["wandb_flag"],
-        #         name="test",
-        #         supervised=hyperparams["supervised"],
-        #     )
-        # elif hyperparams["material"] == "VOWELS":
-        #     plot_latent_space_vowels(
-        #         model,
-        #         df,
-        #         fold,
-        #         hyperparams["wandb_flag"],
-        #         name="test",
-        #         supervised=hyperparams["supervised"],
-        #     )
-        #     calculate_distances(model, df, fold, hyperparams["wandb_flag"], name="test")
+        if hyperparams["material"] == "PATAKA":
+            # Plot the latent space in test
+            plot_latent_space(
+                model,
+                df,
+                fold,
+                hyperparams["wandb_flag"],
+                name="test",
+                supervised=hyperparams["supervised"],
+            )
+        elif hyperparams["material"] == "VOWELS":
+            plot_latent_space_vowels(
+                model,
+                df,
+                fold,
+                hyperparams["wandb_flag"],
+                name="test",
+                supervised=hyperparams["supervised"],
+                gmvae=True,
+            )
+            calculate_distances(
+                model, df, fold, hyperparams["wandb_flag"], name="test", gmvae=True
+            )
 
         # df = pd.DataFrame(columns=["plps", "label", "vowel"])
         # df["plps"] = [t[0] for t in train_loader.dataset]
@@ -166,6 +174,9 @@ def main(args):
         #         supervised=hyperparams["supervised"],
         #         name="train",
         #     )
+
+        if hyperparams["wandb_flag"]:
+            wandb.finish()
 
 
 if __name__ == "__main__":
