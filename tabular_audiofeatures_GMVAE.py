@@ -30,7 +30,7 @@ def main(args):
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
         "supervised": True,
-        "n_classes": 5,
+        "n_classes": 5,  # TODO: change this so I can have 10 classes (5 vowels x 2 conditions = 10 classes)
         "semisupervised": False,
     }
 
