@@ -658,13 +658,28 @@ class VQVAE(torch.nn.Module):
 
 
 class GMVAE(torch.nn.Module):
-    def __init__(self, x_dim, z_dim, K=10, hidden_dims=[20, 10]):
+    def __init__(
+        self,
+        x_dim,
+        z_dim,
+        y_dim=10,
+        k=10,
+        hidden_dims=[20, 10],
+        ss=False,
+        supervised=False,
+        weights=[1, 3, 10, 10, 10],
+    ):
         super().__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.x_dim = x_dim
-        self.y_dim = K
+        self.y_dim = y_dim
         self.z_dim = z_dim
+        self.k = k
+        self.ss = ss
+        self.num_labeled = 0
+        self.ss_mask = None
+        self.supervised = supervised
 
         # ===== Inference =====
         # Deterministic x_hat = g(x)
@@ -702,11 +717,66 @@ class GMVAE(torch.nn.Module):
             torch.nn.Linear(self.y_dim, self.z_dim * 2),
         ).to(self.device)
 
-        self.w1 = 1
-        self.w2 = 3
-        self.w3 = 10
+        self.w1, self.w2, self.w3, self.w4, self.w5 = weights
 
         self.to(self.device)
+
+    def bincount_matrix(self, x, num_classes):
+        x = x.int()
+        max_x_plus_1 = num_classes
+        ids = x + max_x_plus_1 * torch.arange(x.shape[0]).unsqueeze(1).to(self.device)
+        flattened_ids = ids.view(-1)
+        out = torch.bincount(flattened_ids, minlength=max_x_plus_1 * x.shape[0])
+        out = out.view(-1, num_classes)
+        return out
+
+    def assign_labels_semisupervised(
+        self, features, labels, batch_size, num_classes, knn
+    ):
+        """Assign labels to unlabeled data based on the k-nearest-neighbors.
+
+        Code adapted from https://github.com/jariasf/semisupervised-vae-metric-embedding/blob/master/utils/assignment.py
+
+        Args:
+            features: (array) corresponding array containing the features of the input data
+            labels: (array) corresponding array containing the labels of the labeled data
+            batch_size: (int) training batch size
+            num_classes: (int) number fo classification classes
+            knn: (int) number of k-nearest neighbors to use
+
+        Returns:
+            output: (array) corresponding array containing the labels assigned to all the data
+        """
+        num_classes = torch.Tensor([num_classes]).type(torch.int64).to(self.device)
+        self.ss_mask = torch.ones(labels.shape).to(self.device)
+        self.ss_mask[-int(self.ss_mask.shape[0] * 0.1) :] = 0
+        self.num_labeled = int(torch.sum(self.ss_mask))
+
+        # Make dot product between all features and then get only the daigonal.
+        dot_product = torch.mm(features, features.t())
+        square_norm = torch.diag(dot_product)
+        # compute pairwise distance matrix
+        distances = (
+            square_norm.unsqueeze(1) - 2.0 * dot_product + square_norm.unsqueeze(0)
+        )
+        # Clamp it to 0 in case of numerical error
+        distances = torch.clamp(distances, min=0.0)
+        # Get the mask of the labeled data and the unlabeled data
+        distances = distances[
+            : batch_size - self.num_labeled, batch_size - self.num_labeled :
+        ]
+        neg_distances = -distances
+        # Get the top K nearest neighbors
+        _, idx = torch.topk(neg_distances, knn, dim=1)
+        # Get the labels of the nearest neighbors
+        knn_labels = labels[idx].type(torch.int64)
+        # count repeated labels and get the most common one
+        assignment = torch.argmax(
+            torch.bincount(knn_labels.view(-1), minlength=num_classes), dim=0
+        )
+        # Concatenate the assignment with the labels of the labeled data
+        output_labels = torch.cat([labels[: self.num_labeled], assignment])
+        return output_labels
 
     def reparametrize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         std = torch.exp(0.5 * logvar)
@@ -752,7 +822,7 @@ class GMVAE(torch.nn.Module):
 
         return x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z
 
-    def loss(self, x: torch.Tensor) -> torch.Tensor:
+    def loss(self, x: torch.Tensor, labels=None) -> torch.Tensor:
         x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z = self.forward(x)
 
         # reconstruction loss
@@ -765,95 +835,51 @@ class GMVAE(torch.nn.Module):
         )
 
         # Cat loss = KL divergence between q(y|x) and p(y)
+        # KL Divergence between the posterior and a prior uniform distribution (U(0,1))
+        #  loss = (1/n) * Σ(qx * log(qx/px)), because we use a uniform prior px = 1/k
+        #  loss = (1/n) * Σ(qx * (log(qx) - log(1/k)))
         log_q = torch.log_softmax(qy_logits, dim=-1)
-        entropy = -torch.mean(torch.sum(qy * log_q, dim=-1))  # H(q(y|x))
-        cat_loss = -entropy - torch.log(
-            1 / torch.tensor(self.y_dim)  # p(y)
-        )  # KL(q(y|x) || p(y)) = H(q(y|x)) - H(p(y))
+        log_p = torch.log(1 / torch.tensor(self.y_dim))
+        cat_loss = torch.sum(qy * (log_q - log_p), dim=-1)
+        cat_loss = torch.sum(cat_loss)
 
-        total_loss = self.w1 * rec_loss + self.w2 * gaussian_loss + self.w3 * cat_loss
+        if self.ss:
+            import pytorch_metric_learning
+
+            # Semi-supervised loss
+            # Assign labels to unlabeled data based on the k-nearest-neighbors
+            labels = self.assign_labels_semisupervised(
+                z, labels, batch_size=x.shape[0], num_classes=self.y_dim, knn=10
+            )
+            # Cross entropy loss
+            clf_loss = torch.nn.functional.cross_entropy(qy_logits, labels)
+
+            # Metric embedding loss: lifted structured loss
+            lifted_loss = pytorch_metric_learning.losses.LiftedStructureLoss(
+                pos_margin=0.5, neg_margin=0.5
+            )
+            metric_loss = lifted_loss(z, labels)
+        else:
+            clf_loss = 0
+            metric_loss = 0
+
+        if self.supervised:
+            # Supervised loss
+            clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
+                qy_logits, labels.type(torch.int64)
+            )
+            metric_loss = 0
+
+        # Total loss
+        total_loss = (
+            self.w1 * rec_loss
+            + self.w2 * gaussian_loss
+            + self.w3 * cat_loss
+            + self.w4 * clf_loss
+            + self.w5 * metric_loss
+        )
 
         # obtain predictions
         _, y_pred = torch.max(qy_logits, dim=-1)
 
-        return total_loss, rec_loss, gaussian_loss, cat_loss, x, x_rec, y_pred
-
-    def trainloop(
-        self,
-        train_loader=None,
-        epochs=None,
-        optimizer=None,
-        valid_loader=None,
-        wandb_flag=False,
-        supervised=False,
-    ):
-        for e in range(epochs):
-            self.train()
-            train_loss = 0
-            rec_loss = 0
-            gaussian_loss = 0
-            clf_loss = 0
-            for batch_idx, (data, labels, vowels) in enumerate(train_loader):
-                # Make sure dtype is Tensor float
-                data = data.to(self.device).float()
-                labels = labels.to(self.device).float()
-                vowels = vowels.to(self.device).float()
-
-                optimizer.zero_grad()
-                loss, rec_loss_b, gaussian_loss_b, clf_loss_b = self.loss(data)
-                loss.backward()
-                optimizer.step()
-
-                train_loss += loss.item()
-                rec_loss += rec_loss_b.item()
-                gaussian_loss += gaussian_loss_b.item()
-                clf_loss += clf_loss_b.item()
-
-            if valid_loader is not None:
-                self.eval()
-                valid_loss = 0
-                val_rec_loss = 0
-                val_gaussian_loss = 0
-                val_clf_loss = 0
-
-                for batch_idx, (data, labels, vowels) in enumerate(valid_loader):
-                    # Make sure dtype is Tensor float
-                    data = data.to(self.device).float()
-                    labels = labels.to(self.device).float()
-                    vowels = vowels.to(self.device).float()
-
-                    loss, rec_loss, gaussian_loss, clf_loss = self.loss(data)
-                    valid_loss += loss.item()
-                    val_rec_loss += rec_loss.item()
-                    val_gaussian_loss += gaussian_loss.item()
-                    val_clf_loss += clf_loss.item()
-
-            print(
-                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
-                    e,
-                    train_loss / len(train_loader.dataset),
-                    rec_loss / len(train_loader.dataset),
-                    gaussian_loss / len(train_loader.dataset),
-                    clf_loss / len(train_loader.dataset),
-                )
-            )
-            if valid_loader is not None:
-                print(
-                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f}".format(
-                        e,
-                        valid_loss / len(valid_loader.dataset),
-                        val_rec_loss / len(valid_loader.dataset),
-                        val_gaussian_loss / len(valid_loader.dataset),
-                        val_clf_loss / len(valid_loader.dataset),
-                    )
-                )
-
-            # Store best model
-            if e == 0:
-                best_loss = valid_loss
-                best_model = copy.deepcopy(self)
-            else:
-                if valid_loss < best_loss:
-                    best_loss = valid_loss
-                    best_model = copy.deepcopy(self)
-                    print("Best model updated")
+        return total_loss, rec_loss, gaussian_loss, cat_loss, clf_loss, x, x_rec, y_pred

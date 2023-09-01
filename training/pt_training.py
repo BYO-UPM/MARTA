@@ -1111,6 +1111,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         train_loss = 0
         rec_loss = 0
         gaussian_loss = 0
+        cat_loss = 0
         clf_loss = 0
 
         for batch_idx, (data, labels, vowels) in enumerate(trainloader):
@@ -1124,11 +1125,12 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 loss,
                 rec_loss_b,
                 gaussian_loss_b,
+                cat_loss_b,
                 clf_loss_b,
                 x,
                 x_hat,
                 y_pred,
-            ) = model.loss(data)
+            ) = model.loss(data, vowels)
             loss.backward()
             optimizer.step()
 
@@ -1136,8 +1138,9 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             rec_loss += rec_loss_b.item()
             gaussian_loss += gaussian_loss_b.item()
             clf_loss += clf_loss_b.item()
+            cat_loss += cat_loss_b.item()
 
-            true_label_list.append(labels.cpu().numpy())
+            true_label_list.append(vowels.cpu().numpy())
             pred_label_list.append(y_pred.cpu().numpy())
 
         # Check reconstruction of X
@@ -1149,11 +1152,12 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         nmi_score = nmi(pred_label, true_label)
 
         print(
-            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Clf Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                 e,
                 train_loss / len(trainloader.dataset),
                 rec_loss / len(trainloader.dataset),
                 gaussian_loss / len(trainloader.dataset),
+                cat_loss / len(trainloader.dataset),
                 clf_loss / len(trainloader.dataset),
                 acc,
                 nmi_score,
@@ -1166,6 +1170,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     "train/Loss": train_loss / len(trainloader.dataset),
                     "train/Rec Loss": rec_loss / len(trainloader.dataset),
                     "train/Gaussian Loss": gaussian_loss / len(trainloader.dataset),
+                    "train/Cat Loss": cat_loss / len(trainloader.dataset),
                     "train/Clf Loss": clf_loss / len(trainloader.dataset),
                     "train/UAcc": acc,
                     "train/NMI": nmi_score,
@@ -1178,6 +1183,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             val_rec_loss = 0
             val_gaussian_loss = 0
             val_clf_loss = 0
+            val_cat_loss = 0
 
             true_label_list = []
             pred_label_list = []
@@ -1192,15 +1198,17 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     loss,
                     rec_loss_v,
                     gaussian_loss_v,
+                    cat_loss_v,
                     clf_loss_v,
                     x,
                     x_hat,
                     y_pred,
-                ) = model.loss(data)
+                ) = model.loss(data, vowels)
                 valid_loss += loss.item()
                 val_rec_loss += rec_loss_v.item()
                 val_gaussian_loss += gaussian_loss_v.item()
                 val_clf_loss += clf_loss_v.item()
+                val_cat_loss += cat_loss_v.item()
 
                 true_label_list.append(labels.cpu().numpy())
                 pred_label_list.append(y_pred.cpu().numpy())
@@ -1214,11 +1222,12 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             nmi_score = nmi(pred_label, true_label)
 
             print(
-                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Clf Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Clf Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                     e,
                     valid_loss / len(validloader.dataset),
                     val_rec_loss / len(validloader.dataset),
                     val_gaussian_loss / len(validloader.dataset),
+                    val_cat_loss / len(validloader.dataset),
                     val_clf_loss / len(validloader.dataset),
                     acc,
                     nmi_score,
@@ -1233,6 +1242,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                         "valid/Rec Loss": val_rec_loss / len(validloader.dataset),
                         "valid/Gaussian Loss": val_gaussian_loss
                         / len(validloader.dataset),
+                        "valid/Cat Loss": val_cat_loss / len(validloader.dataset),
                         "valid/Clf Loss": val_clf_loss / len(validloader.dataset),
                         "valid/UAcc": acc,
                         "valid/NMI": nmi_score,

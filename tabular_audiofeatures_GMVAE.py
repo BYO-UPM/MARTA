@@ -29,8 +29,9 @@ def main(args):
         "latent_dim": 2,
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
-        "supervised": False,
+        "supervised": True,
         "n_classes": 5,
+        "semisupervised": False,
     }
 
     print("Reading data...")
@@ -47,7 +48,7 @@ def main(args):
                 if hyperparams["n_classes"] == 2:
                     gname += "_naive_PD"
                 elif hyperparams["n_classes"] == 5:
-                    gname += "_naive_vowels"
+                    gname += "_supervised_vowels"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -73,13 +74,20 @@ def main(args):
         model = GMVAE(
             x_dim=train_loader.dataset[0][0].shape[0],
             z_dim=hyperparams["latent_dim"],
-            K=hyperparams["n_classes"],
+            y_dim=hyperparams["n_classes"],
             hidden_dims=hyperparams["hidden_dims_enc"],
+            ss=hyperparams["semisupervised"],
+            supervised=hyperparams["supervised"],
+            weights=[
+                1,  # w1 is rec loss,
+                1,  # w2 is gaussian kl loss,
+                1,  # w3 is categorical kl loss,
+                1,  # w4 is supervised loss,
+                1,  # w5 is metric loss # not implemented yet
+            ],
         )
 
         model = torch.compile(model)
-
-        opt = torch.optim.Adam(model.parameters(), lr=hyperparams["lr"])
 
         print("Training VAE...")
         # Train the model
@@ -109,13 +117,13 @@ def main(args):
             audio_features = "mfccs"
         print("Testing VAE...")
 
-        # Test the model by frame (not implemented yet)
+        # Test the model  #TODO: supervised version is not yet implemented for testing
         GMVAE_tester(
             model=model,
             testloader=test_loader,
             test_data=test_data,
             audio_features=audio_features,
-            supervised=hyperparams["supervised"],
+            supervised=False,  # Not implemented yet
             wandb_flag=hyperparams["wandb_flag"],
         )
 
