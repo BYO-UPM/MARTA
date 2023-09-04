@@ -123,7 +123,7 @@ def main(args):
             audio_features = "spectrogram"
         print("Testing GMVAE...")
 
-        # Test the model  #TODO: supervised version is not yet implemented for testing
+        # Test the model  #TODO: IMG version not implemented yet
         GMVAE_tester(
             model=model,
             testloader=test_loader,
