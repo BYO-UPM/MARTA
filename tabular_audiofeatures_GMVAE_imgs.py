@@ -51,7 +51,7 @@ def main(args):
                 elif hyperparams["n_gaussians"] == 5:
                     gname += "_supervised_vowels"
                 elif hyperparams["n_gaussians"] == 10:
-                    gname += "_unsupervised_10Gaussians"
+                    gname += "_unsupervised_10Gaussians_x_and_y_sameshape_in_inference"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -88,6 +88,7 @@ def main(args):
                 1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
                 1,  # w5 is metric loss # not implemented yet
             ],
+            cnn=hyperparams["spectrogram"],
         )
 
         model = torch.compile(model)

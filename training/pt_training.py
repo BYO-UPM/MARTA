@@ -1131,7 +1131,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 x,
                 x_hat,
                 y_pred,
-            ) = model.loss(data, vowels, combined)
+            ) = model.loss(data, vowels, combined, e)
             loss.backward()
             optimizer.step()
 

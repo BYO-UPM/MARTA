@@ -667,6 +667,7 @@ class GMVAE(torch.nn.Module):
         ss=False,
         supervised=False,
         weights=[1, 3, 10, 10, 10],
+        cnn=False,
     ):
         super().__init__()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -679,48 +680,100 @@ class GMVAE(torch.nn.Module):
         self.ss_mask = None
         self.supervised = supervised
         self.hidden_dims = hidden_dims
+        self.cnn = cnn
 
         # Inference
-        self.inference_networks()
+        self.inference_networks(cnn=cnn)
 
         # Generative
-        self.generative_networks()
+        self.generative_networks(cnn=cnn)
 
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
 
         self.to(self.device)
 
-    def inference_networks(self):
+    def inference_networks(self, cnn=False):
         # ===== Inference =====
         # Deterministic x_hat = g(x)
-        self.inference_gx = torch.nn.Sequential(
-            torch.nn.Linear(self.x_dim, self.hidden_dims[0]),
-        ).to(self.device)
+        if cnn:
+            self.inference_gx = torch.nn.Sequential(
+                torch.nn.Conv2d(self.x_dim, self.hidden_dims[0], 3),
+                torch.nn.ReLU(),
+                torch.nn.MaxPool2d(2),
+                torch.nn.Conv2d(self.hidden_dims[0], self.hidden_dims[1], 3),
+                torch.nn.ReLU(),
+                torch.nn.MaxPool2d(2),
+                torch.nn.Conv2d(self.hidden_dims[1], self.hidden_dims[2], 3),
+                torch.nn.ReLU(),
+                torch.nn.MaxPool2d(2),
+                torch.nn.Flatten(),
+            )
+            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 41)).shape
+        else:
+            self.inference_gx = torch.nn.Sequential(
+                torch.nn.Linear(self.x_dim, self.hidden_dims[0]),
+                torch.nn.ReLU(),
+                torch.nn.Linear(self.hidden_dims[0], self.hidden_dims[1]),
+                torch.nn.ReLU(),
+                torch.nn.Linear(self.hidden_dims[1], self.hidden_dims[2]),
+                torch.nn.ReLU(),
+            ).to(self.device)
 
         # q(y | x_hat)
-        self.inference_qy_x = torch.nn.Sequential(
-            torch.nn.Linear(self.hidden_dims[0], self.k),
-        ).to(self.device)
+        if cnn:
+            self.inference_qy_x = torch.nn.Sequential(
+                torch.nn.Linear(self.x_hat_shape[1], self.k),
+            ).to(self.device)
+        else:
+            self.inference_qy_x = torch.nn.Sequential(
+                torch.nn.Linear(self.hidden_dims[2], self.k),
+            ).to(self.device)
 
         # q(z | x_hat, y)
-        self.inference_qz_xy = torch.nn.Sequential(
-            torch.nn.Linear(self.hidden_dims[0] + self.k, self.hidden_dims[1]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.hidden_dims[1], self.hidden_dims[1]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.hidden_dims[1], self.z_dim * 2),
-        ).to(self.device)
+        if cnn:
+            self.inference_qz_xy = torch.nn.Sequential(
+                torch.nn.Linear(self.x_hat_shape[1], self.z_dim * 2),
+            ).to(self.device)
+        else:
+            self.inference_qz_xy = torch.nn.Sequential(
+                torch.nn.Linear(self.hidden_dims[2], self.z_dim * 2),
+            ).to(self.device)
 
-    def generative_networks(self):
+    def generative_networks(self, cnn=False):
         # ===== Generative =====
         # p(x | z)
-        self.generative_px_z = torch.nn.Sequential(
-            torch.nn.Linear(self.z_dim, self.hidden_dims[0]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.hidden_dims[0], self.hidden_dims[1]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.hidden_dims[1], self.x_dim),
-        ).to(self.device)
+        if cnn:
+            self.generative_px_z = torch.nn.Sequential(
+                # Unflatten
+                torch.nn.Linear(self.z_dim, self.hidden_dims[0] * 3 * 3),
+                torch.nn.ReLU(),
+                torch.nn.Unflatten(1, (self.hidden_dims[0], 3, 3)),
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(self.hidden_dims[0], self.hidden_dims[1], 5),
+                torch.nn.ReLU(),
+                torch.nn.Upsample(scale_factor=2),
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(self.hidden_dims[1], self.hidden_dims[2], 5),
+                torch.nn.ReLU(),
+                torch.nn.Upsample(scale_factor=2),
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(
+                    self.hidden_dims[2],
+                    self.x_dim,
+                    stride=[2, 1],
+                    kernel_size=[3, 6],
+                    padding=[4, 0],
+                ),
+                torch.nn.Sigmoid(),
+            ).to(self.device)
+        else:
+            self.generative_px_z = torch.nn.Sequential(
+                torch.nn.Linear(self.z_dim, self.hidden_dims[0]),
+                torch.nn.ReLU(),
+                torch.nn.Linear(self.hidden_dims[0], self.hidden_dims[1]),
+                torch.nn.ReLU(),
+                torch.nn.Linear(self.hidden_dims[1], self.x_dim),
+            ).to(self.device)
 
         # p(z | y)
         self.generative_pz_y = torch.nn.Sequential(
@@ -799,8 +852,13 @@ class GMVAE(torch.nn.Module):
         qy = torch.nn.functional.gumbel_softmax(qy_logits, tau=1.0, hard=True)
 
         # q(z | x, y)
-        # concat x and y
-        xy = torch.cat([x_hat, qy], dim=1)
+        # Transform Y in the same shape as X
+        if self.cnn:
+            y_hat = torch.nn.Linear(self.k, self.x_hat_shape[1]).to(self.device)(qy)
+            xy = x_hat + y_hat
+        else:
+            y_hat = torch.nn.Linear(self.k, self.hidden_dims[2]).to(self.device)(qy)
+            xy = x_hat + y_hat
         qz_mu, qz_logvar = torch.chunk(self.inference_qz_xy(xy), 2, dim=1)
 
         z = self.reparametrize(qz_mu, qz_logvar)
@@ -828,11 +886,16 @@ class GMVAE(torch.nn.Module):
 
         return x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z
 
-    def loss(self, x: torch.Tensor, labels=None, combined=None) -> torch.Tensor:
+    def loss(self, x: torch.Tensor, labels=None, combined=None, e=0) -> torch.Tensor:
         x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z = self.forward(x)
 
         # reconstruction loss
-        rec_loss = torch.nn.functional.mse_loss(x_rec, x, reduction="sum")
+        if self.cnn:
+            rec_loss = torch.nn.functional.binary_cross_entropy(
+                x_rec, x, reduction="sum"
+            )
+        else:
+            rec_loss = torch.nn.functional.mse_loss(x_rec, x, reduction="sum")
 
         # Gaussian loss = KL divergence between q(z|x,y) and p(z|y)
         gaussian_loss = torch.sum(
@@ -882,11 +945,25 @@ class GMVAE(torch.nn.Module):
                 )
             metric_loss = 0
 
+        # Schelude the weights of the model
+        if e <= 10:
+            w1 = 1
+            w2 = 0.1
+            w3 = 0.1
+        if e > 10:
+            w1 = 1
+            w2 = 1
+            w3 = 1
+        if e > 20:
+            w1 = 1
+            w2 = 2
+            w3 = 2
+
         # Total loss
         total_loss = (
-            self.w1 * rec_loss
-            + self.w2 * gaussian_loss
-            + self.w3 * cat_loss
+            w1 * rec_loss
+            + w2 * gaussian_loss
+            + w3 * cat_loss
             + self.w4 * clf_loss
             + self.w5 * metric_loss
         )
