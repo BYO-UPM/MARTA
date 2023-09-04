@@ -109,9 +109,9 @@ def main(args):
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/plps/vae_supervised/VAE_best_model.pt"
+            name = "local_results/plps/vae_supervised/GMVAE_cnn_best_model.pt"
         else:
-            name = "local_results/plps/vae_unsupervised/VAE_best_model.pt"
+            name = "local_results/plps/vae_unsupervised/GMVAE_cnn_best_model.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -119,6 +119,8 @@ def main(args):
             audio_features = "plps"
         elif hyperparams["n_mfccs"] > 0:
             audio_features = "mfccs"
+        elif hyperparams["spectrogram"]:
+            audio_features = "spectrogram"
         print("Testing GMVAE...")
 
         # Test the model  #TODO: supervised version is not yet implemented for testing

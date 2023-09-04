@@ -1265,7 +1265,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             # check if the folder exists if not create it
             if not os.path.exists(name):
                 os.makedirs(name)
-            name += "VAE_best_model.pt"
+            name += "GMVAE_cnn_best_model.pt"
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
@@ -1291,6 +1291,9 @@ def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):
         idx = np.arange(10)
     x_sample = x[idx]
     x_hat_sample = x_hat[idx]
+    if len(x_sample.shape) == 4:
+        x_sample = x_sample.squeeze(1)[0]
+        x_hat_sample = x_hat_sample.squeeze(1)[0]
     # calculate error
     error = torch.abs(x_sample - x_hat_sample)
 
