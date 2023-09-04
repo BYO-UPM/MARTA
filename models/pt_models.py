@@ -1,6 +1,7 @@
 import torch
 import timm
 import copy
+from pytorch_metric_learning.losses import LiftedStructureLoss
 
 
 width = 64
@@ -924,16 +925,8 @@ class GMVAE(torch.nn.Module):
             )
             # Cross entropy loss
             clf_loss = torch.nn.functional.cross_entropy(qy_logits, labels)
-
-            # Metric embedding loss: lifted structured loss
-            lifted_loss = pytorch_metric_learning.losses.LiftedStructureLoss(
-                pos_margin=0.5, neg_margin=0.5
-            )
-            metric_loss = lifted_loss(z, labels)
         else:
             clf_loss = 0
-            metric_loss = 0
-
         if self.supervised:
             if self.n_gaussians < 10:
                 # Supervised loss
@@ -945,7 +938,10 @@ class GMVAE(torch.nn.Module):
                 clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
                     qy_logits, combined.type(torch.float32)
                 )
-            metric_loss = 0
+
+        # Metric embedding loss: lifted structured loss
+        lifted_loss = LiftedStructureLoss(pos_margin=0, neg_margin=1)
+        metric_loss = lifted_loss(z, labels)
 
         # Schelude the weights of the model
         if e <= 10:
@@ -973,4 +969,14 @@ class GMVAE(torch.nn.Module):
         # obtain predictions
         _, y_pred = torch.max(qy_logits, dim=-1)
 
-        return total_loss, rec_loss, gaussian_loss, cat_loss, clf_loss, x, x_rec, y_pred
+        return (
+            total_loss,
+            rec_loss,
+            gaussian_loss,
+            cat_loss,
+            clf_loss,
+            metric_loss,
+            x,
+            x_rec,
+            y_pred,
+        )

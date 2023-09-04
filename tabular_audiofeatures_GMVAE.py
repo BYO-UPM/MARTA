@@ -85,7 +85,7 @@ def main(args):
                 2,  # w2 is gaussian kl loss,
                 5,  # w3 is categorical kl loss,
                 1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-                1,  # w5 is metric loss # not implemented yet
+                10,  # w5 is metric loss
             ],
         )
 
