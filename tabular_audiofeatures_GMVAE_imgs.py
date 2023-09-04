@@ -1,7 +1,7 @@
 from models.pt_models import GMVAE
 from training.pt_training import GMVAE_trainer, GMVAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels, calculate_distances
-from data_loaders.pt_data_loader_audiofeatures import Dataset_AudioFeatures
+from data_loaders.pt_data_loader_spectrograms import Dataset_AudioFeatures
 import torch
 import wandb
 import numpy as np
@@ -20,9 +20,10 @@ def main(args):
         "frame_size_ms": 40,
         "material": "VOWELS",
         "hop_size_percent": 0.5,
-        "n_plps": 13,
+        "n_plps": 0,
         "n_mfccs": 0,
-        "wandb_flag": True,
+        "spectrogram": True,
+        "wandb_flag": False,
         "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,

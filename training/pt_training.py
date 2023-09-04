@@ -1114,11 +1114,12 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         cat_loss = 0
         clf_loss = 0
 
-        for batch_idx, (data, labels, vowels) in enumerate(trainloader):
+        for batch_idx, (data, labels, vowels, combined) in enumerate(trainloader):
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
             labels = labels.to(model.device).float()
             vowels = vowels.to(model.device).float()
+            combined = combined.to(model.device).float()
 
             optimizer.zero_grad()
             (
@@ -1130,14 +1131,15 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 x,
                 x_hat,
                 y_pred,
-            ) = model.loss(data, vowels)
+            ) = model.loss(data, vowels, combined)
             loss.backward()
             optimizer.step()
 
             train_loss += loss.item()
             rec_loss += rec_loss_b.item()
             gaussian_loss += gaussian_loss_b.item()
-            clf_loss += clf_loss_b.item()
+            if supervised:
+                clf_loss += clf_loss_b.item()
             cat_loss += cat_loss_b.item()
 
             true_label_list.append(vowels.cpu().numpy())
@@ -1188,11 +1190,12 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             true_label_list = []
             pred_label_list = []
 
-            for batch_idx, (data, labels, vowels) in enumerate(validloader):
+            for batch_idx, (data, labels, vowels, combined) in enumerate(validloader):
                 # Make sure dtype is Tensor float
                 data = data.to(model.device).float()
                 labels = labels.to(model.device).float()
                 vowels = vowels.to(model.device).float()
+                combined = combined.to(model.device).float()
 
                 (
                     loss,
@@ -1203,11 +1206,12 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     x,
                     x_hat,
                     y_pred,
-                ) = model.loss(data, vowels)
+                ) = model.loss(data, vowels, combined)
                 valid_loss += loss.item()
                 val_rec_loss += rec_loss_v.item()
                 val_gaussian_loss += gaussian_loss_v.item()
-                val_clf_loss += clf_loss_v.item()
+                if supervised:
+                    val_clf_loss += clf_loss_v.item()
                 val_cat_loss += cat_loss_v.item()
 
                 true_label_list.append(labels.cpu().numpy())
@@ -1485,6 +1489,7 @@ def VQVAE_tester(
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
                 y = y.to(model.device).to(torch.float32)
+                v = v.to(model.device).to(torch.float32)
 
                 # Forward pass
                 if supervised:
@@ -1617,13 +1622,15 @@ def GMVAE_tester(
         )  # 32 is the batch size
         x_hat_array = np.zeros(x_array.shape)
         with tqdm(testloader, unit="batch") as tepoch:
-            for x, y, z in tepoch:
+            for x, y, z, c in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
-                if model.y_dim == 2:
+                if model.k == 2:
                     y = y.to(model.device).to(torch.float32)
-                else:
+                elif model.k == 5:
                     z = z.type(torch.LongTensor).to(model.device)
+                elif model.k == 10:
+                    c = c.type(torch.LongTensor).to(model.device)
 
                 # Forward pass
                 if supervised:

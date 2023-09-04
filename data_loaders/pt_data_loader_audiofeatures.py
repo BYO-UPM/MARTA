@@ -273,14 +273,30 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         x_train = np.vstack(train_data[audio_features])
         y_train = train_data["label"].values
         z_train = train_data["vowel"].values
+        mapping = {
+            (0, 0): 0,
+            (0, 1): 1,
+            (0, 2): 2,
+            (0, 3): 3,
+            (0, 4): 4,
+            (1, 0): 5,
+            (1, 1): 6,
+            (1, 2): 7,
+            (1, 3): 8,
+            (1, 4): 9,
+        }
+        # Use the mapping dictionary to generate w_train
+        w_train = np.array([mapping[(y, z)] for y, z in zip(y_train, z_train)])
 
         x_val = np.vstack(val_data[audio_features])
         y_val = val_data["label"].values
         z_val = val_data["vowel"].values
+        w_val = np.array([mapping[(y, z)] for y, z in zip(y_val, z_val)])
 
         x_test = np.vstack(test_data[audio_features])
         y_test = test_data["label"].values
         z_test = test_data["vowel"].values
+        w_test = np.array([mapping[(y, z)] for y, z in zip(y_test, z_test)])
 
         # Normalise the data
         scaler = StandardScaler()
@@ -301,6 +317,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_train,
                     y_train,
                     z_train,
+                    w_train,
                 )
             ),
             drop_last=False,
@@ -313,6 +330,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_val,
                     y_val,
                     z_val,
+                    w_val,
                 )
             ),
             drop_last=False,
@@ -325,6 +343,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_test,
                     y_test,
                     z_test,
+                    w_test,
                 )
             ),
             drop_last=False,

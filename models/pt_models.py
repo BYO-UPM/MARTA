@@ -662,8 +662,7 @@ class GMVAE(torch.nn.Module):
         self,
         x_dim,
         z_dim,
-        y_dim=10,
-        k=10,
+        n_gaussians=10,
         hidden_dims=[20, 10],
         ss=False,
         supervised=False,
@@ -673,9 +672,8 @@ class GMVAE(torch.nn.Module):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.x_dim = x_dim
-        self.y_dim = y_dim
         self.z_dim = z_dim
-        self.k = k
+        self.k = n_gaussians
         self.ss = ss
         self.num_labeled = 0
         self.ss_mask = None
@@ -690,16 +688,16 @@ class GMVAE(torch.nn.Module):
 
         # q(y | x_hat)
         self.inference_qy_x = torch.nn.Sequential(
-            torch.nn.Linear(hidden_dims[0], self.y_dim),
+            torch.nn.Linear(hidden_dims[0], self.k),
         ).to(self.device)
 
         # q(z | x_hat, y)
         self.inference_qz_xy = torch.nn.Sequential(
-            torch.nn.Linear(hidden_dims[0] + self.y_dim, hidden_dims[1]),
+            torch.nn.Linear(hidden_dims[0] + self.k, hidden_dims[1]),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[1], hidden_dims[1]),
+            torch.nn.Linear(hidden_dims[1], hidden_dims[2]),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[1], self.z_dim * 2),
+            torch.nn.Linear(hidden_dims[2], self.z_dim * 2),
         ).to(self.device)
 
         # ===== Generative =====
@@ -709,12 +707,16 @@ class GMVAE(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_dims[0], hidden_dims[1]),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[1], self.x_dim),
+            torch.nn.Linear(hidden_dims[1], hidden_dims[2]),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dims[2], self.x_dim),
         ).to(self.device)
 
         # p(z | y)
         self.generative_pz_y = torch.nn.Sequential(
-            torch.nn.Linear(self.y_dim, self.z_dim * 2),
+            torch.nn.Linear(self.k, hidden_dims[1]),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dims[1], self.z_dim * 2),
         ).to(self.device)
 
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
@@ -822,7 +824,7 @@ class GMVAE(torch.nn.Module):
 
         return x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z
 
-    def loss(self, x: torch.Tensor, labels=None) -> torch.Tensor:
+    def loss(self, x: torch.Tensor, labels=None, combined=None) -> torch.Tensor:
         x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z = self.forward(x)
 
         # reconstruction loss
@@ -839,7 +841,7 @@ class GMVAE(torch.nn.Module):
         #  loss = (1/n) * Σ(qx * log(qx/px)), because we use a uniform prior px = 1/k
         #  loss = (1/n) * Σ(qx * (log(qx) - log(1/k)))
         log_q = torch.log_softmax(qy_logits, dim=-1)
-        log_p = torch.log(1 / torch.tensor(self.y_dim))
+        log_p = torch.log(1 / torch.tensor(self.k))
         cat_loss = torch.sum(qy * (log_q - log_p), dim=-1)
         cat_loss = torch.sum(cat_loss)
 
@@ -849,7 +851,7 @@ class GMVAE(torch.nn.Module):
             # Semi-supervised loss
             # Assign labels to unlabeled data based on the k-nearest-neighbors
             labels = self.assign_labels_semisupervised(
-                z, labels, batch_size=x.shape[0], num_classes=self.y_dim, knn=10
+                z, labels, batch_size=x.shape[0], num_classes=self.k, knn=10
             )
             # Cross entropy loss
             clf_loss = torch.nn.functional.cross_entropy(qy_logits, labels)
@@ -864,10 +866,16 @@ class GMVAE(torch.nn.Module):
             metric_loss = 0
 
         if self.supervised:
-            # Supervised loss
-            clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
-                qy_logits, labels.type(torch.int64)
-            )
+            if self.n_gaussians < 10:
+                # Supervised loss
+                clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
+                    qy_logits, labels.type(torch.int64)
+                )
+            else:
+                # Supervised loss
+                clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
+                    qy_logits, combined.type(torch.float32)
+                )
             metric_loss = 0
 
         # Total loss
