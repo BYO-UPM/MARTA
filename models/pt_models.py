@@ -874,8 +874,16 @@ class GMVAE(torch.nn.Module):
         z_mu, z_logvar = torch.chunk(self.generative_pz_y(y), 2, dim=1)
         z_var = torch.nn.functional.softplus(z_logvar)
 
-        # p(x | z)
-        x_rec = self.generative_px_z(z)
+        # Convert y to Z shape
+        if self.cnn:
+            y_hat = torch.nn.Linear(self.k, z.shape[1]).to(self.device)(y)
+            z_hat = z + y_hat
+        else:
+            y_hat = torch.nn.Linear(self.k, z.shape[1]).to(self.device)(y)
+            z_hat = z + y_hat
+
+        # p(x | z, y)
+        x_rec = self.generative_px_z(z_hat)
 
         return x_rec, z_mu, z_var
 
