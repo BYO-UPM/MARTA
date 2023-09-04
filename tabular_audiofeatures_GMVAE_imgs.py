@@ -93,7 +93,7 @@ def main(args):
 
         model = torch.compile(model)
 
-        print("Training VAE...")
+        print("Training GMVAE...")
         # Train the model
         GMVAE_trainer(
             model=model,
@@ -119,7 +119,7 @@ def main(args):
             audio_features = "plps"
         elif hyperparams["n_mfccs"] > 0:
             audio_features = "mfccs"
-        print("Testing VAE...")
+        print("Testing GMVAE...")
 
         # Test the model  #TODO: supervised version is not yet implemented for testing
         GMVAE_tester(

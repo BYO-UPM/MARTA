@@ -222,6 +222,11 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             # Calculate the power to db for each frame
             data["spectrogram"] = data["spectrogram"].apply(lambda x: power_to_db(x))
 
+            # Normalise each spectrogram by substraction the mean and dividing by the standard deviation
+            data["spectrogram"] = data["spectrogram"].apply(
+                lambda x: (x - x.mean()) / x.std()
+            )
+
         return data
 
     def get_dataloaders(self, fold=0):

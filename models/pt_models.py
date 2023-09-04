@@ -764,7 +764,6 @@ class GMVAE(torch.nn.Module):
                     kernel_size=[3, 6],
                     padding=[4, 0],
                 ),
-                torch.nn.Sigmoid(),
             ).to(self.device)
         else:
             self.generative_px_z = torch.nn.Sequential(
@@ -890,12 +889,7 @@ class GMVAE(torch.nn.Module):
         x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z = self.forward(x)
 
         # reconstruction loss
-        if self.cnn:
-            rec_loss = torch.nn.functional.binary_cross_entropy(
-                x_rec, x, reduction="sum"
-            )
-        else:
-            rec_loss = torch.nn.functional.mse_loss(x_rec, x, reduction="sum")
+        rec_loss = torch.nn.functional.mse_loss(x_rec, x, reduction="sum")
 
         # Gaussian loss = KL divergence between q(z|x,y) and p(z|y)
         gaussian_loss = torch.sum(
