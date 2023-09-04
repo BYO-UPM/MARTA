@@ -255,16 +255,32 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         x_train = np.expand_dims(x_train, axis=1)
         y_train = train_data["label"].values
         z_train = train_data["vowel"].values
+        mapping = {
+            (0, 0): 0,
+            (0, 1): 1,
+            (0, 2): 2,
+            (0, 3): 3,
+            (0, 4): 4,
+            (1, 0): 5,
+            (1, 1): 6,
+            (1, 2): 7,
+            (1, 3): 8,
+            (1, 4): 9,
+        }
+        # Use the mapping dictionary to generate w_train
+        w_train = np.array([mapping[(y, z)] for y, z in zip(y_train, z_train)])
 
         x_val = np.stack(val_data[audio_features])
         x_val = np.expand_dims(x_val, axis=1)
         y_val = val_data["label"].values
         z_val = val_data["vowel"].values
+        w_val = np.array([mapping[(y, z)] for y, z in zip(y_val, z_val)])
 
         x_test = np.stack(test_data[audio_features])
         x_test = np.expand_dims(x_test, axis=1)
         y_test = test_data["label"].values
         z_test = test_data["vowel"].values
+        w_test = np.array([mapping[(y, z)] for y, z in zip(y_test, z_test)])
 
         # Normalise the spectrograms which are 2D using standard scaler
         std = StandardScaler()
