@@ -311,6 +311,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_train,
                     y_train,
                     z_train,
+                    w_train,
                 )
             ),
             drop_last=False,
@@ -323,6 +324,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_val,
                     y_val,
                     z_val,
+                    w_val,
                 )
             ),
             drop_last=False,
@@ -335,6 +337,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_test,
                     y_test,
                     z_test,
+                    w_test,
                 )
             ),
             drop_last=False,

@@ -678,50 +678,54 @@ class GMVAE(torch.nn.Module):
         self.num_labeled = 0
         self.ss_mask = None
         self.supervised = supervised
+        self.hidden_dims = hidden_dims
 
-        # ===== Inference =====
-        # Deterministic x_hat = g(x)
-        self.inference_gx = torch.nn.Sequential(
-            torch.nn.Linear(self.x_dim, hidden_dims[0]),
-            torch.nn.ReLU(),
-        ).to(self.device)
+        # Inference
+        self.inference_networks()
 
-        # q(y | x_hat)
-        self.inference_qy_x = torch.nn.Sequential(
-            torch.nn.Linear(hidden_dims[0], self.k),
-        ).to(self.device)
-
-        # q(z | x_hat, y)
-        self.inference_qz_xy = torch.nn.Sequential(
-            torch.nn.Linear(hidden_dims[0] + self.k, hidden_dims[1]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[1], hidden_dims[2]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[2], self.z_dim * 2),
-        ).to(self.device)
-
-        # ===== Generative =====
-        # p(x | z)
-        self.generative_px_z = torch.nn.Sequential(
-            torch.nn.Linear(self.z_dim, hidden_dims[0]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[0], hidden_dims[1]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[1], hidden_dims[2]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[2], self.x_dim),
-        ).to(self.device)
-
-        # p(z | y)
-        self.generative_pz_y = torch.nn.Sequential(
-            torch.nn.Linear(self.k, hidden_dims[1]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dims[1], self.z_dim * 2),
-        ).to(self.device)
+        # Generative
+        self.generative_networks()
 
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
 
         self.to(self.device)
+
+    def inference_networks(self):
+        # ===== Inference =====
+        # Deterministic x_hat = g(x)
+        self.inference_gx = torch.nn.Sequential(
+            torch.nn.Linear(self.x_dim, self.hidden_dims[0]),
+        ).to(self.device)
+
+        # q(y | x_hat)
+        self.inference_qy_x = torch.nn.Sequential(
+            torch.nn.Linear(self.hidden_dims[0], self.k),
+        ).to(self.device)
+
+        # q(z | x_hat, y)
+        self.inference_qz_xy = torch.nn.Sequential(
+            torch.nn.Linear(self.hidden_dims[0] + self.k, self.hidden_dims[1]),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self.hidden_dims[1], self.hidden_dims[1]),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self.hidden_dims[1], self.z_dim * 2),
+        ).to(self.device)
+
+    def generative_networks(self):
+        # ===== Generative =====
+        # p(x | z)
+        self.generative_px_z = torch.nn.Sequential(
+            torch.nn.Linear(self.z_dim, self.hidden_dims[0]),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self.hidden_dims[0], self.hidden_dims[1]),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self.hidden_dims[1], self.x_dim),
+        ).to(self.device)
+
+        # p(z | y)
+        self.generative_pz_y = torch.nn.Sequential(
+            torch.nn.Linear(self.k, self.z_dim * 2),
+        ).to(self.device)
 
     def bincount_matrix(self, x, num_classes):
         x = x.int()
