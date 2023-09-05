@@ -682,6 +682,7 @@ class GMVAE(torch.nn.Module):
         self.supervised = supervised
         self.hidden_dims = hidden_dims
         self.cnn = cnn
+        self.usage = torch.zeros(self.y_dim)
 
         # Inference
         self.inference_networks(cnn=cnn)

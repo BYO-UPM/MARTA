@@ -1260,9 +1260,23 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                         "valid/Metric Loss": val_metric_loss / len(validloader.dataset),
                         "valid/UAcc": acc,
                         "valid/NMI": nmi_score,
+                        "train/Categorical usage": model.usage
+                        / len(trainloader.dataset),
                     }
                 )
-
+            if validloader is not None:
+                wandb.log(
+                    {
+                        "valid/Epoch": e,
+                        "valid/Loss": valid_loss / len(validloader.dataset),
+                        "valid/Rec Loss": val_rec_loss / len(validloader.dataset),
+                        "valid/Gaussian Loss": val_gaussian_loss
+                        / len(validloader.dataset),
+                        "valid/Clf Loss": val_clf_loss / len(validloader.dataset),
+                        "valid/Categorical usage": model.usage
+                        / len(validloader.dataset),
+                    }
+                )
         # Store best model
         # If the validation loss is the best, save the model
         if valid_loss_store[-1] <= min(valid_loss_store):
