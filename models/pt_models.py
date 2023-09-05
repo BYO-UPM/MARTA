@@ -863,7 +863,7 @@ class GMVAE(torch.nn.Module):
 
         z = self.reparametrize(qz_mu, qz_logvar)
 
-        return z, qy_logits, qy, qz_mu, qz_logvar
+        return z, qy_logits, qy, qz_mu, qz_logvar, x_hat
 
     def log_normal(self, x, mu, var):
         return -0.5 * (
@@ -889,13 +889,13 @@ class GMVAE(torch.nn.Module):
         return x_rec, z_mu, z_var
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z, qy_logits, qy, qz_mu, qz_logvar = self.infere(x)
+        z, qy_logits, qy, qz_mu, qz_logvar, x_hat = self.infere(x)
         x_rec, z_mu, z_var = self.generate(z, qy)
 
-        return x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z
+        return x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z, x_hat
 
     def loss(self, x: torch.Tensor, labels=None, combined=None, e=0) -> torch.Tensor:
-        x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z = self.forward(x)
+        x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z, x_hat = self.forward(x)
 
         # reconstruction loss
         rec_loss = torch.nn.functional.mse_loss(x_rec, x, reduction="sum")
@@ -916,8 +916,6 @@ class GMVAE(torch.nn.Module):
         cat_loss = torch.sum(cat_loss)
 
         if self.ss:
-            import pytorch_metric_learning
-
             # Semi-supervised loss
             # Assign labels to unlabeled data based on the k-nearest-neighbors
             labels = self.assign_labels_semisupervised(
@@ -941,7 +939,7 @@ class GMVAE(torch.nn.Module):
 
         # Metric embedding loss: lifted structured loss
         lifted_loss = LiftedStructureLoss(pos_margin=0, neg_margin=1)
-        metric_loss = lifted_loss(z, labels)
+        metric_loss = lifted_loss(x_hat, labels)
 
         # Schelude the weights of the model
         if e <= 10:
@@ -956,6 +954,10 @@ class GMVAE(torch.nn.Module):
             w1 = 1
             w2 = 2
             w3 = 2
+        if e > 30:
+            w1 = 1
+            w2 = 3
+            w3 = 3
 
         # Total loss
         total_loss = (

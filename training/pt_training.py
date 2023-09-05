@@ -1178,6 +1178,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     "train/Gaussian Loss": gaussian_loss / len(trainloader.dataset),
                     "train/Cat Loss": cat_loss / len(trainloader.dataset),
                     "train/Clf Loss": clf_loss / len(trainloader.dataset),
+                    "train/Metric Loss": metric_loss / len(trainloader.dataset),
                     "train/UAcc": acc,
                     "train/NMI": nmi_score,
                 }
@@ -1256,6 +1257,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                         / len(validloader.dataset),
                         "valid/Cat Loss": val_cat_loss / len(validloader.dataset),
                         "valid/Clf Loss": val_clf_loss / len(validloader.dataset),
+                        "valid/Metric Loss": val_metric_loss / len(validloader.dataset),
                         "valid/UAcc": acc,
                         "valid/NMI": nmi_score,
                     }
@@ -1273,7 +1275,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             # check if the folder exists if not create it
             if not os.path.exists(name):
                 os.makedirs(name)
-            name += "GMVAE_cnn_best_model.pt"
+            name += "GMVAE_cnn_best_model_unsupervised.pt"
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
@@ -1627,10 +1629,13 @@ def GMVAE_tester(
         y_hat_array = np.zeros((batch_size, 1))
         z_array = np.zeros((batch_size, 1))
         y_array = np.zeros((batch_size, 1))
+
         # Create x_array of shape Batch x Output shape
-        x_array = np.zeros(
-            (batch_size, test_data[audio_features].iloc[0].shape[0])
-        )  # 32 is the batch size
+        if audio_features == "spectrogram":
+            x_array = np.zeros((batch_size, 1, 65, 41))
+        else:
+            x_array = np.zeros((batch_size, test_data[audio_features].iloc[0].shape[0]))
+
         x_hat_array = np.zeros(x_array.shape)
         with tqdm(testloader, unit="batch") as tepoch:
             for x, y, z, c in tepoch:
@@ -1671,7 +1676,7 @@ def GMVAE_tester(
                             )
                         )
                 else:
-                    x_hat, _, _, _, _, _, _, _ = model.forward(x)
+                    x_hat, _, _, _, _, _, _, _, _ = model.forward(x)
 
                 # Concatenate predictions
                 x_hat_array = np.concatenate(

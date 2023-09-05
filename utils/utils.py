@@ -103,22 +103,30 @@ def plot_latent_space_vowels(
     supervised=False,
     vqvae=False,
     gmvae=False,
+    audio_features="plps",
 ):
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
         if vqvae:
             latent_mu = model.encoder(
-                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+                torch.Tensor(np.vstack(data[audio_features])).to(model.device)
             )
             latent_code, vq_loss, enc_idx = model.vq(latent_mu)
         elif gmvae:
-            _, _, _, latent_mu, latent_sigma = model.infere(
-                torch.Tensor(np.vstack(data["plps"])).to(model.device)
-            )
+            if audio_features == "spectrogram":
+                _, _, _, latent_mu, latent_sigma, _ = model.infere(
+                    torch.Tensor(np.expand_dims(np.vstack(data[audio_features]), 1)).to(
+                        model.device
+                    )
+                )
+            else:
+                _, _, _, latent_mu, latent_sigma, _ = model.infere(
+                    torch.Tensor(np.vstack(data[audio_features])).to(model.device)
+                )
         else:
             latent_mu, latent_sigma = model.encoder(
-                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+                torch.Tensor(np.vstack(data[audio_features])).to(model.device)
             )
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
@@ -520,7 +528,14 @@ def plot_latent_space_vowels_3D(
 
 
 def calculate_distances(
-    model, data, fold, wandb_flag, name="default", vqvae=False, gmvae=False
+    model,
+    data,
+    fold,
+    wandb_flag,
+    name="default",
+    vqvae=False,
+    gmvae=False,
+    audio_features="plps",
 ):
     print("Calculating distances...")
     # Import KDE
@@ -533,16 +548,23 @@ def calculate_distances(
     with torch.no_grad():
         if vqvae:
             latent_mu = model.encoder(
-                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+                torch.Tensor(np.vstack(data[audio_features])).to(model.device)
             )
             latent_code, vq_loss, enc_idx = model.vq(latent_mu)
         elif gmvae:
-            _, _, _, latent_mu, latent_sigma = model.infere(
-                torch.Tensor(np.vstack(data["plps"])).to(model.device)
-            )
+            if audio_features == "spectrogram":
+                _, _, _, latent_mu, latent_sigma, _ = model.infere(
+                    torch.Tensor(np.expand_dims(np.vstack(data[audio_features]), 1)).to(
+                        model.device
+                    )
+                )
+            else:
+                _, _, _, latent_mu, latent_sigma, _ = model.infere(
+                    torch.Tensor(np.vstack(data[audio_features])).to(model.device)
+                )
         else:
             latent_mu, latent_sigma = model.encoder(
-                torch.Tensor(np.vstack(data["plps"])).to(model.device)
+                torch.Tensor(np.vstack(data[audio_features])).to(model.device)
             )
 
     latent_mu = latent_mu.detach().cpu().numpy()

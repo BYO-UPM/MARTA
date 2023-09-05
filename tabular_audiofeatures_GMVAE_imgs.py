@@ -23,8 +23,8 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": False,
-        "epochs": 1,
+        "wandb_flag": True,
+        "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 2,
@@ -44,14 +44,14 @@ def main(args):
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_PLPs_GMVAE_" + hyperparams["material"]
+            gname = "rasta_SPECTROGRAMS_GMVAE_" + hyperparams["material"]
             if hyperparams["n_gaussians"] > 0:
                 if hyperparams["n_gaussians"] == 2:
                     gname += "_naive_PD"
                 elif hyperparams["n_gaussians"] == 5:
                     gname += "_supervised_vowels"
                 elif hyperparams["n_gaussians"] == 10:
-                    gname += "_unsupervised_10Gaussians_x_and_y_sameshape_in_inference"
+                    gname += "_unsupervised_10Gaussians"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -86,7 +86,7 @@ def main(args):
                 1,  # w2 is gaussian kl loss,
                 1,  # w3 is categorical kl loss,
                 1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-                10,  # w5 is metric loss
+                0,  # w5 is metric loss
             ],
             cnn=hyperparams["spectrogram"],
         )
@@ -111,7 +111,7 @@ def main(args):
         if hyperparams["supervised"]:
             name = "local_results/plps/vae_supervised/GMVAE_cnn_best_model.pt"
         else:
-            name = "local_results/plps/vae_unsupervised/GMVAE_cnn_best_model.pt"
+            name = "local_results/plps/vae_unsupervised/GMVAE_cnn_best_model_unsupervised.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -134,8 +134,8 @@ def main(args):
         )
 
         # Create an empty pd dataframe with two columns: data and label
-        df = pd.DataFrame(columns=["plps", "label", "vowel"])
-        df["plps"] = [t[0] for t in test_loader.dataset]
+        df = pd.DataFrame(columns=[audio_features, "label", "vowel"])
+        df[audio_features] = [t[0] for t in test_loader.dataset]
         df["label"] = [t[1] for t in test_loader.dataset]
         df["vowel"] = [t[2] for t in test_loader.dataset]
 
@@ -158,9 +158,16 @@ def main(args):
                 name="test",
                 supervised=hyperparams["supervised"],
                 gmvae=True,
+                audio_features=audio_features,
             )
             calculate_distances(
-                model, df, fold, hyperparams["wandb_flag"], name="test", gmvae=True
+                model,
+                df,
+                fold,
+                hyperparams["wandb_flag"],
+                name="test",
+                gmvae=True,
+                audio_features=audio_features,
             )
 
         # df = pd.DataFrame(columns=["plps", "label", "vowel"])
