@@ -694,9 +694,9 @@ class GMVAE(torch.nn.Module):
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
 
         # ===== Loss =====
-        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
-        self.mse_loss = torch.nn.MSELoss()
-        self.lifted_struct_loss = LiftedStructureLoss()
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss(reduction="sum")
+        self.mse_loss = torch.nn.MSELoss(reduction="sum")
+        self.lifted_struct_loss = LiftedStructureLoss(pos_margin=0, neg_margin=1)
 
         self.to(self.device)
 
@@ -765,6 +765,11 @@ class GMVAE(torch.nn.Module):
 
     def generative_networks(self, cnn=False):
         # ===== Generative =====
+        # p(z | y)
+        self.generative_pz_y = torch.nn.Sequential(
+            torch.nn.Linear(self.k, self.z_dim * 2),
+        ).to(self.device)
+
         # p(x | z)
         if cnn:
             self.generative_px_z = torch.nn.Sequential(
@@ -797,11 +802,6 @@ class GMVAE(torch.nn.Module):
                 torch.nn.ReLU(),
                 torch.nn.Linear(self.hidden_dims[1], self.x_dim),
             ).to(self.device)
-
-        # p(z | y)
-        self.generative_pz_y = torch.nn.Sequential(
-            torch.nn.Linear(self.k, self.z_dim * 2),
-        ).to(self.device)
 
     def reparametrize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         std = torch.exp(0.5 * logvar)
@@ -839,14 +839,6 @@ class GMVAE(torch.nn.Module):
         z_mu, z_logvar = torch.chunk(self.generative_pz_y(y), 2, dim=1)
         z_var = torch.nn.functional.softplus(z_logvar)
 
-        # # Convert y to Z shape
-        # if self.cnn:
-        #     y_hat = torch.nn.Linear(self.k, z.shape[1]).to(self.device)(y)
-        #     z_hat = z + y_hat
-        # else:
-        #     y_hat = torch.nn.Linear(self.k, z.shape[1]).to(self.device)(y)
-        #     z_hat = z + y_hat
-
         # p(x | z)
         x_rec = self.generative_px_z(z)
 
@@ -862,7 +854,7 @@ class GMVAE(torch.nn.Module):
         x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z, x_hat = self.forward(x)
 
         # reconstruction loss
-        rec_loss = torch.nn.functional.mse_loss(x_rec, x, reduction="sum")
+        rec_loss = self.mse_loss(x_rec, x)
 
         # Gaussian loss = KL divergence between q(z|x,y) and p(z|y)
         gaussian_loss = torch.sum(
@@ -879,16 +871,6 @@ class GMVAE(torch.nn.Module):
         cat_loss = torch.sum(qy * (log_q - log_p), dim=-1)
         cat_loss = torch.sum(cat_loss)
 
-        if self.ss:
-            # Semi-supervised loss
-            # Assign labels to unlabeled data based on the k-nearest-neighbors
-            labels = self.assign_labels_semisupervised(
-                z, labels, batch_size=x.shape[0], num_classes=self.k, knn=10
-            )
-            # Cross entropy loss
-            clf_loss = torch.nn.functional.cross_entropy(qy_logits, labels)
-        else:
-            clf_loss = 0
         if self.supervised:
             if self.n_gaussians < 10:
                 # Supervised loss
@@ -904,8 +886,7 @@ class GMVAE(torch.nn.Module):
             clf_loss = 0
 
         # Metric embedding loss: lifted structured loss
-        lifted_loss = LiftedStructureLoss(pos_margin=0, neg_margin=1)
-        metric_loss = lifted_loss(x_hat, labels)
+        metric_loss = self.lifted_struct_loss(x_hat, labels)
 
         # if e <= 20:
         #     w1, w2, w3, w4, w5 = 1, 0.1, 0.1, 0.1, 0.1

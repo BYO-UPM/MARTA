@@ -741,7 +741,7 @@ def plot_gaussians_generative(model, qy, latent_mu, wandb_flag, name, fold, save
     z_mu, z_logvar = torch.chunk(model.generative_pz_y(py), 2, dim=1)
     z_var = torch.nn.functional.softplus(z_logvar)
 
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(20, 20))
     for i in range(model.k):
         mu = z_mu[i].cpu().detach().numpy()
         var = z_var[i].cpu().detach().numpy()
