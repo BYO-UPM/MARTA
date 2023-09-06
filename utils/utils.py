@@ -735,8 +735,10 @@ def nmi(Y_pred, Y):
 
 
 def plot_gaussians_generative(model, qy, latent_mu, wandb_flag, name, fold, savepath):
-    # Be qy py, use the generative to sample from the latent space
-    z_mu, z_logvar = torch.chunk(model.generative_pz_y(qy), 2, dim=1)
+    # p(y) = Cat(10)
+    py = torch.eye(model.k).to(model.device)
+    # Sample from generative model
+    z_mu, z_logvar = torch.chunk(model.generative_pz_y(py), 2, dim=1)
     z_var = torch.nn.functional.softplus(z_logvar)
 
     fig, ax = plt.subplots(figsize=(10, 10))

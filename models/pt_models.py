@@ -700,6 +700,17 @@ class GMVAE(torch.nn.Module):
 
         self.to(self.device)
 
+        # weight initialization
+        for m in self.modules():
+            if (
+                type(m) == torch.nn.Linear
+                or type(m) == torch.nn.Conv2d
+                or type(m) == torch.nn.ConvTranspose2d
+            ):
+                torch.nn.init.xavier_normal_(m.weight)
+                if m.bias.data is not None:
+                    torch.nn.init.constant_(m.bias, 0)
+
     def inference_networks(self, cnn=False):
         # ===== Inference =====
         # Deterministic x_hat = g(x)
@@ -730,12 +741,17 @@ class GMVAE(torch.nn.Module):
         # q(y | x_hat)
         if cnn:
             self.inference_qy_x = torch.nn.Sequential(
-                torch.nn.Linear(self.x_hat_shape[1], self.k),
+                torch.nn.Linear(self.x_hat_shape[1], self.hidden_dims[1]),
             ).to(self.device)
         else:
             self.inference_qy_x = torch.nn.Sequential(
-                torch.nn.Linear(self.hidden_dims[2], self.k),
+                torch.nn.Linear(self.hidden_dims[2], self.hidden_dims[1]),
             ).to(self.device)
+
+        # Gumbel softmax
+        self.gumbel_softmax = torch.nn.Sequential(
+            GumbelSoftmax(self.hidden_dims[1], self.k)
+        )
 
         # q(z | x_hat, y)
         if cnn:
@@ -787,63 +803,6 @@ class GMVAE(torch.nn.Module):
             torch.nn.Linear(self.k, self.z_dim * 2),
         ).to(self.device)
 
-    def bincount_matrix(self, x, num_classes):
-        x = x.int()
-        max_x_plus_1 = num_classes
-        ids = x + max_x_plus_1 * torch.arange(x.shape[0]).unsqueeze(1).to(self.device)
-        flattened_ids = ids.view(-1)
-        out = torch.bincount(flattened_ids, minlength=max_x_plus_1 * x.shape[0])
-        out = out.view(-1, num_classes)
-        return out
-
-    def assign_labels_semisupervised(
-        self, features, labels, batch_size, num_classes, knn
-    ):
-        """Assign labels to unlabeled data based on the k-nearest-neighbors.
-
-        Code adapted from https://github.com/jariasf/semisupervised-vae-metric-embedding/blob/master/utils/assignment.py
-
-        Args:
-            features: (array) corresponding array containing the features of the input data
-            labels: (array) corresponding array containing the labels of the labeled data
-            batch_size: (int) training batch size
-            num_classes: (int) number fo classification classes
-            knn: (int) number of k-nearest neighbors to use
-
-        Returns:
-            output: (array) corresponding array containing the labels assigned to all the data
-        """
-        num_classes = torch.Tensor([num_classes]).type(torch.int64).to(self.device)
-        self.ss_mask = torch.ones(labels.shape).to(self.device)
-        self.ss_mask[-int(self.ss_mask.shape[0] * 0.1) :] = 0
-        self.num_labeled = int(torch.sum(self.ss_mask))
-
-        # Make dot product between all features and then get only the daigonal.
-        dot_product = torch.mm(features, features.t())
-        square_norm = torch.diag(dot_product)
-        # compute pairwise distance matrix
-        distances = (
-            square_norm.unsqueeze(1) - 2.0 * dot_product + square_norm.unsqueeze(0)
-        )
-        # Clamp it to 0 in case of numerical error
-        distances = torch.clamp(distances, min=0.0)
-        # Get the mask of the labeled data and the unlabeled data
-        distances = distances[
-            : batch_size - self.num_labeled, batch_size - self.num_labeled :
-        ]
-        neg_distances = -distances
-        # Get the top K nearest neighbors
-        _, idx = torch.topk(neg_distances, knn, dim=1)
-        # Get the labels of the nearest neighbors
-        knn_labels = labels[idx].type(torch.int64)
-        # count repeated labels and get the most common one
-        assignment = torch.argmax(
-            torch.bincount(knn_labels.view(-1), minlength=num_classes), dim=0
-        )
-        # Concatenate the assignment with the labels of the labeled data
-        output_labels = torch.cat([labels[: self.num_labeled], assignment])
-        return output_labels
-
     def reparametrize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
@@ -854,9 +813,7 @@ class GMVAE(torch.nn.Module):
         x_hat = self.inference_gx(x)
 
         # q(y | x)
-        qy_logits = self.inference_qy_x(x_hat)
-        # gumbel softmax (if hard=True, it becomes one-hot vector, otherwise soft)
-        qy = torch.nn.functional.gumbel_softmax(qy_logits, tau=1.0, hard=True)
+        qy_logits, probs, qy = self.gumbel_softmax(self.inference_qy_x(x_hat))
 
         # q(z | x, y)
         # Transform Y in the same shape as X
@@ -873,8 +830,8 @@ class GMVAE(torch.nn.Module):
         return z, qy_logits, qy, qz_mu, qz_logvar, x_hat
 
     def log_normal(self, x, mu, var):
-        return -0.5 * (
-            torch.log(var) + torch.log(2 * torch.tensor(torch.pi)) + (x - mu) ** 2 / var
+        return -0.5 * torch.sum(
+            np.log(2.0 * np.pi) + torch.log(var) + torch.pow(x - mu, 2) / var, dim=-1
         )
 
     def generate(self, z, y) -> torch.Tensor:
@@ -882,16 +839,16 @@ class GMVAE(torch.nn.Module):
         z_mu, z_logvar = torch.chunk(self.generative_pz_y(y), 2, dim=1)
         z_var = torch.nn.functional.softplus(z_logvar)
 
-        # Convert y to Z shape
-        if self.cnn:
-            y_hat = torch.nn.Linear(self.k, z.shape[1]).to(self.device)(y)
-            z_hat = z + y_hat
-        else:
-            y_hat = torch.nn.Linear(self.k, z.shape[1]).to(self.device)(y)
-            z_hat = z + y_hat
+        # # Convert y to Z shape
+        # if self.cnn:
+        #     y_hat = torch.nn.Linear(self.k, z.shape[1]).to(self.device)(y)
+        #     z_hat = z + y_hat
+        # else:
+        #     y_hat = torch.nn.Linear(self.k, z.shape[1]).to(self.device)(y)
+        #     z_hat = z + y_hat
 
-        # p(x | z, y)
-        x_rec = self.generative_px_z(z_hat)
+        # p(x | z)
+        x_rec = self.generative_px_z(z)
 
         return x_rec, z_mu, z_var
 
@@ -976,3 +933,49 @@ class GMVAE(torch.nn.Module):
             x_rec,
             qy,
         )
+
+
+# Borrowed from https://github.com/jariasf/GMVAE/blob/master/pytorch/networks/Layers.py
+class GumbelSoftmax(torch.nn.Module):
+    def __init__(self, f_dim, c_dim):
+        super(GumbelSoftmax, self).__init__()
+        self.logits = torch.nn.Linear(f_dim, c_dim)
+        self.f_dim = f_dim
+        self.c_dim = c_dim
+
+    def sample_gumbel(self, shape, is_cuda=False, eps=1e-20):
+        U = torch.rand(shape)
+        if is_cuda:
+            U = U.cuda()
+        return -torch.log(-torch.log(U + eps) + eps)
+
+    def gumbel_softmax_sample(self, logits, temperature):
+        y = logits + self.sample_gumbel(logits.size(), logits.is_cuda)
+        return torch.nn.functional.softmax(y / temperature, dim=-1)
+
+    def gumbel_softmax(self, logits, temperature, hard=False):
+        """
+        ST-gumple-softmax
+        input: [*, n_class]
+        return: flatten --> [*, n_class] an one-hot vector
+        """
+        # categorical_dim = 10
+        y = self.gumbel_softmax_sample(logits, temperature)
+
+        if not hard:
+            return y
+
+        shape = y.size()
+        _, ind = y.max(dim=-1)
+        y_hard = torch.zeros_like(y).view(-1, shape[-1])
+        y_hard.scatter_(1, ind.view(-1, 1), 1)
+        y_hard = y_hard.view(*shape)
+        # Set gradients w.r.t. y_hard gradients w.r.t. y
+        y_hard = (y_hard - y).detach() + y
+        return y_hard
+
+    def forward(self, x, temperature=1.0, hard=False):
+        logits = self.logits(x).view(-1, self.c_dim)
+        prob = torch.nn.functional.softmax(logits, dim=-1)
+        y = self.gumbel_softmax(logits, temperature, hard)
+        return logits, prob, y
