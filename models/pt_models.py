@@ -1,5 +1,6 @@
 import torch
 import timm
+import numpy as np
 import copy
 from pytorch_metric_learning.losses import LiftedStructureLoss
 
@@ -682,7 +683,7 @@ class GMVAE(torch.nn.Module):
         self.supervised = supervised
         self.hidden_dims = hidden_dims
         self.cnn = cnn
-        self.usage = torch.zeros(self.y_dim)
+        self.usage = np.zeros(self.k)
 
         # Inference
         self.inference_networks(cnn=cnn)
@@ -691,6 +692,11 @@ class GMVAE(torch.nn.Module):
         self.generative_networks(cnn=cnn)
 
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
+
+        # ===== Loss =====
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+        self.mse_loss = torch.nn.MSELoss()
+        self.lifted_struct_loss = LiftedStructureLoss()
 
         self.to(self.device)
 
@@ -937,40 +943,27 @@ class GMVAE(torch.nn.Module):
                 clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
                     qy_logits, combined.type(torch.float32)
                 )
+        else:
+            clf_loss = 0
 
         # Metric embedding loss: lifted structured loss
         lifted_loss = LiftedStructureLoss(pos_margin=0, neg_margin=1)
         metric_loss = lifted_loss(x_hat, labels)
 
-        # Schelude the weights of the model
-        if e <= 10:
-            w1 = 1
-            w2 = 0.1
-            w3 = 0.1
-        if e > 10:
-            w1 = 1
-            w2 = 1
-            w3 = 1
-        if e > 20:
-            w1 = 1
-            w2 = 2
-            w3 = 2
-        if e > 30:
-            w1 = 1
-            w2 = 3
-            w3 = 3
+        # if e <= 20:
+        #     w1, w2, w3, w4, w5 = 1, 0.1, 0.1, 0.1, 0.1
+        # elif e > 20:
+        #     w1, w2, w3, w4, w5 = 1, 50, 50, 1, 100
+        w1, w2, w3, w4, w5 = self.w1, self.w2, self.w3, self.w4, self.w5
 
         # Total loss
         total_loss = (
             w1 * rec_loss
             + w2 * gaussian_loss
             + w3 * cat_loss
-            + self.w4 * clf_loss
-            + self.w5 * metric_loss
+            + w4 * clf_loss
+            + w5 * metric_loss
         )
-
-        # obtain predictions
-        _, y_pred = torch.max(qy_logits, dim=-1)
 
         return (
             total_loss,
@@ -981,5 +974,5 @@ class GMVAE(torch.nn.Module):
             metric_loss,
             x,
             x_rec,
-            y_pred,
+            qy,
         )

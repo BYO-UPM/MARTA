@@ -115,7 +115,7 @@ def plot_latent_space_vowels(
             latent_code, vq_loss, enc_idx = model.vq(latent_mu)
         elif gmvae:
             if audio_features == "spectrogram":
-                _, _, _, latent_mu, latent_sigma, _ = model.infere(
+                z, _, qy, latent_mu, latent_sigma, _ = model.infere(
                     torch.Tensor(np.expand_dims(np.vstack(data[audio_features]), 1)).to(
                         model.device
                     )
@@ -170,39 +170,8 @@ def plot_latent_space_vowels(
         plt.show()
         plt.close()
 
-    # PLot latent space by vowels
-    fig, ax = plt.subplots(figsize=(20, 20))
-    unique_vowels = np.unique(vowels)
-    vowel_dict = {0: "a", 1: "e", 2: "i", 3: "o", 4: "u"}
-    colors = ["red", "blue", "green", "orange", "purple"]
-    for i in range(len(unique_vowels)):
-        idx = np.argwhere(vowels == unique_vowels[i]).ravel()
-        label = "Vowel " + vowel_dict[unique_vowels[i]]
-        # Get for each vowel, the label
-        idxH = np.argwhere(labels[idx] == 0).ravel()
-        idxPD = np.argwhere(labels[idx] == 1).ravel()
-        ax.scatter(
-            latent_mu[idxH, 0],
-            latent_mu[idxH, 1],
-            label=label,
-            marker="$H$",
-            c=colors[i],
-            alpha=0.5,
-        )
-        ax.scatter(
-            latent_mu[idxPD, 0],
-            latent_mu[idxPD, 1],
-            label=label,
-            marker="$P$",
-            alpha=0.5,
-            c=colors[i],
-        )
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
-    ax.legend()
     if gmvae:
-        savepath = "local_results/plps/gmvae/"
+        savepath = "local_resuts/spectrograms/gmvae/"
     if supervised:
         savepath = "local_results/plps/vae_supervised/"
     if vqvae:
@@ -210,10 +179,29 @@ def plot_latent_space_vowels(
     if not supervised and not vqvae:
         savepath = "local_results/plps/vae_unsupervised/"
 
-    fig.savefig(savepath + f"latent_space_vowels_{fold}_{name}.png")
-    if wandb_flag:
-        wandb.log({str(name) + "/latent_space_vowels": wandb.Image(fig)})
-    plt.close(fig)
+    if gmvae:
+        plot_gaussians_generative(
+            model,
+            qy,
+            latent_mu,
+            wandb_flag,
+            name,
+            fold,
+            savepath=savepath,
+        )
+
+    # PLot latent space by vowels
+    plot_latent_space_by_vowels(
+        labels,
+        vowels,
+        latent_mu,
+        fold,
+        wandb_flag,
+        name,
+        xlabel,
+        ylabel,
+        savepath=savepath,
+    )
 
     # PLot latent space by vowels but inversing the legend
     fig, ax = plt.subplots(figsize=(20, 20))
@@ -796,3 +784,111 @@ def nmi(Y_pred, Y):
     Y_pred, Y = np.array(Y_pred), np.array(Y)
     assert Y_pred.size == Y.size
     return normalized_mutual_info_score(Y_pred, Y, average_method="arithmetic")
+
+
+def plot_gaussians_generative(model, qy, latent_mu, wandb_flag, name, fold, savepath):
+    # Be qy py, use the generative to sample from the latent space
+    z_mu, z_logvar = torch.chunk(model.generative_pz_y(qy), 2, dim=1)
+    z_var = torch.nn.functional.softplus(z_logvar)
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    for i in range(model.k):
+        mu = z_mu[i].cpu().detach().numpy()
+        var = z_var[i].cpu().detach().numpy()
+        cov = np.diag(var)
+
+        x = np.linspace(
+            np.min(latent_mu[:, 0]),
+            np.max(latent_mu[:, 0]),
+        )
+        y = np.linspace(
+            np.min(latent_mu[:, 1]),
+            np.max(latent_mu[:, 1]),
+        )
+        X, Y = np.meshgrid(x, y)
+
+        cov_det = np.linalg.det(cov)
+        cov_inv = np.linalg.inv(cov)
+
+        coe = 1 / (2 * np.pi * cov_det) ** (1 / 2)
+        w = coe * np.exp(
+            -0.5
+            * coe
+            * np.e
+            ** (
+                -0.5
+                * (
+                    cov_inv[0, 0] * (X - mu[0]) ** 2
+                    + (cov_inv[0, 1] + cov_inv[1, 0]) * (X - mu[0]) * (Y - mu[1])
+                    + cov_inv[1, 1] * (Y - mu[1]) ** 2
+                )
+            )
+        )
+        ax.contour(
+            X,
+            Y,
+            w,
+        )
+        # Use star as a marker
+        ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), alpha=0.5, marker="*")
+    ax.set_xlabel("Latent dim 1")
+    ax.set_ylabel("Latent dim 2")
+    ax.set_title(f"Gaussians in " + str(name))
+    ax.legend()
+    save_path = savepath + f"gaussians_generative_{fold}_{name}.png"
+    fig.savefig(
+        save_path,
+    )
+
+    if wandb_flag:
+        wandb.log({str(name) + "/gaussians_generative": wandb.Image(fig)})
+
+    plt.close()
+
+
+def plot_latent_space_by_vowels(
+    labels,
+    vowels,
+    latent_mu,
+    fold,
+    wandb_flag,
+    name,
+    xlabel,
+    ylabel,
+    savepath,
+):
+    fig, ax = plt.subplots(figsize=(20, 20))
+    unique_vowels = np.unique(vowels)
+    vowel_dict = {0: "a", 1: "e", 2: "i", 3: "o", 4: "u"}
+    colors = ["red", "blue", "green", "orange", "purple"]
+    for i in range(len(unique_vowels)):
+        idx = np.argwhere(vowels == unique_vowels[i]).ravel()
+        label = "Vowel " + vowel_dict[unique_vowels[i]]
+        # Get for each vowel, the label
+        idxH = np.argwhere(labels[idx] == 0).ravel()
+        idxPD = np.argwhere(labels[idx] == 1).ravel()
+        ax.scatter(
+            latent_mu[idxH, 0],
+            latent_mu[idxH, 1],
+            label=label,
+            marker="$H$",
+            c=colors[i],
+            alpha=0.5,
+        )
+        ax.scatter(
+            latent_mu[idxPD, 0],
+            latent_mu[idxPD, 1],
+            label=label,
+            marker="$P$",
+            alpha=0.5,
+            c=colors[i],
+        )
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
+    ax.legend()
+
+    fig.savefig(savepath + f"latent_space_vowels_{fold}_{name}.png")
+    if wandb_flag:
+        wandb.log({str(name) + "/latent_space_vowels": wandb.Image(fig)})
+    plt.close(fig)

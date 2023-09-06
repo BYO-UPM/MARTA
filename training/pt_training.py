@@ -1114,6 +1114,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         cat_loss = 0
         clf_loss = 0
         metric_loss = 0
+        usage = np.zeros(model.k)
 
         for batch_idx, (data, labels, vowels, combined) in enumerate(trainloader):
             # Make sure dtype is Tensor float
@@ -1144,9 +1145,10 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 clf_loss += clf_loss_b.item()
             cat_loss += cat_loss_b.item()
             metric_loss += metric_loss_b.item()
+            usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-            true_label_list.append(vowels.cpu().numpy())
-            pred_label_list.append(y_pred.cpu().numpy())
+            true_label_list.append(combined.cpu().numpy())
+            pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
         # Check reconstruction of X
         check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
@@ -1178,6 +1180,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     "train/Gaussian Loss": gaussian_loss / len(trainloader.dataset),
                     "train/Cat Loss": cat_loss / len(trainloader.dataset),
                     "train/Clf Loss": clf_loss / len(trainloader.dataset),
+                    "train/Categorical usage": usage / len(trainloader.dataset),
                     "train/Metric Loss": metric_loss / len(trainloader.dataset),
                     "train/UAcc": acc,
                     "train/NMI": nmi_score,
@@ -1192,6 +1195,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             val_clf_loss = 0
             val_cat_loss = 0
             val_metric_loss = 0
+            val_usage = 0
 
             true_label_list = []
             pred_label_list = []
@@ -1221,9 +1225,10 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     val_clf_loss += clf_loss_v.item()
                 val_cat_loss += cat_loss_v.item()
                 val_metric_loss += metric_loss_v.item()
+                val_usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-                true_label_list.append(labels.cpu().numpy())
-                pred_label_list.append(y_pred.cpu().numpy())
+                true_label_list.append(combined.cpu().numpy())
+                pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
             # Check reconstruction of X
             check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
@@ -1260,32 +1265,14 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                         "valid/Metric Loss": val_metric_loss / len(validloader.dataset),
                         "valid/UAcc": acc,
                         "valid/NMI": nmi_score,
-                        "train/Categorical usage": model.usage
-                        / len(trainloader.dataset),
-                    }
-                )
-            if validloader is not None:
-                wandb.log(
-                    {
-                        "valid/Epoch": e,
-                        "valid/Loss": valid_loss / len(validloader.dataset),
-                        "valid/Rec Loss": val_rec_loss / len(validloader.dataset),
-                        "valid/Gaussian Loss": val_gaussian_loss
-                        / len(validloader.dataset),
-                        "valid/Clf Loss": val_clf_loss / len(validloader.dataset),
-                        "valid/Categorical usage": model.usage
-                        / len(validloader.dataset),
+                        "valid/Categorical usage": usage / len(trainloader.dataset),
                     }
                 )
         # Store best model
         # If the validation loss is the best, save the model
         if valid_loss_store[-1] <= min(valid_loss_store):
             print("Storing the best model at epoch ", e)
-            name = "local_results/plps/"
-            if supervised:
-                name += "vae_supervised/"
-            else:
-                name += "vae_unsupervised/"
+            name = "local_results/spectrograms/gmvae/"
             # check if the folder exists if not create it
             if not os.path.exists(name):
                 os.makedirs(name)

@@ -44,14 +44,14 @@ def main(args):
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_SPECTROGRAMS_GMVAE_" + hyperparams["material"]
+            gname = "SPECTROGRAMS_GMVAE_" + hyperparams["material"]
             if hyperparams["n_gaussians"] > 0:
                 if hyperparams["n_gaussians"] == 2:
                     gname += "_naive_PD"
                 elif hyperparams["n_gaussians"] == 5:
                     gname += "_supervised_vowels"
                 elif hyperparams["n_gaussians"] == 10:
-                    gname += "_unsupervised_10Gaussians"
+                    gname += "_unsupervised"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -83,10 +83,10 @@ def main(args):
             supervised=hyperparams["supervised"],
             weights=[
                 1,  # w1 is rec loss,
-                1,  # w2 is gaussian kl loss,
-                1,  # w3 is categorical kl loss,
+                50,  # w2 is gaussian kl loss,
+                50,  # w3 is categorical kl loss,
                 1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-                0,  # w5 is metric loss
+                100,  # w5 is metric loss
             ],
             cnn=hyperparams["spectrogram"],
         )
@@ -109,9 +109,11 @@ def main(args):
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/plps/vae_supervised/GMVAE_cnn_best_model.pt"
+            name = "local_results/spectrograms/gmvae/GMVAE_cnn_best_model.pt"
         else:
-            name = "local_results/plps/vae_unsupervised/GMVAE_cnn_best_model_unsupervised.pt"
+            name = (
+                "local_results/spectrograms/gmvae/GMVAE_cnn_best_model_unsupervised.pt"
+            )
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
