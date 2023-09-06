@@ -180,7 +180,6 @@ def plot_latent_space_vowels(
     if gmvae:
         plot_gaussians_generative(
             model,
-            qy,
             latent_mu,
             wandb_flag,
             name,
@@ -217,6 +216,20 @@ def plot_latent_space_vowels(
     # Plot latent space by labels
     plot_latent_space_by_labels(
         labels, latent_mu, fold, wandb_flag, name, xlabel, ylabel, savepath
+    )
+
+    # Plot everything
+    plot_gaussians_generative_over_vowels(
+        labels,
+        vowels,
+        latent_mu,
+        fold,
+        wandb_flag,
+        name,
+        xlabel,
+        ylabel,
+        savepath,
+        model,
     )
 
 
@@ -734,7 +747,7 @@ def nmi(Y_pred, Y):
     return normalized_mutual_info_score(Y_pred, Y, average_method="arithmetic")
 
 
-def plot_gaussians_generative(model, qy, latent_mu, wandb_flag, name, fold, savepath):
+def plot_gaussians_generative(model, latent_mu, wandb_flag, name, fold, savepath):
     # p(y) = Cat(10)
     py = torch.eye(model.k).to(model.device)
     # Sample from generative model
@@ -848,8 +861,6 @@ def plot_latent_space_vowels_inverse(
     labels, vowels, latent_mu, fold, wandb_flag, name, xlabel, ylabel, savepath
 ):
     fig, ax = plt.subplots(figsize=(20, 20))
-    unique_vowels = np.unique(vowels)
-    vowel_dict = {0: "a", 1: "e", 2: "i", 3: "o", 4: "u"}
     colors = ["red", "blue"]
     for i in range(len(np.unique(labels))):
         idx = np.argwhere(labels == i).ravel()
@@ -916,3 +927,126 @@ def plot_latent_space_vowels_inverse(
     if wandb_flag:
         wandb.log({str(name) + "/latent_space_vowels_inverse": wandb.Image(fig)})
     plt.close(fig)
+
+
+def plot_gaussians_generative_over_vowels(
+    labels, vowels, latent_mu, fold, wandb_flag, name, xlabel, ylabel, savepath, model
+):
+    fig, ax = plt.subplots(figsize=(20, 20))
+    colors = ["red", "blue"]
+    for i in range(len(np.unique(labels))):
+        idx = np.argwhere(labels == i).ravel()
+        if i == 0:
+            label = "Healty"
+        else:
+            label = "PD"
+        # For each label, plot a scatter for each vowel
+        idxA = np.argwhere(vowels[idx] == 0).ravel()
+        idxE = np.argwhere(vowels[idx] == 1).ravel()
+        idxI = np.argwhere(vowels[idx] == 2).ravel()
+        idxO = np.argwhere(vowels[idx] == 3).ravel()
+        idxU = np.argwhere(vowels[idx] == 4).ravel()
+        ax.scatter(
+            latent_mu[idxA, 0],
+            latent_mu[idxA, 1],
+            label=label,
+            marker="$A$",
+            s=1000,
+            c=colors[i],
+        )
+        ax.scatter(
+            latent_mu[idxE, 0],
+            latent_mu[idxE, 1],
+            label=label,
+            marker="$E$",
+            s=800,
+            c=colors[i],
+            alpha=0.5,
+        )
+        ax.scatter(
+            latent_mu[idxI, 0],
+            latent_mu[idxI, 1],
+            label=label,
+            marker="$I$",
+            c=colors[i],
+            s=600,
+            alpha=0.5,
+        )
+        ax.scatter(
+            latent_mu[idxO, 0],
+            latent_mu[idxO, 1],
+            label=label,
+            marker="$O$",
+            s=400,
+            c=colors[i],
+            alpha=0.5,
+        )
+        ax.scatter(
+            latent_mu[idxU, 0],
+            latent_mu[idxU, 1],
+            label=label,
+            marker="$U$",
+            s=200,
+            c=colors[i],
+            alpha=0.5,
+        )
+
+    # p(y) = Cat(10)
+    py = torch.eye(model.k).to(model.device)
+    # Sample from generative model
+    z_mu, z_logvar = torch.chunk(model.generative_pz_y(py), 2, dim=1)
+    z_var = torch.nn.functional.softplus(z_logvar)
+
+    for i in range(model.k):
+        mu = z_mu[i].cpu().detach().numpy()
+        var = z_var[i].cpu().detach().numpy()
+        cov = np.diag(var)
+
+        x = np.linspace(
+            np.min(latent_mu[:, 0]),
+            np.max(latent_mu[:, 0]),
+        )
+        y = np.linspace(
+            np.min(latent_mu[:, 1]),
+            np.max(latent_mu[:, 1]),
+        )
+        X, Y = np.meshgrid(x, y)
+
+        cov_det = np.linalg.det(cov)
+        cov_inv = np.linalg.inv(cov)
+
+        coe = 1 / (2 * np.pi * cov_det) ** (1 / 2)
+        w = coe * np.exp(
+            -0.5
+            * coe
+            * np.e
+            ** (
+                -0.5
+                * (
+                    cov_inv[0, 0] * (X - mu[0]) ** 2
+                    + (cov_inv[0, 1] + cov_inv[1, 0]) * (X - mu[0]) * (Y - mu[1])
+                    + cov_inv[1, 1] * (Y - mu[1]) ** 2
+                )
+            )
+        )
+        ax.contour(
+            X,
+            Y,
+            w,
+        )
+        # Use star as a marker
+        ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), alpha=0.5, marker="*")
+    ax.set_xlabel("Latent dim 1")
+    ax.set_ylabel("Latent dim 2")
+    ax.set_title(f"Latent space with Gaussians distributions")
+    ax.legend()
+    save_path = savepath + f"gaussians_generative_and_test_vowels_{fold}_{name}.png"
+    fig.savefig(
+        save_path,
+    )
+    if wandb_flag:
+        wandb.log(
+            {str(name) + "/gaussians_generative_and_test_vowels_": wandb.Image(fig)}
+        )
+
+    plt.close()

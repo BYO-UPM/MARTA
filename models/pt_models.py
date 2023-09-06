@@ -886,7 +886,7 @@ class GMVAE(torch.nn.Module):
             clf_loss = 0
 
         # Metric embedding loss: lifted structured loss
-        metric_loss = self.lifted_struct_loss(x_hat, labels)
+        metric_loss = self.lifted_struct_loss(x_hat, combined)
 
         # if e <= 20:
         #     w1, w2, w3, w4, w5 = 1, 0.1, 0.1, 0.1, 0.1

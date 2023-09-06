@@ -51,7 +51,7 @@ def main(args):
                 elif hyperparams["n_gaussians"] == 5:
                     gname += "_supervised_vowels"
                 elif hyperparams["n_gaussians"] == 10:
-                    gname += "_unsupervised"
+                    gname += "_supervised_10labels"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
