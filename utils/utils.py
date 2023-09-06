@@ -115,17 +115,17 @@ def plot_latent_space_vowels(
             latent_code, vq_loss, enc_idx = model.vq(latent_mu)
         elif gmvae:
             if audio_features == "spectrogram":
-                z, _, qy, latent_mu, latent_sigma, _ = model.infere(
+                z, _, qy, latent_mu, latent_logvar, _ = model.infere(
                     torch.Tensor(np.expand_dims(np.vstack(data[audio_features]), 1)).to(
                         model.device
                     )
                 )
             else:
-                _, _, _, latent_mu, latent_sigma, _ = model.infere(
+                _, _, _, latent_mu, latent_logvar, _ = model.infere(
                     torch.Tensor(np.vstack(data[audio_features])).to(model.device)
                 )
         else:
-            latent_mu, latent_sigma = model.encoder(
+            latent_mu, latent_logvar = model.encoder(
                 torch.Tensor(np.vstack(data[audio_features])).to(model.device)
             )
 
