@@ -171,7 +171,7 @@ def plot_latent_space_vowels(
         plt.close()
 
     if gmvae:
-        savepath = "local_resuts/spectrograms/gmvae/"
+        savepath = "local_results/spectrograms/gmvae/"
     if supervised:
         savepath = "local_results/plps/vae_supervised/"
     if vqvae:
@@ -843,7 +843,7 @@ def plot_latent_space_by_vowels(
 
 
 def plot_latent_space_vowels_inverse(
-    vowels, labels, latent_mu, fold, wandb_flag, name, xlabel, ylabel, savepath
+    labels, vowels, latent_mu, fold, wandb_flag, name, xlabel, ylabel, savepath
 ):
     fig, ax = plt.subplots(figsize=(20, 20))
     unique_vowels = np.unique(vowels)
