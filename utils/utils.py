@@ -176,8 +176,6 @@ def plot_latent_space_vowels(
         savepath = "local_results/plps/vae_supervised/"
     if vqvae:
         savepath = "local_results/plps/vqvae/"
-    if not supervised and not vqvae:
-        savepath = "local_results/plps/vae_unsupervised/"
 
     if gmvae:
         plot_gaussians_generative(
@@ -200,81 +198,31 @@ def plot_latent_space_vowels(
         name,
         xlabel,
         ylabel,
-        savepath=savepath,
+        savepath,
     )
 
     # PLot latent space by vowels but inversing the legend
-    fig, ax = plt.subplots(figsize=(20, 20))
-    unique_vowels = np.unique(vowels)
-    vowel_dict = {0: "a", 1: "e", 2: "i", 3: "o", 4: "u"}
-    colors = ["red", "blue"]
-    for i in range(len(np.unique(labels))):
-        idx = np.argwhere(labels == i).ravel()
-        if i == 0:
-            label = "Healty"
-        else:
-            label = "PD"
-        # For each label, plot a scatter for each vowel
-        idxA = np.argwhere(vowels[idx] == 0).ravel()
-        idxE = np.argwhere(vowels[idx] == 1).ravel()
-        idxI = np.argwhere(vowels[idx] == 2).ravel()
-        idxO = np.argwhere(vowels[idx] == 3).ravel()
-        idxU = np.argwhere(vowels[idx] == 4).ravel()
-        ax.scatter(
-            latent_mu[idxA, 0],
-            latent_mu[idxA, 1],
-            label=label,
-            marker="$A$",
-            s=1000,
-            c=colors[i],
-        )
-        ax.scatter(
-            latent_mu[idxE, 0],
-            latent_mu[idxE, 1],
-            label=label,
-            marker="$E$",
-            s=800,
-            c=colors[i],
-            alpha=0.5,
-        )
-        ax.scatter(
-            latent_mu[idxI, 0],
-            latent_mu[idxI, 1],
-            label=label,
-            marker="$I$",
-            c=colors[i],
-            s=600,
-            alpha=0.5,
-        )
-        ax.scatter(
-            latent_mu[idxO, 0],
-            latent_mu[idxO, 1],
-            label=label,
-            marker="$O$",
-            s=400,
-            c=colors[i],
-            alpha=0.5,
-        )
-        ax.scatter(
-            latent_mu[idxU, 0],
-            latent_mu[idxU, 1],
-            label=label,
-            marker="$U$",
-            s=200,
-            c=colors[i],
-            alpha=0.5,
-        )
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
-    ax.legend()
-
-    fig.savefig(savepath + f"latent_space_vowels_{fold}_{name}_inverse.png")
-    if wandb_flag:
-        wandb.log({str(name) + "/latent_space_vowels_inverse": wandb.Image(fig)})
-    plt.close(fig)
+    plot_latent_space_vowels_inverse(
+        labels,
+        vowels,
+        latent_mu,
+        fold,
+        wandb_flag,
+        name,
+        xlabel,
+        ylabel,
+        savepath,
+    )
 
     # Plot latent space by labels
+    plot_latent_space_by_labels(
+        labels, latent_mu, fold, wandb_flag, name, xlabel, ylabel, savepath
+    )
+
+
+def plot_latent_space_by_labels(
+    labels, latent_mu, fold, wandb_flag, name, xlabel, ylabel, savepath
+):
     fig, ax = plt.subplots(figsize=(20, 20))
     idxH = np.argwhere(labels == 0).ravel()
     idxPD = np.argwhere(labels == 1).ravel()
@@ -891,4 +839,78 @@ def plot_latent_space_by_vowels(
     fig.savefig(savepath + f"latent_space_vowels_{fold}_{name}.png")
     if wandb_flag:
         wandb.log({str(name) + "/latent_space_vowels": wandb.Image(fig)})
+    plt.close(fig)
+
+
+def plot_latent_space_vowels_inverse(
+    vowels, labels, latent_mu, fold, wandb_flag, name, xlabel, ylabel, savepath
+):
+    fig, ax = plt.subplots(figsize=(20, 20))
+    unique_vowels = np.unique(vowels)
+    vowel_dict = {0: "a", 1: "e", 2: "i", 3: "o", 4: "u"}
+    colors = ["red", "blue"]
+    for i in range(len(np.unique(labels))):
+        idx = np.argwhere(labels == i).ravel()
+        if i == 0:
+            label = "Healty"
+        else:
+            label = "PD"
+        # For each label, plot a scatter for each vowel
+        idxA = np.argwhere(vowels[idx] == 0).ravel()
+        idxE = np.argwhere(vowels[idx] == 1).ravel()
+        idxI = np.argwhere(vowels[idx] == 2).ravel()
+        idxO = np.argwhere(vowels[idx] == 3).ravel()
+        idxU = np.argwhere(vowels[idx] == 4).ravel()
+        ax.scatter(
+            latent_mu[idxA, 0],
+            latent_mu[idxA, 1],
+            label=label,
+            marker="$A$",
+            s=1000,
+            c=colors[i],
+        )
+        ax.scatter(
+            latent_mu[idxE, 0],
+            latent_mu[idxE, 1],
+            label=label,
+            marker="$E$",
+            s=800,
+            c=colors[i],
+            alpha=0.5,
+        )
+        ax.scatter(
+            latent_mu[idxI, 0],
+            latent_mu[idxI, 1],
+            label=label,
+            marker="$I$",
+            c=colors[i],
+            s=600,
+            alpha=0.5,
+        )
+        ax.scatter(
+            latent_mu[idxO, 0],
+            latent_mu[idxO, 1],
+            label=label,
+            marker="$O$",
+            s=400,
+            c=colors[i],
+            alpha=0.5,
+        )
+        ax.scatter(
+            latent_mu[idxU, 0],
+            latent_mu[idxU, 1],
+            label=label,
+            marker="$U$",
+            s=200,
+            c=colors[i],
+            alpha=0.5,
+        )
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Latent space in " + str(name) + " for fold {fold} by vowels")
+    ax.legend()
+
+    fig.savefig(savepath + f"latent_space_vowels_{fold}_{name}_inverse.png")
+    if wandb_flag:
+        wandb.log({str(name) + "/latent_space_vowels_inverse": wandb.Image(fig)})
     plt.close(fig)
