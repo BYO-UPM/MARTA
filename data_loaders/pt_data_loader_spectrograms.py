@@ -183,8 +183,14 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         )
 
         if self.spectrogram:
-            win_length = int(data["sr"].iloc[0] * 0.040)  # 40ms
-            hop_length = int(data["sr"].iloc[0] * 0.010)  # 10ms
+            if self.material == "VOWELS":
+                win_length = int(data["sr"].iloc[0] * 0.040)  # 40ms
+                hop_length = int(data["sr"].iloc[0] * 0.010)  # 10ms
+            if self.material == "PATAKA":
+                win_length = int(data["sr"].iloc[0] * 0.015)  # 15ms following Moro-Velazquez, Laureano, et al. "Phonetic relevance and phonemic grouping of speech in the automatic detection of Parkinson’s Disease." Scientific reports 9.1 (2019): 19066.
+                hop_length = int(data["sr"].iloc[0] * 0.0075)  # 7.5ms = 50% overlap
+                data["win_length"] = [win_length] * data.shape[0]
+            
             n_fft = 2048
             n_mels = 65
 
