@@ -1030,10 +1030,8 @@ def plot_gaussians_generative_over_vowels(
         ell2.set_clip_box(ax.bbox)
         ell2.set_alpha(0.5)
         ax.add_artist(ell2)
-
-        
         # Use star as a marker
-        ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), alpha=0.5, marker="*", s=100)
+        ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), marker="*", s=100)
     ax.set_xlabel("Latent dim 1")
     ax.set_ylabel("Latent dim 2")
     ax.set_title(f"Latent space with Gaussians distributions")

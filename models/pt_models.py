@@ -758,7 +758,6 @@ class GMVAE(torch.nn.Module):
 
         # q(z | x_hat, y)
         if cnn:
-
             self.inference_qz_xy = torch.nn.Sequential(
                 torch.nn.Linear(self.x_hat_shape[1], self.z_dim * 2),
             ).to(self.device)
