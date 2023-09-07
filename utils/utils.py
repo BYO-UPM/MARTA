@@ -4,6 +4,8 @@ import torch
 import pandas as pd
 import wandb
 from matplotlib import pyplot as plt
+from scipy import linalg
+import matplotlib as mpl
 
 
 def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
@@ -1012,30 +1014,26 @@ def plot_gaussians_generative_over_vowels(
         )
         X, Y = np.meshgrid(x, y)
 
-        cov_det = np.linalg.det(cov)
-        cov_inv = np.linalg.inv(cov)
+        v, w = linalg.eigh(cov)
+        v1 = 2.0 * 1 * np.sqrt(v) # 1 std
+        v2 = 2.0 * 2 * np.sqrt(v) # 2 std
+        u = w[0] / linalg.norm(w[0])
 
-        coe = 1 / (2 * np.pi * cov_det) ** (1 / 2)
-        w = coe * np.exp(
-            -0.5
-            * coe
-            * np.e
-            ** (
-                -0.5
-                * (
-                    cov_inv[0, 0] * (X - mu[0]) ** 2
-                    + (cov_inv[0, 1] + cov_inv[1, 0]) * (X - mu[0]) * (Y - mu[1])
-                    + cov_inv[1, 1] * (Y - mu[1]) ** 2
-                )
-            )
-        )
-        ax.contour(
-            X,
-            Y,
-            w,
-        )
+        # Plot an ellipse to show the Gaussian component
+        angle = np.arctan(u[1] / u[0])
+        angle = 180.0 * angle / np.pi  # convert to degrees
+        ell = mpl.patches.Ellipse(mu, v1[0], v1[1], angle=180.0 + angle, facecolor="none", edgecolor="green")
+        ell2 = mpl.patches.Ellipse(mu, v2[0], v2[1], angle=180.0 + angle, facecolor="none", edgecolor="orange")
+        ell.set_clip_box(ax.bbox)
+        ell.set_alpha(0.5)
+        ax.add_artist(ell)
+        ell2.set_clip_box(ax.bbox)
+        ell2.set_alpha(0.5)
+        ax.add_artist(ell2)
+
+        
         # Use star as a marker
-        ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), alpha=0.5, marker="*")
+        ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), alpha=0.5, marker="*", s=100)
     ax.set_xlabel("Latent dim 1")
     ax.set_ylabel("Latent dim 2")
     ax.set_title(f"Latent space with Gaussians distributions")
@@ -1050,3 +1048,5 @@ def plot_gaussians_generative_over_vowels(
         )
 
     plt.close()
+
+
