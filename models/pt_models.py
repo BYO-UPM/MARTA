@@ -717,12 +717,15 @@ class GMVAE(torch.nn.Module):
         if cnn:
             self.inference_gx = torch.nn.Sequential(
                 torch.nn.Conv2d(self.x_dim, self.hidden_dims[0], 3),
+                torch.nn.BatchNorm2d(self.hidden_dims[0]),
                 torch.nn.ReLU(),
                 torch.nn.MaxPool2d(2),
                 torch.nn.Conv2d(self.hidden_dims[0], self.hidden_dims[1], 3),
+                torch.nn.BatchNorm2d(self.hidden_dims[1]),
                 torch.nn.ReLU(),
                 torch.nn.MaxPool2d(2),
                 torch.nn.Conv2d(self.hidden_dims[1], self.hidden_dims[2], 3),
+                torch.nn.BatchNorm2d(self.hidden_dims[2]),
                 torch.nn.ReLU(),
                 torch.nn.MaxPool2d(2),
                 torch.nn.Flatten(),
@@ -755,6 +758,7 @@ class GMVAE(torch.nn.Module):
 
         # q(z | x_hat, y)
         if cnn:
+
             self.inference_qz_xy = torch.nn.Sequential(
                 torch.nn.Linear(self.x_hat_shape[1], self.z_dim * 2),
             ).to(self.device)
