@@ -1134,7 +1134,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 x,
                 x_hat,
                 y_pred,
-            ) = model.loss(data, vowels, combined, e)
+            ) = model.loss(data, labels, combined, e)
             loss.backward()
             optimizer.step()
 
@@ -1147,7 +1147,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             metric_loss += metric_loss_b.item()
             usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-            true_label_list.append(combined.cpu().numpy())
+            true_label_list.append(labels.cpu().numpy())
             pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
         # Check reconstruction of X

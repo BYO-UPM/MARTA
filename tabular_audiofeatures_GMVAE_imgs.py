@@ -9,7 +9,7 @@ import pandas as pd
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # Print the cuda device to use
 print("Using cuda device: ", torch.cuda.current_device())
@@ -23,7 +23,7 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": False,
+        "wandb_flag": True,
         "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
@@ -31,7 +31,7 @@ def main(args):
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
         "supervised": False,
-        "n_gaussians": 10,
+        "n_gaussians": 2,
         "semisupervised": False,
     }
 
@@ -51,7 +51,7 @@ def main(args):
                 elif hyperparams["n_gaussians"] == 5:
                     gname += "_supervised_vowels"
                 elif hyperparams["n_gaussians"] == 10:
-                    gname += "_supervised_10labels_testing_batchnorm"
+                    gname += "_supervised_2labels"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
