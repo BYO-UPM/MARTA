@@ -23,6 +23,7 @@ from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from utils.utils import cluster_acc, nmi
+from tqdm import tqdm
 
 
 class StratifiedBatchSampler:
@@ -1116,12 +1117,11 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         metric_loss = 0
         usage = np.zeros(model.k)
 
+        # Use tqdm for progress bar
         for batch_idx, (data, labels) in enumerate(trainloader):
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
             labels = labels.to(model.device).float()
-            vowels = vowels.to(model.device).float()
-            combined = combined.to(model.device).float()
 
             optimizer.zero_grad()
             (
@@ -1134,7 +1134,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 x,
                 x_hat,
                 y_pred,
-            ) = model.loss(data, labels, combined, e)
+            ) = model.loss(data, labels, e)
             loss.backward()
             optimizer.step()
 
@@ -1200,12 +1200,10 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             true_label_list = []
             pred_label_list = []
 
-            for batch_idx, (data, labels, vowels, combined) in enumerate(validloader):
+            for batch_idx, (data, labels) in enumerate(validloader):
                 # Make sure dtype is Tensor float
                 data = data.to(model.device).float()
                 labels = labels.to(model.device).float()
-                vowels = vowels.to(model.device).float()
-                combined = combined.to(model.device).float()
 
                 (
                     loss,
@@ -1217,7 +1215,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     x,
                     x_hat,
                     y_pred,
-                ) = model.loss(data, vowels, combined)
+                ) = model.loss(data, labels)
                 valid_loss += loss.item()
                 val_rec_loss += rec_loss_v.item()
                 val_gaussian_loss += gaussian_loss_v.item()
@@ -1227,7 +1225,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 val_metric_loss += metric_loss_v.item()
                 val_usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-                true_label_list.append(combined.cpu().numpy())
+                true_label_list.append(labels.cpu().numpy())
                 pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
             # Check reconstruction of X

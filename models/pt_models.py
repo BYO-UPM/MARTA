@@ -726,47 +726,103 @@ class Spectrogram_networks_manner(torch.nn.Module):
         # Deterministic x_hat = g(x)
         if cnn:
             self.inference_gx = torch.nn.Sequential(
-                torch.nn.Conv2d(self.x_dim, self.hidden_dims[0], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[0]),
+                torch.nn.Conv2d(
+                    self.x_dim,
+                    self.hidden_dims[0],
+                    kernel_size=[3, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
                 torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Conv2d(self.hidden_dims[0], self.hidden_dims[1], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[1]),
+                torch.nn.Conv2d(
+                    self.hidden_dims[0],
+                    self.hidden_dims[1],
+                    kernel_size=[3, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
                 torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Conv2d(self.hidden_dims[1], self.hidden_dims[2], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[2]),
+                torch.nn.Conv2d(
+                    self.hidden_dims[1],
+                    self.hidden_dims[2],
+                    kernel_size=[3, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
                 torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Flatten(),
             )
-            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 41)).shape
+            self.flatten = Flatten()
+            self.x_hat_shape_before_flatten = self.inference_gx(
+                torch.zeros(1, 1, 65, 41)
+            ).shape
+            self.x_hat_shape_after_flatten = self.flatten(
+                self.inference_gx(torch.zeros(1, 1, 65, 41))
+            ).shape
         else:
             raise NotImplementedError
 
         # ===== Generative =====
         # Deterministic x = f(x_hat)
         if cnn:
+            self.unflatten = UnFlatten()
             self.generative_fxhat = torch.nn.Sequential(
                 # ConvTranspose
-                torch.nn.ConvTranspose2d(self.hidden_dims[0], self.hidden_dims[1], 5),
+                torch.nn.ConvTranspose2d(
+                    self.hidden_dims[0],
+                    self.hidden_dims[1],
+                    kernel_size=[5, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
                 torch.nn.ReLU(),
-                torch.nn.Upsample(scale_factor=2),
                 # ConvTranspose
-                torch.nn.ConvTranspose2d(self.hidden_dims[1], self.hidden_dims[2], 5),
+                torch.nn.ConvTranspose2d(
+                    self.hidden_dims[1],
+                    self.hidden_dims[2],
+                    kernel_size=[5, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
                 torch.nn.ReLU(),
-                torch.nn.Upsample(scale_factor=2),
                 # ConvTranspose
                 torch.nn.ConvTranspose2d(
                     self.hidden_dims[2],
                     self.x_dim,
                     stride=[2, 1],
-                    kernel_size=[3, 6],
-                    padding=[4, 0],
+                    kernel_size=[3, 3],
+                    padding=[5, 1],
                 ),
             )
         else:
             raise NotImplementedError
+
+
+class Flatten(torch.nn.Module):
+    def forward(self, x):
+        # x_hat is shaped as (B, C, H, W), lets conver it to (B, W, C, H)
+        x = x.permute(0, 3, 1, 2)
+
+        # Flatten the two first dimensions so now is (B*W, C, H)
+        x = x.reshape(-1, *x.shape[2:])
+
+        # Flatten now the last two dimension so is (B*W, C*H)
+        x = x.reshape(-1, x.shape[1] * x.shape[2])
+
+        return x
+
+
+class UnFlatten(torch.nn.Module):
+    def forward(self, x):
+        # x_hat is shaped as (B*W, C*H), lets conver it to (B*W, C, H)
+        x = x.reshape(-1, 64, 7)
+
+        # x is now shaped (B*W, C, H), lets conver it to (B, W, C, H)
+        x = x.reshape(-1, 41, 64, 7)
+
+        # x is now shaped (B, W, C, H), lets conver it to (B, C, H, W)
+        x = x.permute(0, 2, 3, 1)
+
+        return x
 
 
 class GMVAE(torch.nn.Module):
@@ -830,12 +886,14 @@ class GMVAE(torch.nn.Module):
         # ===== Inference =====
         # Deterministic x_hat = g(x)
         self.inference_gx = self.spec_nets.inference_gx.to(self.device)
-        self.x_hat_shape = self.spec_nets.x_hat_shape
+        self.flatten = self.spec_nets.flatten.to(self.device)
+        self.x_hat_shape_before_flat = self.spec_nets.x_hat_shape_before_flatten
+        self.x_hat_shape_after_flat = self.spec_nets.x_hat_shape_after_flatten
 
         # q(y | x_hat)
         if cnn:
             self.inference_qy_x = torch.nn.Sequential(
-                torch.nn.Linear(self.x_hat_shape[1], self.hidden_dims[1]),
+                torch.nn.Linear(self.x_hat_shape_after_flat[1], self.hidden_dims[1]),
             ).to(self.device)
         else:
             raise NotImplementedError
@@ -845,10 +903,15 @@ class GMVAE(torch.nn.Module):
             GumbelSoftmax(self.hidden_dims[1], self.k)
         )
 
+        # y_hat = h(qy)
+        self.hqy = torch.nn.Linear(self.k, self.x_hat_shape_after_flat[1]).to(
+            self.device
+        )
+
         # q(z | x_hat, y)
         if cnn:
             self.inference_qz_xy = torch.nn.Sequential(
-                torch.nn.Linear(self.x_hat_shape[1], self.z_dim * 2),
+                torch.nn.Linear(self.x_hat_shape_after_flat[1], self.z_dim * 2),
             ).to(self.device)
         else:
             raise NotImplementedError
@@ -863,11 +926,10 @@ class GMVAE(torch.nn.Module):
         # p(x_hat | z)
         if cnn:
             self.generative_pxhat_z = torch.nn.Sequential(
-                # Unflatten
-                torch.nn.Linear(self.z_dim, self.hidden_dims[0] * 3 * 3),
-                torch.nn.ReLU(),
-                torch.nn.Unflatten(1, (self.hidden_dims[0], 3, 3)),
+                torch.nn.Linear(self.z_dim, self.x_hat_shape_after_flat[1]),
             ).to(self.device)
+
+            self.unflatten = self.spec_nets.unflatten.to(self.device)
 
             self.generative_fxhat = self.spec_nets.generative_fxhat.to(self.device)
         else:
@@ -882,17 +944,19 @@ class GMVAE(torch.nn.Module):
         # x_hat = g(x)
         x_hat = self.inference_gx(x)
 
+        # Flatten
+        x_hat = self.flatten(x_hat)
+
         # q(y | x)
         qy_logits, probs, qy = self.gumbel_softmax(self.inference_qy_x(x_hat))
 
         # q(z | x, y)
         # Transform Y in the same shape as X
         if self.cnn:
-            y_hat = torch.nn.Linear(self.k, self.x_hat_shape[1]).to(self.device)(qy)
+            y_hat = self.hqy(qy)
             xy = x_hat + y_hat
         else:
-            y_hat = torch.nn.Linear(self.k, self.hidden_dims[2]).to(self.device)(qy)
-            xy = x_hat + y_hat
+            raise NotImplementedError
         qz_mu, qz_logvar = torch.chunk(self.inference_qz_xy(xy), 2, dim=1)
 
         z = self.reparametrize(qz_mu, qz_logvar)
@@ -911,6 +975,9 @@ class GMVAE(torch.nn.Module):
 
         # p(x_hat | z)
         x_hat = self.generative_pxhat_z(z)
+
+        # Unflatten x_hat
+        x_hat = self.unflatten(x_hat)
 
         # x_rec = f(x_hat)
         x_rec = self.generative_fxhat(x_hat)
@@ -945,7 +1012,7 @@ class GMVAE(torch.nn.Module):
         cat_loss = torch.sum(cat_loss)
 
         if self.supervised:
-            if self.n_gaussians < 10:
+            if self.k < 10:
                 # Supervised loss
                 clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
                     qy_logits, labels.type(torch.int64)
@@ -957,6 +1024,11 @@ class GMVAE(torch.nn.Module):
                 )
         else:
             clf_loss = 0
+
+        if self.k == 2:
+            # Repeat labels. Labels are Batch_size,1. Repeat each one N times:
+            N = self.x_hat_shape_before_flat[-1]
+            labels = labels.repeat_interleave(N, dim=0)
 
         # Metric embedding loss: lifted structured loss
         metric_loss = self.lifted_struct_loss(x_hat, labels)

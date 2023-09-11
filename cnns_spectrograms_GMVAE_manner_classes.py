@@ -25,7 +25,7 @@ def main(args):
         "spectrogram": True,
         "wandb_flag": False,
         "epochs": 300,
-        "batch_size": 64,
+        "batch_size": 4,
         "lr": 1e-3,
         "latent_dim": 2,
         "hidden_dims_enc": [64, 128, 64, 32],
