@@ -1,7 +1,7 @@
 from models.pt_models import GMVAE
 from training.pt_training import GMVAE_trainer, GMVAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels, calculate_distances
-from data_loaders.pt_data_loader_spectrograms_vowels import Dataset_AudioFeatures
+from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
 import numpy as np
@@ -17,8 +17,8 @@ print("Using cuda device: ", torch.cuda.current_device())
 
 def main(args):
     hyperparams = {
-        "frame_size_ms": 40,
-        "material": "VOWELS",
+        "frame_size_ms": 0.400,  # 400ms
+        "spectrogram_win_size": 0.020,  # 20ms
         "hop_size_percent": 0.5,
         "n_plps": 0,
         "n_mfccs": 0,
