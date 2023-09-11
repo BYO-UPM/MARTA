@@ -692,7 +692,7 @@ class Spectrogram_networks(torch.nn.Module):
         # ===== Generative =====
         # Deterministic x = f(x_hat)
         if cnn:
-            self.generative_fxhat= torch.nn.Sequential(
+            self.generative_fxhat = torch.nn.Sequential(
                 # ConvTranspose
                 torch.nn.ConvTranspose2d(self.hidden_dims[0], self.hidden_dims[1], 5),
                 torch.nn.ReLU(),
@@ -741,7 +741,9 @@ class GMVAE(torch.nn.Module):
         self.usage = np.zeros(self.k)
 
         # Spectrogram networks
-        self.spec_nets = Spectrogram_networks(x_dim=self.x_dim, hidden_dims=self.hidden_dims, cnn=cnn)
+        self.spec_nets = Spectrogram_networks(
+            x_dim=self.x_dim, hidden_dims=self.hidden_dims, cnn=cnn
+        )
 
         # Inference
         self.inference_networks(cnn=cnn)
@@ -774,7 +776,7 @@ class GMVAE(torch.nn.Module):
         # Deterministic x_hat = g(x)
         self.inference_gx = self.spec_nets.inference_gx.to(self.device)
         self.x_hat_shape = self.spec_nets.x_hat_shape
-        
+
         # q(y | x_hat)
         if cnn:
             self.inference_qy_x = torch.nn.Sequential(
@@ -782,7 +784,7 @@ class GMVAE(torch.nn.Module):
             ).to(self.device)
         else:
             raise NotImplementedError
-        
+
         # Gumbel softmax
         self.gumbel_softmax = torch.nn.Sequential(
             GumbelSoftmax(self.hidden_dims[1], self.k)
@@ -809,8 +811,9 @@ class GMVAE(torch.nn.Module):
                 # Unflatten
                 torch.nn.Linear(self.z_dim, self.hidden_dims[0] * 3 * 3),
                 torch.nn.ReLU(),
-                torch.nn.Unflatten(1, (self.hidden_dims[0], 3, 3)),).to(self.device)
-            
+                torch.nn.Unflatten(1, (self.hidden_dims[0], 3, 3)),
+            ).to(self.device)
+
             self.generative_fxhat = self.spec_nets.generative_fxhat.to(self.device)
         else:
             raise NotImplementedError

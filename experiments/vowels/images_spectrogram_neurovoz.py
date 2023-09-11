@@ -1,7 +1,7 @@
 from models.pt_models import VAE_images
 from training.pt_training import VAE_trainer, VAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels, calculate_distances
-from data_loaders.pt_data_loader_spectrograms import Dataset_AudioFeatures
+from data_loaders.pt_data_loader_spectrograms_vowels import Dataset_AudioFeatures
 import torch
 import wandb
 import numpy as np
