@@ -1116,7 +1116,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         metric_loss = 0
         usage = np.zeros(model.k)
 
-        for batch_idx, (data, labels, vowels, combined) in enumerate(trainloader):
+        for batch_idx, (data, labels) in enumerate(trainloader):
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
             labels = labels.to(model.device).float()
