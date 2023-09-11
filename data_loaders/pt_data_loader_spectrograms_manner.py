@@ -25,13 +25,13 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             + str(self.hyperparams["spectrogram_win_size"])
             + "hopsize_"
             + str(self.hyperparams["hop_size_percent"])
-            + ".csv"
+            + ".pkl"
         )
 
         if os.path.exists(name_save):
-            self.data = pd.read_csv(name_save)
+            self.data = pd.read_pickle(name_save)["data"]
         else:
-            self.data = self.read_dataset(self.data_path)
+            self.data = self.read_dataset(data_path)
 
     def __len__(self):
         return len(self.data)
@@ -166,9 +166,13 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             + str(self.hyperparams["spectrogram_win_size"])
             + "hopsize_"
             + str(self.hyperparams["hop_size_percent"])
-            + ".csv"
+            + ".pkl"
         )
-        data.to_csv(name_save, index=False)
+
+        if not os.path.exists(name_save):
+            # Save the data
+            pd.to_pickle({"data": data}, name_save)
+
         return data
 
     def get_dataloaders(self, fold=0):
