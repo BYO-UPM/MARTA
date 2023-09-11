@@ -1,7 +1,7 @@
-from models.pt_models import VAE
-from training.pt_training import VAE_trainer, VAE_tester
+from models.pt_models import GMVAE
+from training.pt_training import GMVAE_trainer, GMVAE_tester
 from utils.utils import plot_latent_space, plot_latent_space_vowels, calculate_distances
-from data_loaders.pt_data_loader_audiofeatures import Dataset_AudioFeatures
+from data_loaders.pt_data_loader_spectrograms import Dataset_AudioFeatures
 import torch
 import wandb
 import numpy as np
@@ -20,17 +20,19 @@ def main(args):
         "frame_size_ms": 40,
         "material": "VOWELS",
         "hop_size_percent": 0.5,
-        "n_plps": 13,
+        "n_plps": 0,
         "n_mfccs": 0,
-        "wandb_flag": True,
+        "spectrogram": True,
+        "wandb_flag": False,
         "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
-        "latent_dim": 64,
+        "latent_dim": 2,
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
-        "supervised": True,
-        "n_classes": 5,
+        "supervised": False,
+        "n_gaussians": 2,
+        "semisupervised": False,
     }
 
     print("Reading data...")
@@ -42,12 +44,14 @@ def main(args):
 
     for fold in dataset.data["fold"].unique():
         if hyperparams["wandb_flag"]:
-            gname = "rasta_PLPs_vae_" + hyperparams["material"]
-            if hyperparams["supervised"]:
-                if hyperparams["n_classes"] == 2:
-                    gname += "_supervised_by_PD_deeper_deeplatentSpace64_moreBCE"
-                elif hyperparams["n_classes"] == 5:
-                    gname += "_supervised_by_VOWELS_deeper_deeplatentSpace64_moreBCE"
+            gname = "SPECTROGRAMS_GMVAE_" + hyperparams["material"]
+            if hyperparams["n_gaussians"] > 0:
+                if hyperparams["n_gaussians"] == 2:
+                    gname += "_naive_PD"
+                elif hyperparams["n_gaussians"] == 5:
+                    gname += "_supervised_vowels"
+                elif hyperparams["n_gaussians"] == 10:
+                    gname += "_supervised_2labels"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -70,35 +74,46 @@ def main(args):
 
         print("Defining models...")
         # Create the model
-        model = VAE(
-            train_loader.dataset[0][0].shape[0],
-            latent_dim=hyperparams["latent_dim"],
-            hidden_dims_enc=hyperparams["hidden_dims_enc"],
-            hidden_dims_dec=hyperparams["hidden_dims_dec"],
+        model = GMVAE(
+            x_dim=train_loader.dataset[0][0].shape[0],
+            n_gaussians=hyperparams["n_gaussians"],
+            z_dim=hyperparams["latent_dim"],
+            hidden_dims=hyperparams["hidden_dims_enc"],
+            ss=hyperparams["semisupervised"],
             supervised=hyperparams["supervised"],
-            n_classes=hyperparams["n_classes"],
+            weights=[
+                1,  # w1 is rec loss,
+                50,  # w2 is gaussian kl loss,
+                50,  # w3 is categorical kl loss,
+                1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
+                1000,  # w5 is metric loss
+            ],
+            cnn=hyperparams["spectrogram"],
         )
 
         model = torch.compile(model)
 
-        print("Training VAE...")
+        print("Training GMVAE...")
         # Train the model
-        VAE_trainer(
-            model,
-            train_loader,
-            val_loader,
+        GMVAE_trainer(
+            model=model,
+            trainloader=train_loader,
+            validloader=val_loader,
             epochs=hyperparams["epochs"],
             lr=hyperparams["lr"],
-            wandb_flag=hyperparams["wandb_flag"],
             supervised=hyperparams["supervised"],
+            wandb_flag=hyperparams["wandb_flag"],
         )
+
         print("Training finished!")
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/plps/vae_supervised/VAE_best_model.pt"
+            name = "local_results/spectrograms/gmvae/GMVAE_cnn_best_model.pt"
         else:
-            name = "local_results/plps/vae_unsupervised/VAE_best_model.pt"
+            name = (
+                "local_results/spectrograms/gmvae/GMVAE_cnn_best_model_unsupervised.pt"
+            )
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -106,20 +121,23 @@ def main(args):
             audio_features = "plps"
         elif hyperparams["n_mfccs"] > 0:
             audio_features = "mfccs"
-        print("Testing VAE...")
-        # Test the model by frame
-        VAE_tester(
-            model,
-            test_loader,
-            test_data,
-            audio_features,
-            supervised=hyperparams["supervised"],
+        elif hyperparams["spectrogram"]:
+            audio_features = "spectrogram"
+        print("Testing GMVAE...")
+
+        # Test the model  #TODO: IMG version not implemented yet
+        GMVAE_tester(
+            model=model,
+            testloader=test_loader,
+            test_data=test_data,
+            audio_features=audio_features,
+            supervised=False,  # Not implemented yet
             wandb_flag=hyperparams["wandb_flag"],
         )
 
         # Create an empty pd dataframe with two columns: data and label
-        df = pd.DataFrame(columns=["plps", "label", "vowel"])
-        df["plps"] = [t[0] for t in test_loader.dataset]
+        df = pd.DataFrame(columns=[audio_features, "label", "vowel"])
+        df[audio_features] = [t[0] for t in test_loader.dataset]
         df["label"] = [t[1] for t in test_loader.dataset]
         df["vowel"] = [t[2] for t in test_loader.dataset]
 
@@ -141,34 +159,47 @@ def main(args):
                 hyperparams["wandb_flag"],
                 name="test",
                 supervised=hyperparams["supervised"],
+                gmvae=True,
+                audio_features=audio_features,
             )
-            calculate_distances(model, df, fold, hyperparams["wandb_flag"], name="test")
-
-        df = pd.DataFrame(columns=["plps", "label", "vowel"])
-        df["plps"] = [t[0] for t in train_loader.dataset]
-        df["label"] = [t[1] for t in train_loader.dataset]
-        df["vowel"] = [t[2] for t in train_loader.dataset]
-
-        # Plot the latent space in train
-        if hyperparams["material"] == "PATAKA":
-            # Plot the latent space in test
-            plot_latent_space(
+            calculate_distances(
                 model,
                 df,
                 fold,
                 hyperparams["wandb_flag"],
-                supervised=hyperparams["supervised"],
-                name="train",
+                name="test",
+                gmvae=True,
+                audio_features=audio_features,
             )
-        elif hyperparams["material"] == "VOWELS":
-            plot_latent_space_vowels(
-                model,
-                df,
-                fold,
-                hyperparams["wandb_flag"],
-                supervised=hyperparams["supervised"],
-                name="train",
-            )
+
+        # df = pd.DataFrame(columns=["plps", "label", "vowel"])
+        # df["plps"] = [t[0] for t in train_loader.dataset]
+        # df["label"] = [t[1] for t in train_loader.dataset]
+        # df["vowel"] = [t[2] for t in train_loader.dataset]
+
+        # # Plot the latent space in train
+        # if hyperparams["material"] == "PATAKA":
+        #     # Plot the latent space in test
+        #     plot_latent_space(
+        #         model,
+        #         df,
+        #         fold,
+        #         hyperparams["wandb_flag"],
+        #         supervised=hyperparams["supervised"],
+        #         name="train",
+        #     )
+        # elif hyperparams["material"] == "VOWELS":
+        #     plot_latent_space_vowels(
+        #         model,
+        #         df,
+        #         fold,
+        #         hyperparams["wandb_flag"],
+        #         supervised=hyperparams["supervised"],
+        #         name="train",
+        #     )
+
+        if hyperparams["wandb_flag"]:
+            wandb.finish()
 
 
 if __name__ == "__main__":
@@ -259,7 +290,7 @@ if __name__ == "__main__":
     #     help="Flag to use supervised training",
     # )
     # parser.add_argument(
-    #     "--n_classes",
+    #     "--n_gaussians",
     #     type=int,
     #     choices=[2, 5],
     #     default=2,
