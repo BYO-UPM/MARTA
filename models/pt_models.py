@@ -659,6 +659,61 @@ class VQVAE(torch.nn.Module):
         return x_hat, y_hat, vq_loss, z, z_q, enc_idx
 
 
+class Spectrogram_networks(torch.nn.Module):
+    def __init__(self, x_dim, hidden_dims, cnn=False):
+        super().__init__()
+
+        self.x_dim = x_dim
+        self.hidden_dims = hidden_dims
+        self.cnn = cnn
+
+        # ===== Inference =====
+        # Deterministic x_hat = g(x)
+        if cnn:
+            self.inference_gx = torch.nn.Sequential(
+                torch.nn.Conv2d(self.x_dim, self.hidden_dims[0], 3),
+                torch.nn.BatchNorm2d(self.hidden_dims[0]),
+                torch.nn.ReLU(),
+                torch.nn.MaxPool2d(2),
+                torch.nn.Conv2d(self.hidden_dims[0], self.hidden_dims[1], 3),
+                torch.nn.BatchNorm2d(self.hidden_dims[1]),
+                torch.nn.ReLU(),
+                torch.nn.MaxPool2d(2),
+                torch.nn.Conv2d(self.hidden_dims[1], self.hidden_dims[2], 3),
+                torch.nn.BatchNorm2d(self.hidden_dims[2]),
+                torch.nn.ReLU(),
+                torch.nn.MaxPool2d(2),
+                torch.nn.Flatten(),
+            )
+            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 41)).shape
+        else:
+            raise NotImplementedError
+
+        # ===== Generative =====
+        # Deterministic x = f(x_hat)
+        if cnn:
+            self.generative_fxhat= torch.nn.Sequential(
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(self.hidden_dims[0], self.hidden_dims[1], 5),
+                torch.nn.ReLU(),
+                torch.nn.Upsample(scale_factor=2),
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(self.hidden_dims[1], self.hidden_dims[2], 5),
+                torch.nn.ReLU(),
+                torch.nn.Upsample(scale_factor=2),
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(
+                    self.hidden_dims[2],
+                    self.x_dim,
+                    stride=[2, 1],
+                    kernel_size=[3, 6],
+                    padding=[4, 0],
+                ),
+            )
+        else:
+            raise NotImplementedError
+
+
 class GMVAE(torch.nn.Module):
     def __init__(
         self,
@@ -684,6 +739,9 @@ class GMVAE(torch.nn.Module):
         self.hidden_dims = hidden_dims
         self.cnn = cnn
         self.usage = np.zeros(self.k)
+
+        # Spectrogram networks
+        self.spec_nets = Spectrogram_networks(x_dim=self.x_dim, hidden_dims=self.hidden_dims, cnn=cnn)
 
         # Inference
         self.inference_networks(cnn=cnn)
@@ -714,43 +772,17 @@ class GMVAE(torch.nn.Module):
     def inference_networks(self, cnn=False):
         # ===== Inference =====
         # Deterministic x_hat = g(x)
-        if cnn:
-            self.inference_gx = torch.nn.Sequential(
-                torch.nn.Conv2d(self.x_dim, self.hidden_dims[0], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[0]),
-                torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Conv2d(self.hidden_dims[0], self.hidden_dims[1], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[1]),
-                torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Conv2d(self.hidden_dims[1], self.hidden_dims[2], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[2]),
-                torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Flatten(),
-            )
-            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 41)).shape
-        else:
-            self.inference_gx = torch.nn.Sequential(
-                torch.nn.Linear(self.x_dim, self.hidden_dims[0]),
-                torch.nn.ReLU(),
-                torch.nn.Linear(self.hidden_dims[0], self.hidden_dims[1]),
-                torch.nn.ReLU(),
-                torch.nn.Linear(self.hidden_dims[1], self.hidden_dims[2]),
-                torch.nn.ReLU(),
-            ).to(self.device)
-
+        self.inference_gx = self.spec_nets.inference_gx.to(self.device)
+        self.x_hat_shape = self.spec_nets.x_hat_shape
+        
         # q(y | x_hat)
         if cnn:
             self.inference_qy_x = torch.nn.Sequential(
                 torch.nn.Linear(self.x_hat_shape[1], self.hidden_dims[1]),
             ).to(self.device)
         else:
-            self.inference_qy_x = torch.nn.Sequential(
-                torch.nn.Linear(self.hidden_dims[2], self.hidden_dims[1]),
-            ).to(self.device)
-
+            raise NotImplementedError
+        
         # Gumbel softmax
         self.gumbel_softmax = torch.nn.Sequential(
             GumbelSoftmax(self.hidden_dims[1], self.k)
@@ -762,9 +794,7 @@ class GMVAE(torch.nn.Module):
                 torch.nn.Linear(self.x_hat_shape[1], self.z_dim * 2),
             ).to(self.device)
         else:
-            self.inference_qz_xy = torch.nn.Sequential(
-                torch.nn.Linear(self.hidden_dims[2], self.z_dim * 2),
-            ).to(self.device)
+            raise NotImplementedError
 
     def generative_networks(self, cnn=False):
         # ===== Generative =====
@@ -773,38 +803,17 @@ class GMVAE(torch.nn.Module):
             torch.nn.Linear(self.k, self.z_dim * 2),
         ).to(self.device)
 
-        # p(x | z)
+        # p(x_hat | z)
         if cnn:
-            self.generative_px_z = torch.nn.Sequential(
+            self.generative_pxhat_z = torch.nn.Sequential(
                 # Unflatten
                 torch.nn.Linear(self.z_dim, self.hidden_dims[0] * 3 * 3),
                 torch.nn.ReLU(),
-                torch.nn.Unflatten(1, (self.hidden_dims[0], 3, 3)),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(self.hidden_dims[0], self.hidden_dims[1], 5),
-                torch.nn.ReLU(),
-                torch.nn.Upsample(scale_factor=2),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(self.hidden_dims[1], self.hidden_dims[2], 5),
-                torch.nn.ReLU(),
-                torch.nn.Upsample(scale_factor=2),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(
-                    self.hidden_dims[2],
-                    self.x_dim,
-                    stride=[2, 1],
-                    kernel_size=[3, 6],
-                    padding=[4, 0],
-                ),
-            ).to(self.device)
+                torch.nn.Unflatten(1, (self.hidden_dims[0], 3, 3)),).to(self.device)
+            
+            self.generative_fxhat = self.spec_nets.generative_fxhat.to(self.device)
         else:
-            self.generative_px_z = torch.nn.Sequential(
-                torch.nn.Linear(self.z_dim, self.hidden_dims[0]),
-                torch.nn.ReLU(),
-                torch.nn.Linear(self.hidden_dims[0], self.hidden_dims[1]),
-                torch.nn.ReLU(),
-                torch.nn.Linear(self.hidden_dims[1], self.x_dim),
-            ).to(self.device)
+            raise NotImplementedError
 
     def reparametrize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         std = torch.exp(0.5 * logvar)
@@ -842,8 +851,11 @@ class GMVAE(torch.nn.Module):
         z_mu, z_logvar = torch.chunk(self.generative_pz_y(y), 2, dim=1)
         z_var = torch.nn.functional.softplus(z_logvar)
 
-        # p(x | z)
-        x_rec = self.generative_px_z(z)
+        # p(x_hat | z)
+        x_hat = self.generative_pxhat_z(z)
+
+        # x_rec = f(x_hat)
+        x_rec = self.generative_fxhat(x_hat)
 
         return x_rec, z_mu, z_var
 

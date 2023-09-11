@@ -23,7 +23,7 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": True,
+        "wandb_flag": False,
         "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
