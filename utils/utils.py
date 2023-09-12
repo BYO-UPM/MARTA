@@ -39,40 +39,48 @@ def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
     return train_idx, test_idx
 
 
-def plot_latent_space(model, data, fold, wandb_flag, name="default"):
+def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=False):
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
-        latent_mu, latent_sigma = model.encoder(
-            torch.Tensor(np.vstack(data["plps"])).to(model.device)
+        data_input = (
+            torch.Tensor(np.vstack(data["spectrogram"])).to(model.device).unsqueeze(1)
         )
+        z, qy_logits, qy, latent_mu, qz_logvar, x_hat = model.infere(data_input)
+    labels = torch.Tensor(data["label"].values)
+    N = model.x_hat_shape_before_flat[-1]
+    labels = labels.repeat_interleave(N, dim=0)
+
+    # Subsample 1000 points to the plotting and move them to numpy and cpu
+    idx = np.random.choice(len(labels), 1000)
+    labels = labels[idx].cpu().numpy()
+    latent_mu = latent_mu[idx].cpu().numpy()
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu.shape[1] > 2:
         from sklearn.manifold import TSNE
 
-        latent_mu = TSNE(n_components=2).fit_transform(latent_mu.detach().cpu().numpy())
+        latent_mu = TSNE(n_components=2).fit_transform(latent_mu)
         xlabel = "t-SNE dim 1"
         ylabel = "t-SNE dim 2"
     else:
-        latent_mu = latent_mu.detach().cpu().numpy()
         xlabel = "Latent dim 1"
         ylabel = "Latent dim 2"
 
-    plt.figure(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(20, 20))
 
-    # Scatter plot
-    scatter = plt.scatter(
+    # Scatter ax
+    scatter = ax.scatter(
         latent_mu[:, 0],
         latent_mu[:, 1],
-        c=data["label"].values,
+        c=labels,
         cmap="viridis",
     )
 
     # Add labels and title
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(f"Latent space in " + str(name) + " for fold {fold}")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
 
     # Create custom legend
     classes = ["Healthy", "PD"]
@@ -88,11 +96,76 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default"):
         )
         for cls in class_labels
     ]
-    plt.legend(class_handles, classes)
-    plt.savefig(f"local_results/plps/latent_space_{fold}_{name}.png")
+    ax.legend(
+        class_handles,
+        classes,
+        loc="upper right",
+        bbox_to_anchor=(1.15, 1),
+        title="Classes",
+    )
+    fig.savefig(
+        f"local_results/spectrograms/manner_gmvae/latent_space_{fold}_{name}.png",
+    )
+
     if wandb_flag:
         wandb.log({str(name) + "/latent_space": plt})
-    plt.show()
+
+    # p(y) = Cat(10)
+    py = torch.eye(model.k).to(model.device)
+    # Sample from generative model
+    z_mu, z_logvar = torch.chunk(model.generative_pz_y(py), 2, dim=1)
+    z_var = torch.nn.functional.softplus(z_logvar)
+
+    for i in range(model.k):
+        mu = z_mu[i].cpu().detach().numpy()
+        var = z_var[i].cpu().detach().numpy()
+        cov = np.diag(var)
+
+        x = np.linspace(
+            np.min(latent_mu[:, 0]),
+            np.max(latent_mu[:, 0]),
+        )
+        y = np.linspace(
+            np.min(latent_mu[:, 1]),
+            np.max(latent_mu[:, 1]),
+        )
+        X, Y = np.meshgrid(x, y)
+
+        v, w = linalg.eigh(cov)
+        v1 = 2.0 * 1 * np.sqrt(v)  # 1 std
+        v2 = 2.0 * 2 * np.sqrt(v)  # 2 std
+        u = w[0] / linalg.norm(w[0])
+
+        # Plot an ellipse to show the Gaussian component
+        angle = np.arctan(u[1] / u[0])
+        angle = 180.0 * angle / np.pi  # convert to degrees
+        ell = mpl.patches.Ellipse(
+            mu, v1[0], v1[1], angle=180.0 + angle, facecolor="none", edgecolor="green"
+        )
+        ell2 = mpl.patches.Ellipse(
+            mu, v2[0], v2[1], angle=180.0 + angle, facecolor="none", edgecolor="orange"
+        )
+        ell.set_clip_box(ax.bbox)
+        ell.set_alpha(0.5)
+        ax.add_artist(ell)
+        ell2.set_clip_box(ax.bbox)
+        ell2.set_alpha(0.5)
+        ax.add_artist(ell2)
+        # Use star as a marker
+        ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), marker="*", s=100)
+    ax.set_xlabel("Latent dim 1")
+    ax.set_ylabel("Latent dim 2")
+    ax.set_title(f"Latent space with Gaussians distributions")
+    ax.legend()
+    save_path = f"local_results/spectrograms/manner_gmvae/gaussians_generative_and_test_vowels_{fold}_{name}.png"
+    fig.savefig(
+        save_path,
+    )
+    if wandb_flag:
+        wandb.log(
+            {str(name) + "/gaussians_generative_and_test_vowels_": wandb.Image(fig)}
+        )
+
     plt.close()
 
 
@@ -1015,15 +1088,19 @@ def plot_gaussians_generative_over_vowels(
         X, Y = np.meshgrid(x, y)
 
         v, w = linalg.eigh(cov)
-        v1 = 2.0 * 1 * np.sqrt(v) # 1 std
-        v2 = 2.0 * 2 * np.sqrt(v) # 2 std
+        v1 = 2.0 * 1 * np.sqrt(v)  # 1 std
+        v2 = 2.0 * 2 * np.sqrt(v)  # 2 std
         u = w[0] / linalg.norm(w[0])
 
         # Plot an ellipse to show the Gaussian component
         angle = np.arctan(u[1] / u[0])
         angle = 180.0 * angle / np.pi  # convert to degrees
-        ell = mpl.patches.Ellipse(mu, v1[0], v1[1], angle=180.0 + angle, facecolor="none", edgecolor="green")
-        ell2 = mpl.patches.Ellipse(mu, v2[0], v2[1], angle=180.0 + angle, facecolor="none", edgecolor="orange")
+        ell = mpl.patches.Ellipse(
+            mu, v1[0], v1[1], angle=180.0 + angle, facecolor="none", edgecolor="green"
+        )
+        ell2 = mpl.patches.Ellipse(
+            mu, v2[0], v2[1], angle=180.0 + angle, facecolor="none", edgecolor="orange"
+        )
         ell.set_clip_box(ax.bbox)
         ell.set_alpha(0.5)
         ax.add_artist(ell)
@@ -1046,5 +1123,3 @@ def plot_gaussians_generative_over_vowels(
         )
 
     plt.close()
-
-

@@ -24,6 +24,8 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from utils.utils import cluster_acc, nmi
 from tqdm import tqdm
+import time
+from imblearn.under_sampling import RandomUnderSampler
 
 
 class StratifiedBatchSampler:
@@ -1118,12 +1120,12 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         usage = np.zeros(model.k)
 
         # Use tqdm for progress bar
-        for batch_idx, (data, labels) in enumerate(trainloader):
+        for batch_idx, (data, labels) in enumerate(tqdm(trainloader)):
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
-            labels = labels.to(model.device).float()
 
             optimizer.zero_grad()
+
             (
                 loss,
                 rec_loss_b,
@@ -1135,7 +1137,9 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 x_hat,
                 y_pred,
             ) = model.loss(data, labels, e)
+
             loss.backward()
+
             optimizer.step()
 
             train_loss += loss.item()
@@ -1152,9 +1156,13 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
         # Check reconstruction of X
         check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+
         # Check unsupervised cluster accuracy and NMI
         true_label = torch.tensor(np.concatenate(true_label_list))
         pred_label = torch.tensor(np.concatenate(pred_label_list))
+        # Repeat true labels. Labels are Batch_size,1. Repeat each one N times:
+        N = model.x_hat_shape_before_flat[-1]
+        true_label = true_label.repeat_interleave(N, dim=0)
         acc = cluster_acc(pred_label, true_label)
         nmi_score = nmi(pred_label, true_label)
 
@@ -1200,10 +1208,9 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             true_label_list = []
             pred_label_list = []
 
-            for batch_idx, (data, labels) in enumerate(validloader):
+            for batch_idx, (data, labels) in enumerate(tqdm(validloader)):
                 # Make sure dtype is Tensor float
                 data = data.to(model.device).float()
-                labels = labels.to(model.device).float()
 
                 (
                     loss,
@@ -1230,9 +1237,13 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
             # Check reconstruction of X
             check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+
             # Check unsupervised cluster accuracy and NMI
             true_label = torch.tensor(np.concatenate(true_label_list))
             pred_label = torch.tensor(np.concatenate(pred_label_list))
+            # Repeat true labels. Labels are Batch_size,1. Repeat each one N times:
+            N = model.x_hat_shape_before_flat[-1]
+            true_label = true_label.repeat_interleave(N, dim=0)
             acc = cluster_acc(pred_label, true_label)
             nmi_score = nmi(pred_label, true_label)
 
@@ -1270,7 +1281,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         # If the validation loss is the best, save the model
         if valid_loss_store[-1] <= min(valid_loss_store):
             print("Storing the best model at epoch ", e)
-            name = "local_results/spectrograms/gmvae/"
+            name = "local_results/spectrograms/manner_gmvae/"
             # check if the folder exists if not create it
             if not os.path.exists(name):
                 os.makedirs(name)
@@ -1355,7 +1366,7 @@ def VAE_tester(
         )  # 32 is the batch size
         x_hat_array = np.zeros(x_array.shape)
         with tqdm(testloader, unit="batch") as tepoch:
-            for x, y, z in tepoch:
+            for x, y in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
                 if model.n_classes == 2:
@@ -1618,6 +1629,8 @@ def GMVAE_tester(
     supervised=False,
     wandb_flag=False,
 ):
+    # Warning for the precision of the matrix multiplication
+    torch.set_float32_matmul_precision("high")
     # Set model in evaluation mode
     model.eval()
     print("Evaluating the VAE model")
@@ -1637,7 +1650,7 @@ def GMVAE_tester(
 
         x_hat_array = np.zeros(x_array.shape)
         with tqdm(testloader, unit="batch") as tepoch:
-            for x, y, z, c in tepoch:
+            for x, y in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
                 if model.k == 2:

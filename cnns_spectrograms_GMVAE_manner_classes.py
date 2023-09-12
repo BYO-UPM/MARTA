@@ -9,7 +9,7 @@ import pandas as pd
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 # Print the cuda device to use
 print("Using cuda device: ", torch.cuda.current_device())
@@ -19,13 +19,14 @@ def main(args):
     hyperparams = {
         "frame_size_ms": 0.400,  # 400ms
         "spectrogram_win_size": 0.020,  # 20ms
+        "material": "MANNER",
         "hop_size_percent": 0.5,
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": False,
-        "epochs": 300,
-        "batch_size": 4,
+        "wandb_flag": True,
+        "epochs": 100,
+        "batch_size": 32,
         "lr": 1e-3,
         "latent_dim": 2,
         "hidden_dims_enc": [64, 128, 64, 32],
@@ -47,7 +48,7 @@ def main(args):
             gname = "SPECTROGRAMS_GMVAE_" + hyperparams["material"]
             if hyperparams["n_gaussians"] > 0:
                 if hyperparams["n_gaussians"] == 2:
-                    gname += "_naive_PD"
+                    gname += "_supervised_PD"
                 elif hyperparams["n_gaussians"] == 5:
                     gname += "_supervised_vowels"
                 elif hyperparams["n_gaussians"] == 10:
@@ -83,10 +84,10 @@ def main(args):
             supervised=hyperparams["supervised"],
             weights=[
                 1,  # w1 is rec loss,
-                50,  # w2 is gaussian kl loss,
-                50,  # w3 is categorical kl loss,
+                1,  # w2 is gaussian kl loss,
+                1,  # w3 is categorical kl loss,
                 1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-                1000,  # w5 is metric loss
+                1,  # w5 is metric loss
             ],
             cnn=hyperparams["spectrogram"],
         )
@@ -109,11 +110,9 @@ def main(args):
 
         # Restoring best model
         if hyperparams["supervised"]:
-            name = "local_results/spectrograms/gmvae/GMVAE_cnn_best_model.pt"
+            name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model.pt"
         else:
-            name = (
-                "local_results/spectrograms/gmvae/GMVAE_cnn_best_model_unsupervised.pt"
-            )
+            name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model_unsupervised.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -136,12 +135,11 @@ def main(args):
         )
 
         # Create an empty pd dataframe with two columns: data and label
-        df = pd.DataFrame(columns=[audio_features, "label", "vowel"])
+        df = pd.DataFrame(columns=[audio_features, "label"])
         df[audio_features] = [t[0] for t in test_loader.dataset]
         df["label"] = [t[1] for t in test_loader.dataset]
-        df["vowel"] = [t[2] for t in test_loader.dataset]
 
-        if hyperparams["material"] == "PATAKA":
+        if hyperparams["material"] == "MANNER":
             # Plot the latent space in test
             plot_latent_space(
                 model,
@@ -150,26 +148,6 @@ def main(args):
                 hyperparams["wandb_flag"],
                 name="test",
                 supervised=hyperparams["supervised"],
-            )
-        elif hyperparams["material"] == "VOWELS":
-            plot_latent_space_vowels(
-                model,
-                df,
-                fold,
-                hyperparams["wandb_flag"],
-                name="test",
-                supervised=hyperparams["supervised"],
-                gmvae=True,
-                audio_features=audio_features,
-            )
-            calculate_distances(
-                model,
-                df,
-                fold,
-                hyperparams["wandb_flag"],
-                name="test",
-                gmvae=True,
-                audio_features=audio_features,
             )
 
         # df = pd.DataFrame(columns=["plps", "label", "vowel"])

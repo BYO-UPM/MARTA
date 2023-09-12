@@ -2,7 +2,8 @@ import torch
 import timm
 import numpy as np
 import copy
-from pytorch_metric_learning.losses import LiftedStructureLoss
+import time
+from pytorch_metric_learning import miners, losses, reducers
 
 
 width = 64
@@ -867,7 +868,6 @@ class GMVAE(torch.nn.Module):
         # ===== Loss =====
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss(reduction="sum")
         self.mse_loss = torch.nn.MSELoss(reduction="sum")
-        self.lifted_struct_loss = LiftedStructureLoss(pos_margin=0, neg_margin=1)
 
         self.to(self.device)
 
@@ -990,7 +990,23 @@ class GMVAE(torch.nn.Module):
 
         return x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z, x_hat
 
-    def loss(self, x: torch.Tensor, labels=None, combined=None, e=0) -> torch.Tensor:
+    def metric_loss(self, x_hat, labels):
+        sumreducer = reducers.SumReducer()
+        miner = miners.MultiSimilarityMiner()
+        loss_func = losses.MultiSimilarityLoss(reducer=sumreducer)
+
+        N = self.x_hat_shape_before_flat[-1]
+        labels = labels.repeat_interleave(N, dim=0)
+        hard_pairs = miner(x_hat, labels)
+        metric_loss = loss_func(x_hat, labels, hard_pairs)
+
+        # metric_loss = self.lifted_struct_loss(x_hat, labels, hard_pairs)
+
+        return metric_loss
+
+    def loss(
+        self, x: torch.Tensor, labels=None, combined=None, e=0, idx_sampled=[]
+    ) -> torch.Tensor:
         x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z, x_hat = self.forward(x)
 
         # reconstruction loss
@@ -1014,7 +1030,7 @@ class GMVAE(torch.nn.Module):
         if self.supervised:
             if self.k < 10:
                 # Supervised loss
-                clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
+                clf_loss = torch.nn.CrossEntropyLoss(reduction="mean")(
                     qy_logits, labels.type(torch.int64)
                 )
             else:
@@ -1025,13 +1041,8 @@ class GMVAE(torch.nn.Module):
         else:
             clf_loss = 0
 
-        if self.k == 2:
-            # Repeat labels. Labels are Batch_size,1. Repeat each one N times:
-            N = self.x_hat_shape_before_flat[-1]
-            labels = labels.repeat_interleave(N, dim=0)
-
         # Metric embedding loss: lifted structured loss
-        metric_loss = self.lifted_struct_loss(x_hat, labels)
+        metric_loss = self.metric_loss(x_hat, labels)
 
         # if e <= 20:
         #     w1, w2, w3, w4, w5 = 1, 0.1, 0.1, 0.1, 0.1
