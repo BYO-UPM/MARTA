@@ -24,15 +24,15 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": True,
+        "wandb_flag": False,
         "epochs": 100,
-        "batch_size": 32,
+        "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 2,
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
         "supervised": False,
-        "n_gaussians": 2,
+        "n_gaussians": 24,
         "semisupervised": False,
     }
 
@@ -53,6 +53,8 @@ def main(args):
                     gname += "_supervised_vowels"
                 elif hyperparams["n_gaussians"] == 10:
                     gname += "_supervised_2labels"
+                elif hyperparams["n_gaussians"] > 10:
+                    gname += "_supervised_2labels_24gaussians"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -87,7 +89,7 @@ def main(args):
                 1,  # w2 is gaussian kl loss,
                 1,  # w3 is categorical kl loss,
                 1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-                1,  # w5 is metric loss
+                5,  # w5 is metric loss
             ],
             cnn=hyperparams["spectrogram"],
         )

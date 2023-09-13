@@ -942,10 +942,10 @@ class GMVAE(torch.nn.Module):
 
     def infere(self, x: torch.Tensor) -> torch.Tensor:
         # x_hat = g(x)
-        x_hat = self.inference_gx(x)
+        x_hat_unflatten = self.inference_gx(x)
 
         # Flatten
-        x_hat = self.flatten(x_hat)
+        x_hat = self.flatten(x_hat_unflatten)
 
         # q(y | x)
         qy_logits, probs, qy = self.gumbel_softmax(self.inference_qy_x(x_hat))
@@ -961,7 +961,7 @@ class GMVAE(torch.nn.Module):
 
         z = self.reparametrize(qz_mu, qz_logvar)
 
-        return z, qy_logits, qy, qz_mu, qz_logvar, x_hat
+        return z, qy_logits, qy, qz_mu, qz_logvar, x_hat, x_hat_unflatten
 
     def log_normal(self, x, mu, var):
         return -0.5 * torch.sum(
@@ -985,10 +985,21 @@ class GMVAE(torch.nn.Module):
         return x_rec, z_mu, z_var
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z, qy_logits, qy, qz_mu, qz_logvar, x_hat = self.infere(x)
+        z, qy_logits, qy, qz_mu, qz_logvar, x_hat, x_hat_unflatten = self.infere(x)
         x_rec, z_mu, z_var = self.generate(z, qy)
 
-        return x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z, x_hat
+        return (
+            x_rec,
+            z_mu,
+            z_var,
+            qy_logits,
+            qy,
+            qz_mu,
+            qz_logvar,
+            z,
+            x_hat,
+            x_hat_unflatten,
+        )
 
     def metric_loss(self, x_hat, labels):
         sumreducer = reducers.SumReducer()
@@ -996,7 +1007,8 @@ class GMVAE(torch.nn.Module):
         loss_func = losses.MultiSimilarityLoss(reducer=sumreducer)
 
         N = self.x_hat_shape_before_flat[-1]
-        labels = labels.repeat_interleave(N, dim=0)
+        labels = labels.repeat_interleave(N, dim=0).to(self.device).float()
+
         hard_pairs = miner(x_hat, labels)
         metric_loss = loss_func(x_hat, labels, hard_pairs)
 
@@ -1007,7 +1019,18 @@ class GMVAE(torch.nn.Module):
     def loss(
         self, x: torch.Tensor, labels=None, combined=None, e=0, idx_sampled=[]
     ) -> torch.Tensor:
-        x_rec, z_mu, z_var, qy_logits, qy, qz_mu, qz_logvar, z, x_hat = self.forward(x)
+        (
+            x_rec,
+            z_mu,
+            z_var,
+            qy_logits,
+            qy,
+            qz_mu,
+            qz_logvar,
+            z,
+            x_hat,
+            x_hat_unflatten,
+        ) = self.forward(x)
 
         # reconstruction loss
         rec_loss = self.mse_loss(x_rec, x)
@@ -1052,11 +1075,7 @@ class GMVAE(torch.nn.Module):
 
         # Total loss
         total_loss = (
-            w1 * rec_loss
-            + w2 * gaussian_loss
-            + w3 * cat_loss
-            + w4 * clf_loss
-            + w5 * metric_loss
+            w1 * rec_loss + w2 * gaussian_loss + w3 * cat_loss + w5 * metric_loss
         )
 
         return (
