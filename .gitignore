@@ -5,6 +5,7 @@
 local_results/
 old/
 *.txt
+/labeled/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
