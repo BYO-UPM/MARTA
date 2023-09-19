@@ -39,7 +39,7 @@ def main(args):
     print("Reading data...")
     # Read the data
     dataset = Dataset_AudioFeatures(
-        "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/PorMaterial_limpios1_2",
+        "labeled/NeuroVoz",
         hyperparams,
     )
 

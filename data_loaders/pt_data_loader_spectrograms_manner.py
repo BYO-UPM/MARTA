@@ -7,6 +7,8 @@ import librosa
 from sklearn.preprocessing import StandardScaler
 import torchaudio
 from torchaudio import transforms
+import textgrids as tg
+import time
 
 
 class Dataset_AudioFeatures(torch.utils.data.Dataset):
@@ -41,40 +43,68 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         labels = []
         id_patient = []
         texts = []
+        phonemes = []
 
-        for text in os.listdir(datapath):
-            # If the folder's name lenght is less than 3, is a vowel so skip it
-            if len(text) < 3:
+        for file in os.listdir(datapath):
+            # If the file does not end with .wav, skip it
+            if not file.endswith(".wav"):
                 continue
-            # If os.path.data.join is not a folder, skip it
-            if not os.path.isdir(os.path.join(datapath, text)):
+            file_path = os.path.join(datapath, file)
+            file_paths.append(file_path)
+            # Each file is named as follows: <speakerid>_<idpatient>_<text>_<condition>.wav
+            labels.append(file.split("_")[3].split(".")[0])
+            id_patient.append(file.split("_")[1])
+            texts.append(file.split("_")[2])
+
+            # Read the text grid file
+            tg_file = os.path.join(datapath, file + ".TextGrid")
+            # Check if the file exists
+            if not os.path.exists(tg_file):
+                print("File does not exist: ", tg_file)
+                phonemes.append(None)
                 continue
-            for condition in os.listdir(os.path.join(datapath, text)):
-                for file in os.listdir(os.path.join(datapath, text, condition)):
-                    # If the file does not end with .wav, skip it
-                    if not file.endswith(".wav"):
-                        continue
-                    file_path = os.path.join(datapath, text, condition, file)
-                    file_paths.append(file_path)
-                    labels.append(condition)
-                    # Each file is named as follows: <condition>_<text>_<id_patient>.wav
-                    id_patient.append(file.split("_")[2].split(".")[0])
-                    texts.append(text)
+            tg_file = tg.TextGrid(tg_file)
+            phonemes.append(tg_file["speaker : phones"])
+
         # Generate a dataframe with all the data
         data = pd.DataFrame(
             {
                 "file_path": file_paths,
                 "label": labels,
                 "text": texts,
+                "phonemes": phonemes,
                 "id_patient": id_patient,
             }
         )
+        # Drop na
+        data = data.dropna()
         # sort by id_patient
         data = data.sort_values(by=["id_patient"])
         # reset index
         data = data.reset_index(drop=True)
 
         return data
+
+    def match_phonemes(self, phonemes, signal, sr):
+        phoneme_labels = []
+
+        for timestamp in range(len(signal)):
+            # Convert the timestamp to seconds
+            timestamp_seconds = timestamp / sr
+
+            # Find the Interval object that corresponds to the current timestamp
+            matching_interval = None
+            for interval in phonemes:
+                if interval.xmin <= timestamp_seconds <= interval.xmax:
+                    matching_interval = interval
+                    break
+            # Append the phoneme label to the phoneme_labels list (or None if no match is found)
+            if matching_interval is not None:
+                phoneme_labels.append(matching_interval.text)
+            else:
+                phoneme_labels.append(None)
+
+        return phoneme_labels
 
     def read_dataset(self, path_to_data):
         print("Reading the data...")
@@ -104,6 +134,22 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Frame the signals
         data["signal_framed"] = data["signal"].apply(
+            lambda x: librosa.util.frame(
+                x, frame_length=frame_length, hop_length=hop_length, axis=0
+            )
+        )
+
+        print("Matching text grid phonemes to the signals...")
+        t1 = time.time()
+        # Match phonemes
+        data["phonemes_matched"] = data.apply(
+            lambda x: self.match_phonemes(x["phonemes"], x["signal"], x["sr"]), axis=1
+        )
+        t2 = time.time()
+        print("Time to match phonemes: ", t2 - t1)
+
+        # Frame the phonemes with 50% overlap
+        data["phonemes_framed_overlap"] = data["phonemes_matched"].apply(
             lambda x: librosa.util.frame(
                 x, frame_length=frame_length, hop_length=hop_length, axis=0
             )
@@ -160,7 +206,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Save data to this to not compute this again if it is not necessary. This is a heavy process.
         name_save = (
-            "local_results/data_frame"
+            "local_results/data_frame_with_phonemes"
             + str(self.hyperparams["frame_size_ms"])
             + "spec_winsize_"
             + str(self.hyperparams["spectrogram_win_size"])
