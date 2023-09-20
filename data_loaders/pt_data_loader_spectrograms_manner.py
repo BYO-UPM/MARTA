@@ -21,7 +21,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Check if the data has been already processed and saved
         name_save = (
-            "local_results/data_frame"
+            "local_results/data_frame_with_phonemes"
             + str(self.hyperparams["frame_size_ms"])
             + "spec_winsize_"
             + str(self.hyperparams["spectrogram_win_size"])
@@ -155,54 +155,56 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
         )
 
-        if self.spectrogram:
-            # Calculate the spectrogram. We want that each spectrogram is 400ms long with 20 windows of 20ms each.
-            win_length = int(
-                data["sr"].iloc[0] * self.hyperparams["spectrogram_win_size"]
-            )  # 20ms (default) to capture each phoneme
-            hop_length = int(win_length * self.hyperparams["hop_size_percent"])
+        # Remove unused columns
+        data = data.drop(columns=["signal", "phonemes", "phonemes_matched"])
 
-            n_fft = 2048
+        # Explode the DataFrame by signal_framed and phonemes_framed_overlap
+        data = data.explode(["signal_framed", "phonemes_framed_overlap"])
+
+        # Reset index
+        data.reset_index(drop=True, inplace=True)
+
+        if self.spectrogram:
+            # Calculate the spectrogram. We want that each spectrogram is 400ms long with 20 windows of 23ms each.
+            win_length = 512
+            hop_length = win_length // 2  # 50% overlap
+
+            n_fft = 512
             n_mels = 65
 
-            # Calculate spectorgram with torchaudio and normalize with transforms
-            mel_spec = torchaudio.transforms.MelSpectrogram(
-                sample_rate=data["sr"].iloc[0],
-                n_fft=n_fft,
-                win_length=win_length,
-                hop_length=hop_length,
-                n_mels=n_mels,
-                center=True,
-                pad_mode="reflect",
-                power=2.0,
-                norm="slaney",
-                onesided=True,
-                mel_scale="htk",
-            )
-            # Power to db
-            power_to_db = torchaudio.transforms.AmplitudeToDB(
-                stype="power", top_db=None
-            )
-            # Calculate the spectrogram for each frame
+            # Calculate the melspectrogram using librosa
             data["spectrogram"] = data["signal_framed"].apply(
-                lambda x: mel_spec(torch.tensor(x).unsqueeze(0))
+                lambda x: librosa.feature.melspectrogram(
+                    y=x,
+                    sr=data["sr"].iloc[0],
+                    n_fft=n_fft,
+                    hop_length=hop_length,
+                    n_mels=n_mels,
+                    center=False,
+                )
             )
-            # First, reshape the "spectrogram" column to be a list of tensors instead of a single tensor
-            data["spectrogram"] = data["spectrogram"].apply(
-                lambda x: x.reshape(-1, x.shape[2], x.shape[3])
-            )
-
-            # Explode the DataFrame by "n_frames"
-            data = data.explode("spectrogram")
-            data.reset_index(drop=True, inplace=True)
 
             # Calculate the power to db for each frame
-            data["spectrogram"] = data["spectrogram"].apply(lambda x: power_to_db(x))
+            data["spectrogram"] = data["spectrogram"].apply(
+                lambda x: librosa.power_to_db(x, ref=np.max)
+            )
 
             # Normalise each spectrogram by substraction the mean and dividing by the standard deviation
             data["spectrogram"] = data["spectrogram"].apply(
                 lambda x: (x - x.mean()) / x.std()
             )
+
+            # Frame again the phonemes to match spectrogram frames
+            data["phonemes_framed_spectrogram"] = data["phonemes_framed_overlap"].apply(
+                lambda x: librosa.util.frame(
+                    x, frame_length=win_length, hop_length=hop_length, axis=0
+                )
+            )
+
+            # Collapse to most common phoneme
+            data["phonemes_framed_spectrogram"] = data[
+                "phonemes_framed_spectrogram"
+            ].apply(lambda x: self.collapse_to_most_repeated(x))
 
         # Save data to this to not compute this again if it is not necessary. This is a heavy process.
         name_save = (
@@ -220,6 +222,24 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             pd.to_pickle({"data": data}, name_save)
 
         return data
+
+    # Function to collapse the matrix into a 33x1 vector with the most repeated string
+    def collapse_to_most_repeated(row):
+        from collections import Counter
+
+        collapsed_vector = []
+        for row_values in row:
+            # Count the occurrences of each string in the row
+            count = Counter(row_values)
+            # Find the most common string
+            most_common = count.most_common(1)
+            if most_common:
+                collapsed_vector.append(most_common[0][0])
+            else:
+                collapsed_vector.append(
+                    None
+                )  # Handle the case when there are no strings
+        return collapsed_vector
 
     def get_dataloaders(self, fold=0):
         print("Splitting in train, test and validation sets...")

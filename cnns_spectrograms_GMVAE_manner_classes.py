@@ -18,7 +18,7 @@ print("Using cuda device: ", torch.cuda.current_device())
 def main(args):
     hyperparams = {
         "frame_size_ms": 0.400,  # 400ms
-        "spectrogram_win_size": 0.020,  # 20ms
+        "spectrogram_win_size": 0.023,  # 23ms as it is recommended in the librosa library for speech recognition
         "material": "MANNER",
         "hop_size_percent": 0.5,
         "n_plps": 0,
