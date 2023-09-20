@@ -11,6 +11,23 @@ import textgrids as tg
 import time
 
 
+# Function to collapse the matrix into a 33x1 vector with the most repeated string
+def collapse_to_most_repeated(row):
+    from collections import Counter
+
+    collapsed_vector = []
+    for row_values in row:
+        # Count the occurrences of each string in the row
+        count = Counter(row_values)
+        # Find the most common string
+        most_common = count.most_common(1)
+        if most_common:
+            collapsed_vector.append(most_common[0][0])
+        else:
+            collapsed_vector.append(None)  # Handle the case when there are no strings
+    return collapsed_vector
+
+
 class Dataset_AudioFeatures(torch.utils.data.Dataset):
     def __init__(self, data_path, hyperparams):
         self.hyperparams = hyperparams
@@ -202,9 +219,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
             # Collapse to most common phoneme
-            data["phonemes_framed_spectrogram"] = data[
-                "phonemes_framed_spectrogram"
-            ].apply(lambda x: self.collapse_to_most_repeated(x))
+            data["collapsed_phonemes"] = data["phonemes_framed_spectrogram"].apply(
+                collapse_to_most_repeated
+            )
 
         # Save data to this to not compute this again if it is not necessary. This is a heavy process.
         name_save = (
@@ -222,24 +239,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             pd.to_pickle({"data": data}, name_save)
 
         return data
-
-    # Function to collapse the matrix into a 33x1 vector with the most repeated string
-    def collapse_to_most_repeated(row):
-        from collections import Counter
-
-        collapsed_vector = []
-        for row_values in row:
-            # Count the occurrences of each string in the row
-            count = Counter(row_values)
-            # Find the most common string
-            most_common = count.most_common(1)
-            if most_common:
-                collapsed_vector.append(most_common[0][0])
-            else:
-                collapsed_vector.append(
-                    None
-                )  # Handle the case when there are no strings
-        return collapsed_vector
 
     def get_dataloaders(self, fold=0):
         print("Splitting in train, test and validation sets...")
