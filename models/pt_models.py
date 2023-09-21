@@ -1006,6 +1006,9 @@ class GMVAE(torch.nn.Module):
         miner = miners.MultiSimilarityMiner()
         loss_func = losses.MultiSimilarityLoss(reducer=sumreducer)
 
+        # Move labels to GPU
+        labels = labels.to(self.device)
+
         hard_pairs = miner(x_hat, labels.view(-1))
         metric_loss = loss_func(x_hat, labels.view(-1), hard_pairs)
 
