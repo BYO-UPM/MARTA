@@ -1645,13 +1645,13 @@ def GMVAE_tester(
 
         # Create x_array of shape Batch x Output shape
         if audio_features == "spectrogram":
-            x_array = np.zeros((batch_size, 1, 65, 41))
+            x_array = np.zeros((batch_size, 1, 65, 33))
         else:
             x_array = np.zeros((batch_size, test_data[audio_features].iloc[0].shape[0]))
 
         x_hat_array = np.zeros(x_array.shape)
         with tqdm(testloader, unit="batch") as tepoch:
-            for x, y in tepoch:
+            for x, y, m in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
                 if model.k == 2:
@@ -1689,7 +1689,7 @@ def GMVAE_tester(
                             )
                         )
                 else:
-                    x_hat, _, _, _, _, _, _, _, _ = model.forward(x)
+                    x_hat, _, _, _, _, _, _, _, _, _ = model.forward(x)
 
                 # Concatenate predictions
                 x_hat_array = np.concatenate(
