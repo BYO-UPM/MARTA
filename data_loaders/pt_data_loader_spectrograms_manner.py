@@ -241,6 +241,39 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         return data
 
     def get_dataloaders(self, fold=0):
+        # Map phonemes to manner classes
+        manner_classes = {
+            "p": "stop1",
+            "t": "stop1",
+            "k": "stop1",
+            "b": "stop2",
+            "d": "stop2",
+            "g": "stop2",
+            "n": "nasal",
+            "m": "nasal",
+            "NY": "nasal",
+            "f": "fricative",
+            "s": "fricative",
+            "x": "fricative",
+            "h": "fricative",
+            "R": "liquid",
+            "r": "liquid",
+            "l": "liquid",
+            "y": "liquid",
+            "a": "vowel",
+            "e": "vowel",
+            "i": "vowel",
+            "o": "vowel",
+            "u": "vowel",
+            "CH": "affricate",
+            "sil": "silence",
+            "sp": "silence",
+        }
+
+        # Map all self.data["collapsed_phonemes"] to manner classes
+        self.data["manner_class"] = self.data["collapsed_phonemes"].apply(
+            lambda x: [manner_classes[phoneme] for phoneme in x]
+        )
         print("Splitting in train, test and validation sets...")
         # Split the data into train, validation and test sets
         train_data = self.data[self.data["fold"] != fold]
@@ -270,14 +303,17 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         x_train = np.stack(train_data[audio_features].values)
         x_train = np.expand_dims(x_train, axis=1)
         y_train = train_data["label"].values
+        p_train = np.array([np.array(x) for x in train_data["collapsed_phonemes"]])
 
         x_val = np.stack(val_data[audio_features])
         x_val = np.expand_dims(x_val, axis=1)
         y_val = val_data["label"].values
+        p_val = np.array([np.array(x) for x in val_data["collapsed_phonemes"]])
 
         x_test = np.stack(test_data[audio_features])
         x_test = np.expand_dims(x_test, axis=1)
         y_test = test_data["label"].values
+        p_test = np.array([np.array(x) for x in test_data["collapsed_phonemes"]])
 
         # Normalise the spectrograms which are 2D using standard scaler
         std = StandardScaler()
@@ -307,6 +343,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_train,
                     y_train,
+                    p_train,
                 )
             ),
             drop_last=False,
@@ -318,6 +355,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_val,
                     y_val,
+                    p_val,
                 )
             ),
             drop_last=False,
@@ -329,6 +367,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_test,
                     y_test,
+                    p_test,
                 )
             ),
             drop_last=False,
