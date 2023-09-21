@@ -1197,55 +1197,56 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
         if validloader is not None:
             model.eval()
-            valid_loss = 0
-            val_rec_loss = 0
-            val_gaussian_loss = 0
-            val_clf_loss = 0
-            val_cat_loss = 0
-            val_metric_loss = 0
-            val_usage = 0
+            with torch.no_grad():
+                valid_loss = 0
+                val_rec_loss = 0
+                val_gaussian_loss = 0
+                val_clf_loss = 0
+                val_cat_loss = 0
+                val_metric_loss = 0
+                val_usage = 0
 
-            true_label_list = []
-            pred_label_list = []
+                true_label_list = []
+                pred_label_list = []
 
-            for batch_idx, (data, labels) in enumerate(tqdm(validloader)):
-                # Make sure dtype is Tensor float
-                data = data.to(model.device).float()
+                for batch_idx, (data, labels, manner) in enumerate(tqdm(validloader)):
+                    # Make sure dtype is Tensor float
+                    data = data.to(model.device).float()
 
-                (
-                    loss,
-                    rec_loss_v,
-                    gaussian_loss_v,
-                    cat_loss_v,
-                    clf_loss_v,
-                    metric_loss_v,
-                    x,
-                    x_hat,
-                    y_pred,
-                ) = model.loss(data, labels)
-                valid_loss += loss.item()
-                val_rec_loss += rec_loss_v.item()
-                val_gaussian_loss += gaussian_loss_v.item()
-                if supervised:
-                    val_clf_loss += clf_loss_v.item()
-                val_cat_loss += cat_loss_v.item()
-                val_metric_loss += metric_loss_v.item()
-                val_usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
+                    (
+                        loss,
+                        rec_loss_v,
+                        gaussian_loss_v,
+                        cat_loss_v,
+                        clf_loss_v,
+                        metric_loss_v,
+                        x,
+                        x_hat,
+                        y_pred,
+                    ) = model.loss(data, labels, manner, e)
+                    valid_loss += loss.item()
+                    val_rec_loss += rec_loss_v.item()
+                    val_gaussian_loss += gaussian_loss_v.item()
+                    if supervised:
+                        val_clf_loss += clf_loss_v.item()
+                    val_cat_loss += cat_loss_v.item()
+                    val_metric_loss += metric_loss_v.item()
+                    val_usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-                true_label_list.append(labels.cpu().numpy())
-                pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
+                    true_label_list.append(labels.cpu().numpy())
+                    pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
-            # Check reconstruction of X
-            check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+                # Check reconstruction of X
+                check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
 
-            # Check unsupervised cluster accuracy and NMI
-            true_label = torch.tensor(np.concatenate(true_label_list))
-            pred_label = torch.tensor(np.concatenate(pred_label_list))
-            # Repeat true labels. Labels are Batch_size,1. Repeat each one N times:
-            N = model.x_hat_shape_before_flat[-1]
-            true_label = true_label.repeat_interleave(N, dim=0)
-            acc = cluster_acc(pred_label, true_label)
-            nmi_score = nmi(pred_label, true_label)
+                # Check unsupervised cluster accuracy and NMI
+                true_label = torch.tensor(np.concatenate(true_label_list))
+                pred_label = torch.tensor(np.concatenate(pred_label_list))
+                # Repeat true labels. Labels are Batch_size,1. Repeat each one N times:
+                N = model.x_hat_shape_before_flat[-1]
+                true_label = true_label.repeat_interleave(N, dim=0)
+                acc = cluster_acc(pred_label, true_label)
+                nmi_score = nmi(pred_label, true_label)
 
             print(
                 "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Clf Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(

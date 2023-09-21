@@ -1006,11 +1006,8 @@ class GMVAE(torch.nn.Module):
         miner = miners.MultiSimilarityMiner()
         loss_func = losses.MultiSimilarityLoss(reducer=sumreducer)
 
-        N = self.x_hat_shape_before_flat[-1]
-        labels = labels.repeat_interleave(N, dim=0).to(self.device).float()
-
-        hard_pairs = miner(x_hat, labels)
-        metric_loss = loss_func(x_hat, labels, hard_pairs)
+        hard_pairs = miner(x_hat, labels.view(-1))
+        metric_loss = loss_func(x_hat, labels.view(-1), hard_pairs)
 
         # metric_loss = self.lifted_struct_loss(x_hat, labels, hard_pairs)
 
