@@ -46,14 +46,18 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
         data_input = (
             torch.Tensor(np.vstack(data["spectrogram"])).to(model.device).unsqueeze(1)
         )
-        z, qy_logits, qy, latent_mu, qz_logvar, x_hat = model.infere(data_input)
+        z, qy_logits, qy, latent_mu, qz_logvar, x_hat, x_hat_unflatten = model.infere(
+            data_input
+        )
     labels = torch.Tensor(data["label"].values)
-    N = model.x_hat_shape_before_flat[-1]
-    labels = labels.repeat_interleave(N, dim=0)
+    manner = torch.Tensor(np.array([np.array(x) for x in data["manner"]]))
+
+    manner_labels = manner.reshape(-1)
 
     # Subsample 1000 points to the plotting and move them to numpy and cpu
     idx = np.random.choice(len(labels), 1000)
     labels = labels[idx].cpu().numpy()
+    manner_labels = manner_labels[idx].cpu().numpy()
     latent_mu = latent_mu[idx].cpu().numpy()
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
@@ -73,8 +77,8 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
     scatter = ax.scatter(
         latent_mu[:, 0],
         latent_mu[:, 1],
-        c=labels,
-        cmap="viridis",
+        c=manner_labels,
+        cmap="Paired",
     )
 
     # Add labels and title
@@ -83,8 +87,16 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
 
     # Create custom legend
-    classes = ["Healthy", "PD"]
-    class_labels = np.unique(data["label"].values)
+    classes = [
+        "Plosives",
+        "Plosives voiced",
+        "Nasals",
+        "Fricatives",
+        "Vowels",
+        "Affricates",
+        "Silence",
+    ]
+    class_labels = np.unique(manner_labels)
     class_handles = [
         plt.Line2D(
             [],

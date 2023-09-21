@@ -24,11 +24,11 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": False,
-        "epochs": 1,
+        "wandb_flag": True,
+        "epochs": 100,
         "batch_size": 64,
         "lr": 1e-3,
-        "latent_dim": 2,
+        "latent_dim": 32,
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
         "supervised": False,
@@ -54,7 +54,7 @@ def main(args):
                 elif hyperparams["n_gaussians"] == 10:
                     gname += "_supervised_2labels"
                 elif hyperparams["n_gaussians"] > 10:
-                    gname += "_supervised_2labels_24gaussians"
+                    gname += "_supervised_8classes_16gaussians_deeperspace"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -89,7 +89,7 @@ def main(args):
                 1,  # w2 is gaussian kl loss,
                 1,  # w3 is categorical kl loss,
                 1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-                5,  # w5 is metric loss
+                100,  # w5 is metric loss
             ],
             cnn=hyperparams["spectrogram"],
         )
@@ -114,7 +114,7 @@ def main(args):
         if hyperparams["supervised"]:
             name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model.pt"
         else:
-            name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model_unsupervised.pt"
+            name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model_deeper_unsupervised.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -136,10 +136,11 @@ def main(args):
             wandb_flag=hyperparams["wandb_flag"],
         )
 
-        # Create an empty pd dataframe with two columns: data and label
-        df = pd.DataFrame(columns=[audio_features, "label"])
+        # Create an empty pd dataframe with three columns: data, label and manner
+        df = pd.DataFrame(columns=[audio_features, "label", "manner"])
         df[audio_features] = [t[0] for t in test_loader.dataset]
         df["label"] = [t[1] for t in test_loader.dataset]
+        df["manner"] = [t[2] for t in test_loader.dataset]
 
         if hyperparams["material"] == "MANNER":
             # Plot the latent space in test

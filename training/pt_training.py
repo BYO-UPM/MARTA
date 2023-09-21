@@ -1286,7 +1286,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             # check if the folder exists if not create it
             if not os.path.exists(name):
                 os.makedirs(name)
-            name += "GMVAE_cnn_best_model_unsupervised.pt"
+            name += "GMVAE_cnn_best_model_deeper_unsupervised.pt"
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
