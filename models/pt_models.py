@@ -1017,7 +1017,7 @@ class GMVAE(torch.nn.Module):
         return metric_loss
 
     def loss(
-        self, x: torch.Tensor, labels=None, combined=None, e=0, idx_sampled=[]
+        self, x: torch.Tensor, labels=None, manner=None, e=0, idx_sampled=[]
     ) -> torch.Tensor:
         (
             x_rec,
@@ -1059,14 +1059,14 @@ class GMVAE(torch.nn.Module):
             else:
                 # Supervised loss
                 clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
-                    qy_logits, combined.type(torch.float32)
+                    qy_logits, manner.type(torch.float32)
                 )
         else:
             clf_loss = 0
 
         # Metric embedding loss: lifted structured loss
 
-        metric_loss = self.metric_loss(x_hat, labels)
+        metric_loss = self.metric_loss(x_hat, manner)
 
         # if e <= 20:
         #     w1, w2, w3, w4, w5 = 1, 0.1, 0.1, 0.1, 0.1

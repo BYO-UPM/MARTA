@@ -1120,7 +1120,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         usage = np.zeros(model.k)
 
         # Use tqdm for progress bar
-        for batch_idx, (data, labels) in enumerate(tqdm(trainloader)):
+        for batch_idx, (data, labels, manner) in enumerate(tqdm(trainloader)):
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
 
@@ -1136,7 +1136,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 x,
                 x_hat,
                 y_pred,
-            ) = model.loss(data, labels, e)
+            ) = model.loss(data, labels, manner, e)
 
             loss.backward()
 

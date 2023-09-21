@@ -9,7 +9,7 @@ import pandas as pd
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # Print the cuda device to use
 print("Using cuda device: ", torch.cuda.current_device())
@@ -32,7 +32,7 @@ def main(args):
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
         "supervised": False,
-        "n_gaussians": 24,
+        "n_gaussians": 16,
         "semisupervised": False,
     }
 
