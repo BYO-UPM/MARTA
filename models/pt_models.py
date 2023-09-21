@@ -686,7 +686,7 @@ class Spectrogram_networks_vowels(torch.nn.Module):
                 torch.nn.MaxPool2d(2),
                 torch.nn.Flatten(),
             )
-            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 41)).shape
+            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 33)).shape
         else:
             raise NotImplementedError
 
@@ -754,10 +754,10 @@ class Spectrogram_networks_manner(torch.nn.Module):
             )
             self.flatten = Flatten()
             self.x_hat_shape_before_flatten = self.inference_gx(
-                torch.zeros(1, 1, 65, 41)
+                torch.zeros(1, 1, 65, 33)
             ).shape
             self.x_hat_shape_after_flatten = self.flatten(
-                self.inference_gx(torch.zeros(1, 1, 65, 41))
+                self.inference_gx(torch.zeros(1, 1, 65, 33))
             ).shape
         else:
             raise NotImplementedError
@@ -818,7 +818,7 @@ class UnFlatten(torch.nn.Module):
         x = x.reshape(-1, 64, 7)
 
         # x is now shaped (B*W, C, H), lets conver it to (B, W, C, H)
-        x = x.reshape(-1, 41, 64, 7)
+        x = x.reshape(-1, 33, 64, 7)
 
         # x is now shaped (B, W, C, H), lets conver it to (B, C, H, W)
         x = x.permute(0, 2, 3, 1)
