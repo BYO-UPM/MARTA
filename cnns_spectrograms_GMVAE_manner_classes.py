@@ -54,7 +54,7 @@ def main(args):
                 elif hyperparams["n_gaussians"] == 10:
                     gname += "_supervised_2labels"
                 elif hyperparams["n_gaussians"] > 10:
-                    gname += "_supervised_8classes_16gaussians_deeperspace"
+                    gname += "_supervised_8classes_16gaussians_deeperspace_metric_zmu"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -114,7 +114,7 @@ def main(args):
         if hyperparams["supervised"]:
             name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model.pt"
         else:
-            name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model_deeper_unsupervised.pt"
+            name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model_deeper_unsupervised_metric_zmu.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 

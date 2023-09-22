@@ -1004,10 +1004,13 @@ class GMVAE(torch.nn.Module):
     def metric_loss(self, x_hat, labels):
         sumreducer = reducers.SumReducer()
         miner = miners.MultiSimilarityMiner()
-        loss_func = losses.MultiSimilarityLoss(reducer=sumreducer)
+        # loss_func = losses.MultiSimilarityLoss(reducer=sumreducer)
+        loss_func = losses.GeneralizedLiftedStructureLoss(reducer=sumreducer).to(
+            self.device
+        )
 
-        # Move labels to GPU
-        labels = labels.to(self.device)
+        # # Move labels to GPU
+        # labels = labels.to(self.device)
 
         hard_pairs = miner(x_hat, labels.view(-1))
         metric_loss = loss_func(x_hat, labels.view(-1), hard_pairs)
@@ -1066,7 +1069,7 @@ class GMVAE(torch.nn.Module):
 
         # Metric embedding loss: lifted structured loss
 
-        metric_loss = self.metric_loss(x_hat, manner)
+        metric_loss = self.metric_loss(qz_mu, manner)
 
         # if e <= 20:
         #     w1, w2, w3, w4, w5 = 1, 0.1, 0.1, 0.1, 0.1
