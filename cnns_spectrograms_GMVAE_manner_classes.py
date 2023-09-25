@@ -25,7 +25,7 @@ def main(args):
         "n_mfccs": 0,
         "spectrogram": True,
         "wandb_flag": True,
-        "epochs": 100,
+        "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 32,
