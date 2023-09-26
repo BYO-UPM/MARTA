@@ -60,12 +60,34 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
     manner_labels = manner_labels[idx].cpu().numpy()
     latent_mu = latent_mu[idx].cpu().numpy()
 
+    # p(y) = Cat(10)
+    py = torch.eye(model.k).to(model.device)
+    # Sample from generative model
+    z_mu, z_logvar = torch.chunk(model.generative_pz_y(py), 2, dim=1)
+    z_var = torch.nn.functional.softplus(z_logvar)
+
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu.shape[1] > 2:
         from sklearn.manifold import TSNE
-        latent_mu = TSNE(n_components=2).fit_transform(latent_mu)
+        inference_mu_shape = latent_mu.shape
+        generative_mu_shape = z_mu.shape
+
+        # Convert all to 2D
+
+        # Concat all info
+        all = np.concatenate((latent_mu, z_mu.cpu().detach().numpy(), z_var.cpu().detach().numpy()), axis=0)
+
+        all_2D = TSNE(n_components=2).fit_transform(all)
+        
+
+        # Separate info
+        latent_mu = all_2D[:inference_mu_shape[0]]
+        z_mu = all_2D[inference_mu_shape[0]:inference_mu_shape[0]+generative_mu_shape[0]]
+        z_var = all_2D[inference_mu_shape[0]+generative_mu_shape[0]:]
+
         xlabel = "t-SNE dim 1"
         ylabel = "t-SNE dim 2"
+
     else:
         xlabel = "Latent dim 1"
         ylabel = "Latent dim 2"
@@ -79,13 +101,6 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
     idxPD = np.argwhere(labels == 1).ravel()
     scatter1= ax.scatter(latent_mu[idxH, 0], latent_mu[idxH, 1], c = manner_labels[idxH], alpha=0.2, cmap="Set1")
     scatter2= ax.scatter(latent_mu[idxPD, 0], latent_mu[idxPD, 1], c = manner_labels[idxPD], alpha=1, cmap="Set1")
-
-    # scatter = ax.scatter(
-    #     latent_mu[:, 0],
-    #     latent_mu[:, 1],
-    #     c=manner_labels,
-    #     cmap="Paired",
-    # )
 
     # Add labels and title
     ax.set_xlabel(xlabel)
@@ -128,19 +143,7 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
     if wandb_flag:
         wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
 
-    # p(y) = Cat(10)
-    py = torch.eye(model.k).to(model.device)
-    # Sample from generative model
-    z_mu, z_logvar = torch.chunk(model.generative_pz_y(py), 2, dim=1)
-    z_var = torch.nn.functional.softplus(z_logvar)
-
-    # Convert to 2D if greater than 2
-    if z_mu.shape[1] > 2:
-        z_mu = TSNE(n_components=2, perplexity=5).fit_transform(z_mu.cpu().detach().numpy())
-        z_var = TSNE(n_components=2, perplexity=5).fit_transform(z_var.cpu().detach().numpy())
-    else:
-        z_mu = z_mu.cpu().detach().numpy()
-        z_var = z_var.cpu().detach().numpy()
+    
 
     for i in range(model.k):
         mu = z_mu[i]

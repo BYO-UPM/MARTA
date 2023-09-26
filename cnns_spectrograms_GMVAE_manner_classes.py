@@ -25,7 +25,7 @@ def main(args):
         "n_mfccs": 0,
         "spectrogram": True,
         "wandb_flag": True,
-        "epochs": 300,
+        "epochs": 150,
         "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 32,
@@ -54,7 +54,7 @@ def main(args):
                 elif hyperparams["n_gaussians"] == 10:
                     gname += "_supervised_2labels"
                 elif hyperparams["n_gaussians"] > 10:
-                    gname += "_supervised_8classes_16gaussians_deeperspace_metric_zmu"
+                    gname += "_supervised_14classes_16gaussians"
             else:
                 gname += "_UNsupervised"
             wandb.finish()

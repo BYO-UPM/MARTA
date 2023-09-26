@@ -305,16 +305,25 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         x_train = np.expand_dims(x_train, axis=1)
         y_train = train_data["label"].values
         p_train = np.array([np.array(x) for x in train_data["manner_class"]])
+        # Make a new label that is the combination of p and y. That is: p has 7 classes and y has 2 classes. So the new label will have 14 classes
+        z_train = np.array([np.array([np.repeat(x, len(y)),y]) for x,y in zip(y_train, p_train)])
+        n_classes = np.unique(p_train).shape[0]
+        z_train = np.array([np.array(x[1]+n_classes*x[0]) for x in z_train])
+
 
         x_val = np.stack(val_data[audio_features])
         x_val = np.expand_dims(x_val, axis=1)
         y_val = val_data["label"].values
         p_val = np.array([np.array(x) for x in val_data["manner_class"]])
+        z_val = np.array([np.array([np.repeat(x, len(y)),y]) for x,y in zip(y_val, p_val)])
+        z_val = np.array([np.array(x[1]+n_classes*x[0]) for x in z_val])
 
         x_test = np.stack(test_data[audio_features])
         x_test = np.expand_dims(x_test, axis=1)
         y_test = test_data["label"].values
         p_test = np.array([np.array(x) for x in test_data["manner_class"]])
+        z_test = np.array([np.array([np.repeat(x, len(y)),y]) for x,y in zip(y_test, p_test)])
+        z_test = np.array([np.array(x[1]+n_classes*x[0]) for x in z_test])
 
         # Normalise the spectrograms which are 2D using standard scaler
         std = StandardScaler()
@@ -344,7 +353,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_train,
                     y_train,
-                    p_train,
+                    z_train,
                 )
             ),
             drop_last=False,
@@ -356,7 +365,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_val,
                     y_val,
-                    p_val,
+                    z_val,
                 )
             ),
             drop_last=False,
@@ -368,7 +377,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_test,
                     y_test,
-                    p_test,
+                    z_test,
                 )
             ),
             drop_last=False,
