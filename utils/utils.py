@@ -39,7 +39,7 @@ def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
     return train_idx, test_idx
 
 
-def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=False):
+def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=False, samples=1000):
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
@@ -55,7 +55,7 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
     manner_labels = manner.reshape(-1)
 
     # Subsample 1000 points to the plotting and move them to numpy and cpu
-    idx = np.random.choice(len(labels), 1000)
+    idx = np.random.choice(len(labels), samples)
     labels = labels[idx].cpu().numpy()
     manner_labels = manner_labels[idx].cpu().numpy()
     latent_mu = latent_mu[idx].cpu().numpy()

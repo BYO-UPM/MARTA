@@ -151,6 +151,7 @@ def main(args):
                 hyperparams["wandb_flag"],
                 name="test",
                 supervised=hyperparams["supervised"],
+                samples=5000
             )
 
         # df = pd.DataFrame(columns=["plps", "label", "vowel"])
