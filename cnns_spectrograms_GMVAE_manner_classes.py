@@ -54,7 +54,7 @@ def main(args):
                 elif hyperparams["n_gaussians"] == 10:
                     gname += "_supervised_2labels"
                 elif hyperparams["n_gaussians"] > 10:
-                    gname += "_supervised_14classes_16gaussians"
+                    gname += "_supervised_14classes_16gaussians_weighted"
             else:
                 gname += "_UNsupervised"
             wandb.finish()
@@ -89,7 +89,7 @@ def main(args):
                 1,  # w2 is gaussian kl loss,
                 1,  # w3 is categorical kl loss,
                 1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-                10,  # w5 is metric loss
+                100,  # w5 is metric loss
             ],
             cnn=hyperparams["spectrogram"],
         )
@@ -151,7 +151,7 @@ def main(args):
                 hyperparams["wandb_flag"],
                 name="test",
                 supervised=hyperparams["supervised"],
-                samples=5000
+                samples=5000,
             )
 
         # df = pd.DataFrame(columns=["plps", "label", "vowel"])
