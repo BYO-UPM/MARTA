@@ -1,6 +1,10 @@
 from models.pt_models import GMVAE
 from training.pt_training import GMVAE_trainer, GMVAE_tester
-from utils.utils import plot_latent_space, plot_latent_space_vowels, calculate_distances
+from utils.utils import (
+    plot_latent_space,
+    plot_latent_space_vowels,
+    calculate_distances_manner,
+)
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
@@ -153,6 +157,15 @@ def main(args):
                 supervised=hyperparams["supervised"],
                 samples=5000,
             )
+            # calculate_distances_manner(
+            #     model,
+            #     df,
+            #     fold,
+            #     hyperparams["wandb_flag"],
+            #     name="test",
+            #     gmvae=True,
+            #     audio_features="spectrograms",
+            # )
 
         # df = pd.DataFrame(columns=["plps", "label", "vowel"])
         # df["plps"] = [t[0] for t in train_loader.dataset]

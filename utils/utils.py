@@ -39,7 +39,9 @@ def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
     return train_idx, test_idx
 
 
-def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=False, samples=1000):
+def plot_latent_space(
+    model, data, fold, wandb_flag, name="default", supervised=False, samples=1000
+):
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
@@ -69,21 +71,26 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu.shape[1] > 2:
         from sklearn.manifold import TSNE
+
         inference_mu_shape = latent_mu.shape
         generative_mu_shape = z_mu.shape
 
         # Convert all to 2D
 
         # Concat all info
-        all = np.concatenate((latent_mu, z_mu.cpu().detach().numpy(), z_var.cpu().detach().numpy()), axis=0)
+        all = np.concatenate(
+            (latent_mu, z_mu.cpu().detach().numpy(), z_var.cpu().detach().numpy()),
+            axis=0,
+        )
 
         all_2D = TSNE(n_components=2).fit_transform(all)
-        
 
         # Separate info
-        latent_mu = all_2D[:inference_mu_shape[0]]
-        z_mu = all_2D[inference_mu_shape[0]:inference_mu_shape[0]+generative_mu_shape[0]]
-        z_var = all_2D[inference_mu_shape[0]+generative_mu_shape[0]:]
+        latent_mu = all_2D[: inference_mu_shape[0]]
+        z_mu = all_2D[
+            inference_mu_shape[0] : inference_mu_shape[0] + generative_mu_shape[0]
+        ]
+        z_var = all_2D[inference_mu_shape[0] + generative_mu_shape[0] :]
 
         xlabel = "t-SNE dim 1"
         ylabel = "t-SNE dim 2"
@@ -99,8 +106,20 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
     # Divide the scatter in two scatters: one for label=0 and one for label=1. The difference will be the alpha
     idxH = np.argwhere(labels == 0).ravel()
     idxPD = np.argwhere(labels == 1).ravel()
-    scatter1= ax.scatter(latent_mu[idxH, 0], latent_mu[idxH, 1], c = manner_labels[idxH], alpha=0.2, cmap="Set1")
-    scatter2= ax.scatter(latent_mu[idxPD, 0], latent_mu[idxPD, 1], c = manner_labels[idxPD], alpha=1, cmap="Set1")
+    scatter1 = ax.scatter(
+        latent_mu[idxH, 0],
+        latent_mu[idxH, 1],
+        c=manner_labels[idxH],
+        alpha=0.2,
+        cmap="Set1",
+    )
+    scatter2 = ax.scatter(
+        latent_mu[idxPD, 0],
+        latent_mu[idxPD, 1],
+        c=manner_labels[idxPD],
+        alpha=1,
+        cmap="Set1",
+    )
 
     # Add labels and title
     ax.set_xlabel(xlabel)
@@ -113,6 +132,7 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
         "Plosives voiced",
         "Nasals",
         "Fricatives",
+        "Liquids",
         "Vowels",
         "Affricates",
         "Silence",
@@ -142,8 +162,6 @@ def plot_latent_space(model, data, fold, wandb_flag, name="default", supervised=
 
     if wandb_flag:
         wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
-
-    
 
     for i in range(model.k):
         mu = z_mu[i]
@@ -578,6 +596,134 @@ def plot_latent_space_vowels_3D(
     if wandb_flag:
         wandb.log({str(name) + "/latent_space_labels": wandb.Image(fig)})
     plt.close(fig)
+
+
+def calculate_distances_manner(
+    model,
+    data,
+    fold,
+    wandb_flag,
+    name="default",
+    gmvae=False,
+    audio_features="spectrograms",
+):
+    print("Calculating distances...")
+    # Import KDE
+    from scipy.stats import gaussian_kde
+
+    # Import jensen-shannon distance
+    from scipy.spatial.distance import jensenshannon
+
+    model.eval()
+    with torch.no_grad():
+        if gmvae:
+            if audio_features == "spectrograms":
+                data_input = (
+                    torch.Tensor(np.vstack(data["spectrogram"]))
+                    .to(model.device)
+                    .unsqueeze(1)
+                )
+                (
+                    z,
+                    qy_logits,
+                    qy,
+                    latent_mu,
+                    qz_logvar,
+                    x_hat,
+                    x_hat_unflatten,
+                ) = model.infere(data_input)
+            else:
+                _, _, _, latent_mu, latent_sigma, _ = model.infere(
+                    torch.Tensor(np.vstack(data[audio_features])).to(model.device)
+                )
+        else:
+            latent_mu, latent_sigma = model.encoder(
+                torch.Tensor(np.vstack(data[audio_features])).to(model.device)
+            )
+
+    latent_mu = latent_mu.detach().cpu().numpy()
+
+    labels = data["label"].values
+    vowels = np.vstack(data["manner"].values)
+
+    labels = np.repeat(labels, vowels.shape[1])
+    vowels = vowels.ravel()
+
+    idxH = np.argwhere(labels == 0).ravel()
+    idxPD = np.argwhere(labels == 1).ravel()
+
+    idxPlos = np.argwhere(vowels[idxH] == 0).ravel()
+    idxPlos2 = np.argwhere(vowels[idxH] == 1).ravel()
+    idxNasals = np.argwhere(vowels[idxH] == 2).ravel()
+    idxFri = np.argwhere(vowels[idxH] == 3).ravel()
+    idxV = np.argwhere(vowels[idxH] == 4).ravel()
+    idxAf = np.argwhere(vowels[idxH] == 5).ravel()
+    idxS = np.argwhere(vowels[idxH] == 6).ravel()
+
+    idx = np.argwhere(vowels[idxPD] == 0).ravel()
+    idxEPD = np.argwhere(vowels[idxPD] == 1).ravel()
+    idxIPD = np.argwhere(vowels[idxPD] == 2).ravel()
+    idxOPD = np.argwhere(vowels[idxPD] == 3).ravel()
+    idxUPD = np.argwhere(vowels[idxPD] == 4).ravel()
+
+    all_idx = [
+        idxAH,
+        idxEH,
+        idxIH,
+        idxOH,
+        idxUH,
+        idxAPD,
+        idxEPD,
+        idxIPD,
+        idxOPD,
+        idxUPD,
+    ]
+
+    distances = np.zeros((10, 10))
+    print("Calculating jensen-shannon distances sampling uniformly from the space...")
+    for i in range(len(all_idx)):
+        kde1 = gaussian_kde(latent_mu[all_idx[i]].T)
+        for j in range(len(all_idx)):
+            kde2 = gaussian_kde(latent_mu[all_idx[j]].T)
+
+            # Sample from a uniform distribution of the limits of the latent_mu space which can be N-Dimensional
+            positions = np.random.uniform(
+                low=latent_mu.min(),
+                high=latent_mu.max(),
+                size=(1000, latent_mu.shape[1]),
+            )
+
+            positions = positions.T
+
+            # Calculate logprob of each kde
+            logprob1 = kde1.logpdf(positions)
+            logprob2 = kde2.logpdf(positions)
+
+            # Calculate the jensen-shannon distance
+            distances[i, j] = jensenshannon(logprob1, logprob2)
+
+    # Plot the distances as a heatmap using seaborn
+    print("Plotting distances...")
+    import seaborn as sns
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    sns.heatmap(distances, annot=True, ax=ax)
+    ax.set_title(f"Jensen-Shannon distance between all vowels in fold {fold}")
+    ax.set_xticklabels(
+        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
+    )
+    ax.set_yticklabels(
+        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
+    )
+    ax.set_xlabel("Vowels (Healthy / PD)")
+    ax.set_ylabel("Vowels (Healthy / PD)")
+    save_path = "local_results/plps/vae_supervised/" + f"js_dist_{fold}_{name}.png"
+    fig.savefig(save_path)
+
+    if wandb_flag:
+        wandb.log({str(name) + "/js_distances": wandb.Image(fig)})
+
+    plt.close()
 
 
 def calculate_distances(
