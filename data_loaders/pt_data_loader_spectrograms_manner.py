@@ -276,24 +276,16 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         )
 
         print("Splitting in train, test and validation sets...")
-        # Split the data into train, validation and test sets
-        train_data = self.data[self.data["fold"] != fold]
-        test_data = self.data[self.data["fold"] == fold]
+        # Split the data into train and test. In train we will set all healhty patients and in test only PD
+        train_data = self.data[self.data["label"] == 0]
+        test_data = self.data[self.data["label"] == 1]
 
         # Split the train data into train and validation sets
         train_data, val_data = train_test_split(
-            train_data, test_size=0.2, random_state=42, stratify=train_data["label"]
+            train_data, test_size=0.2, random_state=42, stratify=train_data["text"]
         )
 
         # Create the dataloaders
-        label_counts = train_data["label"].value_counts()
-        total_samples = len(train_data)
-        class_weights = 1.0 / torch.Tensor(label_counts.values / total_samples)
-        print("Class weights: ", class_weights)
-        sample_weights = class_weights[train_data["label"].values]
-        sampler = torch.utils.data.sampler.WeightedRandomSampler(
-            weights=sample_weights, num_samples=len(sample_weights), replacement=True
-        )
         if self.plps:
             audio_features = "plps"
         if self.mfcc:
@@ -359,7 +351,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_train,
                     y_train,
-                    z_train,
+                    p_train,
                 )
             ),
             drop_last=False,
@@ -372,7 +364,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_val,
                     y_val,
-                    z_val,
+                    p_val,
                 )
             ),
             drop_last=False,
@@ -384,7 +376,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 zip(
                     x_test,
                     y_test,
-                    z_test,
+                    p_test,
                 )
             ),
             drop_last=False,

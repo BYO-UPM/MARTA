@@ -1151,7 +1151,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             metric_loss += metric_loss_b.item()
             usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-            true_label_list.append(labels.cpu().numpy())
+            true_label_list.append(manner.view(-1))
             pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
         # Check reconstruction of X
@@ -1160,9 +1160,6 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         # Check unsupervised cluster accuracy and NMI
         true_label = torch.tensor(np.concatenate(true_label_list))
         pred_label = torch.tensor(np.concatenate(pred_label_list))
-        # Repeat true labels. Labels are Batch_size,1. Repeat each one N times:
-        N = model.x_hat_shape_before_flat[-1]
-        true_label = true_label.repeat_interleave(N, dim=0)
         acc = cluster_acc(pred_label, true_label)
         nmi_score = nmi(pred_label, true_label)
 
@@ -1233,7 +1230,7 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                     val_metric_loss += metric_loss_v.item()
                     val_usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-                    true_label_list.append(labels.cpu().numpy())
+                    true_label_list.append(manner.view(-1))
                     pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
                 # Check reconstruction of X
@@ -1242,9 +1239,6 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 # Check unsupervised cluster accuracy and NMI
                 true_label = torch.tensor(np.concatenate(true_label_list))
                 pred_label = torch.tensor(np.concatenate(pred_label_list))
-                # Repeat true labels. Labels are Batch_size,1. Repeat each one N times:
-                N = model.x_hat_shape_before_flat[-1]
-                true_label = true_label.repeat_interleave(N, dim=0)
                 acc = cluster_acc(pred_label, true_label)
                 nmi_score = nmi(pred_label, true_label)
 
