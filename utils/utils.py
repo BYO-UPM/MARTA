@@ -124,6 +124,57 @@ def plot_logopeda(
         xlabel = "Latent dim 1"
         ylabel = "Latent dim 2"
 
+    # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS ===========================================
+    fig, ax = plt.subplots(figsize=(20, 20))
+    sct = ax.scatter(
+        latent_mu_train[:, 0],
+        latent_mu_train[:, 1],
+        c=manner_train,
+        cmap="Set1",
+    )
+    # Add labels and title
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
+
+    # Create custom legend
+    classes = [
+        "Plosives",
+        "Plosives voiced",
+        "Nasals",
+        "Fricatives",
+        "Liquids",
+        "Vowels",
+        "Affricates",
+        "Silence",
+    ]
+    class_labels = np.unique(manner_train)
+    class_handles = [
+        plt.Line2D(
+            [],
+            [],
+            marker="o",
+            color="white",
+            markerfacecolor=sct.cmap(sct.norm(cls)),
+            markersize=10,
+        )
+        for cls in class_labels
+    ]
+    ax.legend(
+        class_handles,
+        classes,
+        loc="upper right",
+        bbox_to_anchor=(1.15, 1),
+        title="Classes",
+    )
+    fig.savefig(
+        f"local_results/spectrograms/manner_gmvae/latent_space_{name}.png",
+    )
+
+    if wandb_flag:
+        wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
+
+
     fig, ax = plt.subplots(figsize=(20, 20))
 
     # Scatter ax

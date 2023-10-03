@@ -29,7 +29,7 @@ def main(args):
         "n_mfccs": 0,
         "spectrogram": True,
         "wandb_flag": False,
-        "epochs": 1,
+        "epochs": 100,
         "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 32,
@@ -92,7 +92,7 @@ def main(args):
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
             1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-            100,  # w5 is metric loss
+            10,  # w5 is metric loss
         ],
         cnn=hyperparams["spectrogram"],
     )
@@ -163,7 +163,7 @@ def main(args):
             hyperparams["wandb_flag"],
             name="test",
             supervised=hyperparams["supervised"],
-            samples=1000,
+            samples=5000,
         )
 
     if hyperparams["wandb_flag"]:

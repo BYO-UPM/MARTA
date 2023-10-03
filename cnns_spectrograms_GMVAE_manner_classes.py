@@ -29,7 +29,7 @@ def main(args):
         "n_mfccs": 0,
         "spectrogram": True,
         "wandb_flag": False,
-        "epochs": 1,
+        "epochs": 100,
         "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 32,
