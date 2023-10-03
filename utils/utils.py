@@ -80,8 +80,8 @@ def plot_logopeda(
             x_hat_unflatten,
         ) = model.infere(data_input)
 
-    manner_train = torch.Tensor(np.array([np.array(x) for x in data_test["manner"]]))
-    manner_test = torch.Tensor(np.array([np.array(x) for x in data_test["manner"]]))
+    manner_train = np.array([np.array(x) for x in data_train["manner"]], dtype=int)
+    manner_test = np.array([np.array(x) for x in data_test["manner"]], dtype=int)
 
     # # p(y) = Cat(10)
     # py = torch.eye(model.k).to(model.device)
@@ -90,14 +90,14 @@ def plot_logopeda(
     # z_var = torch.nn.functional.softplus(z_logvar)
 
     # Select only 100 samples from train
-    idx = np.random.choice(len(manner_train), int(samples / 2))
-    manner_train = manner_train.view(-1)[idx]
-    latent_mu_train = latent_mu_train[idx].cpu().numpy()
+    idx = np.random.choice(len(latent_mu_train), samples)
+    manner_train = manner_train.reshape(-1)[idx]
+    latent_mu_train = latent_mu_train[idx].cpu().detach().numpy()
 
     # Select only SAMPLES from test
-    idx = np.random.choice(len(manner_test), samples)
-    manner_test = manner_test.view(-1)[idx]
-    latent_mu_test = latent_mu_test[idx].cpu().numpy()
+    idx = np.random.choice(len(latent_mu_test), samples)
+    manner_test = manner_test.reshape(-1)[idx]
+    latent_mu_test = latent_mu_test[idx].cpu().detach().numpy()
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu_train.shape[1] > 2:
@@ -168,126 +168,133 @@ def plot_logopeda(
         title="Classes",
     )
     fig.savefig(
-        f"local_results/spectrograms/manner_gmvae/latent_space_{name}.png",
+        f"local_results/spectrograms/manner_gmvae/latent_space_healthy.png",
     )
 
     if wandb_flag:
         wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
 
+    # =========================================== TEST SAMPLES. We are going to do 7 plots. One per phoneme. ===========================================
 
-    fig, ax = plt.subplots(figsize=(20, 20))
+    # First plot. How the parkinsonian plosives are distributed in the latent space
+    import matplotlib
 
-    # Scatter ax
+    for i in range(8):
+        fig, ax = plt.subplots(figsize=(20, 20))
 
-    # Divide the scatter in two scatters: first plot the train datapoints with alpha=0.2 and then test datapoint with alpha=!
-    ax.scatter(
-        latent_mu_train[:, 0],
-        latent_mu_train[:, 1],
-        c=manner_train,
-        alpha=0.2,
-        cmap="Set1",
-    )
-    ax.scatter(
-        latent_mu_test[:, 0],
-        latent_mu_test[:, 1],
-        c=manner_test,
-        alpha=1,
-        cmap="Set1",
-    )
+        # Scatter ax
 
-    # Add labels and title
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
-
-    # Create custom legend
-    classes = [
-        "Plosives",
-        "Plosives voiced",
-        "Nasals",
-        "Fricatives",
-        "Liquids",
-        "Vowels",
-        "Affricates",
-        "Silence",
-    ]
-    class_labels = np.unique(manner_labels)
-    class_handles = [
-        plt.Line2D(
-            [],
-            [],
-            marker="o",
-            color="white",
-            markerfacecolor=scatter1.cmap(scatter1.norm(cls)),
-            markersize=10,
+        # Divide the scatter in two scatters: frst all healhty samples.
+        ax.scatter(
+            latent_mu_train[:, 0],
+            latent_mu_train[:, 1],
+            c=manner_train,
+            alpha=0.2,
+            cmap="Set1",
         )
-        for cls in class_labels
-    ]
-    ax.legend(
-        class_handles,
-        classes,
-        loc="upper right",
-        bbox_to_anchor=(1.15, 1),
-        title="Classes",
-    )
-    fig.savefig(
-        f"local_results/spectrograms/manner_gmvae/latent_space_{fold}_{name}.png",
-    )
-
-    if wandb_flag:
-        wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
-
-    for i in range(model.k):
-        mu = z_mu[i]
-        var = z_var[i]
-        cov = np.diag(var)
-
-        x = np.linspace(
-            np.min(latent_mu[:, 0]),
-            np.max(latent_mu[:, 0]),
+        idx = np.argwhere(manner_test == i).ravel()
+        cmap = matplotlib.cm.get_cmap("Set1")
+        ax.scatter(
+            latent_mu_test[idx, 0],
+            latent_mu_test[idx, 1],
+            alpha=1,
+            color=cmap(i),
         )
-        y = np.linspace(
-            np.min(latent_mu[:, 1]),
-            np.max(latent_mu[:, 1]),
-        )
-        X, Y = np.meshgrid(x, y)
+        # Add labels and title
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
 
-        v, w = linalg.eigh(cov)
-        v1 = 2.0 * 1 * np.sqrt(v)  # 1 std
-        v2 = 2.0 * 2 * np.sqrt(v)  # 2 std
-        u = w[0] / linalg.norm(w[0])
-
-        # Plot an ellipse to show the Gaussian component
-        angle = np.arctan(u[1] / u[0])
-        angle = 180.0 * angle / np.pi  # convert to degrees
-        ell = mpl.patches.Ellipse(
-            mu, v1[0], v1[1], angle=180.0 + angle, facecolor="none", edgecolor="green"
+        # Create custom legend
+        classes = [
+            "Plosives",
+            "Plosives voiced",
+            "Nasals",
+            "Fricatives",
+            "Liquids",
+            "Vowels",
+            "Affricates",
+            "Silence",
+        ]
+        class_labels = np.unique(manner_train)
+        class_handles = [
+            plt.Line2D(
+                [],
+                [],
+                marker="o",
+                color="white",
+                markerfacecolor=sct.cmap(sct.norm(cls)),
+                markersize=10,
+            )
+            for cls in class_labels
+        ]
+        ax.legend(
+            class_handles,
+            classes,
+            loc="upper right",
+            bbox_to_anchor=(1.15, 1),
+            title="Classes",
         )
-        ell2 = mpl.patches.Ellipse(
-            mu, v2[0], v2[1], angle=180.0 + angle, facecolor="none", edgecolor="orange"
-        )
-        ell.set_clip_box(ax.bbox)
-        ell.set_alpha(0.5)
-        ax.add_artist(ell)
-        ell2.set_clip_box(ax.bbox)
-        ell2.set_alpha(0.5)
-        ax.add_artist(ell2)
-        # Use star as a marker
-        ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), marker="*", s=100)
-    ax.set_xlabel("Latent dim 1")
-    ax.set_ylabel("Latent dim 2")
-    ax.set_title(f"Latent space with Gaussians distributions")
-    ax.legend()
-    save_path = f"local_results/spectrograms/manner_gmvae/gaussians_generative_and_test_vowels_{fold}_{name}.png"
-    fig.savefig(
-        save_path,
-    )
-    if wandb_flag:
-        wandb.log(
-            {str(name) + "/gaussians_generative_and_test_vowels_": wandb.Image(fig)}
+        fig.savefig(
+            f"local_results/spectrograms/manner_gmvae/latent_space_parkinsonian_class_{i}.png",
         )
 
-    plt.close()
+        if wandb_flag:
+            wandb.log({str(name) + "/latent_space_parkinsonian_class_{i}": wandb.Image(fig)})
+
+        plt.close()
+
+    # for i in range(model.k):
+    #     mu = z_mu[i]
+    #     var = z_var[i]
+    #     cov = np.diag(var)
+
+    #     x = np.linspace(
+    #         np.min(latent_mu[:, 0]),
+    #         np.max(latent_mu[:, 0]),
+    #     )
+    #     y = np.linspace(
+    #         np.min(latent_mu[:, 1]),
+    #         np.max(latent_mu[:, 1]),
+    #     )
+    #     X, Y = np.meshgrid(x, y)
+
+    #     v, w = linalg.eigh(cov)
+    #     v1 = 2.0 * 1 * np.sqrt(v)  # 1 std
+    #     v2 = 2.0 * 2 * np.sqrt(v)  # 2 std
+    #     u = w[0] / linalg.norm(w[0])
+
+    #     # Plot an ellipse to show the Gaussian component
+    #     angle = np.arctan(u[1] / u[0])
+    #     angle = 180.0 * angle / np.pi  # convert to degrees
+    #     ell = mpl.patches.Ellipse(
+    #         mu, v1[0], v1[1], angle=180.0 + angle, facecolor="none", edgecolor="green"
+    #     )
+    #     ell2 = mpl.patches.Ellipse(
+    #         mu, v2[0], v2[1], angle=180.0 + angle, facecolor="none", edgecolor="orange"
+    #     )
+    #     ell.set_clip_box(ax.bbox)
+    #     ell.set_alpha(0.5)
+    #     ax.add_artist(ell)
+    #     ell2.set_clip_box(ax.bbox)
+    #     ell2.set_alpha(0.5)
+    #     ax.add_artist(ell2)
+    #     # Use star as a marker
+    #     ax.scatter(mu[0], mu[1], label="Gaussian " + str(i), marker="*", s=100)
+    # ax.set_xlabel("Latent dim 1")
+    # ax.set_ylabel("Latent dim 2")
+    # ax.set_title(f"Latent space with Gaussians distributions")
+    # ax.legend()
+    # save_path = f"local_results/spectrograms/manner_gmvae/gaussians_generative_and_test_vowels_{fold}_{name}.png"
+    # fig.savefig(
+    #     save_path,
+    # )
+    # if wandb_flag:
+    #     wandb.log(
+    #         {str(name) + "/gaussians_generative_and_test_vowels_": wandb.Image(fig)}
+    #     )
+
+    # plt.close()
 
 
 def plot_latent_space(
