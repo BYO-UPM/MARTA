@@ -1102,7 +1102,13 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
 
 
 def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag):
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    # Define lr scheduler
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    T_max = 50  # Maximum number of iterations or epochs
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=0.0001)  # Adjust parameters as needed
+
+
 
     valid_loss_store = []
 
@@ -1154,6 +1160,10 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             true_label_list.append(manner.view(-1))
             pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
+        
+        # Scheduler step
+        scheduler.step()
+        
         # Check reconstruction of X
         check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
 
@@ -1221,7 +1231,9 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                         x_hat,
                         y_pred,
                     ) = model.loss(data, labels, manner, e)
+
                     valid_loss += loss.item()
+
                     val_rec_loss += rec_loss_v.item()
                     val_gaussian_loss += gaussian_loss_v.item()
                     if supervised:

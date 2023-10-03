@@ -125,44 +125,41 @@ def plot_logopeda(
         ylabel = "Latent dim 2"
 
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS ===========================================
+    import matplotlib
+    cmap = matplotlib.cm.get_cmap("Set1")
+
     fig, ax = plt.subplots(figsize=(20, 20))
     sct = ax.scatter(
         latent_mu_train[:, 0],
         latent_mu_train[:, 1],
         c=manner_train,
-        cmap="Set1",
+        cmap=cmap,
     )
     # Add labels and title
-    ax.set_xlabel(xlabel)
+    ax.set_xlabel(xlabel) 
     ax.set_ylabel(ylabel)
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
+    legend_elements = []
+    class_labels = {
+        0: "Plosives",
+        1: "Plosives voiced",
+        2: "Nasals",
+        3: "Fricatives",
+        4: "Liquids",
+        5: "Vowels",
+        6: "Affricates",
+        7: "Silence",
+    }
+    for class_value, class_label in enumerate(class_labels):
+        # Get the label for the class from the list
+        # Get the color from the colormap
+        color = cmap(class_value / (len(class_labels) -1 ))
+        # Create a dummy scatter plot for each class with a single point
+        dummy_scatter = matplotlib.lines.Line2D([0], [0], marker='o', color=color, label=class_labels[class_label], markersize=10)
+        legend_elements.append(dummy_scatter)
 
-    # Create custom legend
-    classes = [
-        "Plosives",
-        "Plosives voiced",
-        "Nasals",
-        "Fricatives",
-        "Liquids",
-        "Vowels",
-        "Affricates",
-        "Silence",
-    ]
-    class_labels = np.unique(manner_train)
-    class_handles = [
-        plt.Line2D(
-            [],
-            [],
-            marker="o",
-            color="white",
-            markerfacecolor=sct.cmap(sct.norm(cls)),
-            markersize=10,
-        )
-        for cls in class_labels
-    ]
     ax.legend(
-        class_handles,
-        classes,
+        handles=legend_elements,
         loc="upper right",
         bbox_to_anchor=(1.15, 1),
         title="Classes",
@@ -177,9 +174,9 @@ def plot_logopeda(
     # =========================================== TEST SAMPLES. We are going to do 7 plots. One per phoneme. ===========================================
 
     # First plot. How the parkinsonian plosives are distributed in the latent space
-    import matplotlib
 
     for i in range(8):
+        i=int(i)
         fig, ax = plt.subplots(figsize=(20, 20))
 
         # Scatter ax
@@ -190,47 +187,44 @@ def plot_logopeda(
             latent_mu_train[:, 1],
             c=manner_train,
             alpha=0.2,
-            cmap="Set1",
+            cmap=cmap,
         )
         idx = np.argwhere(manner_test == i).ravel()
-        cmap = matplotlib.cm.get_cmap("Set1")
+
         ax.scatter(
             latent_mu_test[idx, 0],
             latent_mu_test[idx, 1],
             alpha=1,
-            color=cmap(i),
+            color=cmap(i/(len(class_labels))),
         )
         # Add labels and title
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
 
-        # Create custom legend
-        classes = [
-            "Plosives",
-            "Plosives voiced",
-            "Nasals",
-            "Fricatives",
-            "Liquids",
-            "Vowels",
-            "Affricates",
-            "Silence",
-        ]
-        class_labels = np.unique(manner_train)
-        class_handles = [
-            plt.Line2D(
-                [],
-                [],
-                marker="o",
-                color="white",
-                markerfacecolor=sct.cmap(sct.norm(cls)),
-                markersize=10,
-            )
-            for cls in class_labels
-        ]
+        legend_elements = []
+        class_labels = {
+            0: "Plosives",
+            1: "Plosives voiced",
+            2: "Nasals",
+            3: "Fricatives",
+            4: "Liquids",
+            5: "Vowels",
+            6: "Affricates",
+            7: "Silence",
+        }
+        for class_value, class_label in enumerate(class_labels):
+            # Get the label for the class from the list
+            # Get the color from the colormap
+            if class_value > 3:
+                class_value - 1
+            color = cmap(class_value / len(class_labels))
+            # Create a dummy scatter plot for each class with a single point
+            dummy_scatter = matplotlib.lines.Line2D([0], [0], marker='o', color=color, label=class_labels[class_label], markersize=10)
+            legend_elements.append(dummy_scatter)
+
         ax.legend(
-            class_handles,
-            classes,
+            handles=legend_elements,
             loc="upper right",
             bbox_to_anchor=(1.15, 1),
             title="Classes",
