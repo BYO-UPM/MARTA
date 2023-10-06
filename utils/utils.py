@@ -149,6 +149,7 @@ def plot_logopeda(
         5: "Vowels",
         6: "Affricates",
         7: "Silence",
+        8: "Short pause"
     }
     for class_value, class_label in enumerate(class_labels):
         # Get the label for the class from the list
@@ -212,12 +213,11 @@ def plot_logopeda(
             5: "Vowels",
             6: "Affricates",
             7: "Silence",
+            8: "Short pause"
         }
         for class_value, class_label in enumerate(class_labels):
             # Get the label for the class from the list
             # Get the color from the colormap
-            if class_value > 3:
-                class_value - 1
             color = cmap(class_value / len(class_labels))
             # Create a dummy scatter plot for each class with a single point
             dummy_scatter = matplotlib.lines.Line2D([0], [0], marker='o', color=color, label=class_labels[class_label], markersize=10)
@@ -234,7 +234,7 @@ def plot_logopeda(
         )
 
         if wandb_flag:
-            wandb.log({str(name) + "/latent_space_parkinsonian_class_{i}": wandb.Image(fig)})
+            wandb.log({str(name) + "/latent_space_parkinsonian_class_" + str(i): wandb.Image(fig)})
 
         plt.close()
 

@@ -267,7 +267,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             "u": 5,
             "CH": 6,  # affricates
             "sil": 7,  # silence
-            "sp": 7,
+            "sp": 8, # short pause
         }
 
         # Map all self.data["collapsed_phonemes"] to manner classes
