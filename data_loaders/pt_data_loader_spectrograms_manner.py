@@ -38,7 +38,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Check if the data has been already processed and saved
         name_save = (
-            "local_results/data_frame_with_phonemes_albayzin_neurovoz_"
+            "local_results/data_frame_with_phonemes"
             + str(self.hyperparams["frame_size_ms"])
             + "spec_winsize_"
             + str(self.hyperparams["spectrogram_win_size"])
@@ -337,26 +337,41 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             "t": 0,
             "k": 0,
             "b": 1,  # plosives voiced
+            "B": 1,
             "d": 1,
+            "D": 1,
             "g": 1,
+            "G": 1,
             "n": 2,  # nasals
+            "N": 2,
             "m": 2,
             "NY": 2,
+            "J": 2, # enye
             "f": 3,  # fricatives
             "s": 3,
+            "z": 3,
             "x": 3,
             "h": 3,
+            "T": 3, # theta
             "R": 4,  # liquids
             "r": 4,
+            "4": 4,
             "l": 4,
             "y": 4,
+            "jj": 4,
+            "L": 4,
             "a": 5,  # vowels
             "e": 5,
+            "e ": 5,
             "i": 5,
+            "j": 5,
             "o": 5,
             "u": 5,
+            "w": 5,
             "CH": 6,  # affricates
+            "tS": 6 ,   
             "sil": 7,  # silence
+            "_": 7, 
             "sp": 8, # short pause
         }
 
