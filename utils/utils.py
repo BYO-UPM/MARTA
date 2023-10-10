@@ -138,17 +138,6 @@ def plot_logopeda_alb_neuro(
     cmap = matplotlib.cm.get_cmap("Set1")
 
     fig, ax = plt.subplots(figsize=(20, 20))
-    sct = ax.scatter(
-        latent_mu_train[:, 0],
-        latent_mu_train[:, 1],
-        c=manner_train,
-        cmap=cmap,
-    )
-    # Add labels and title
-    ax.set_xlabel(xlabel) 
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
-    legend_elements = []
     class_labels = {
         0: "Plosives",
         1: "Plosives voiced",
@@ -160,20 +149,18 @@ def plot_logopeda_alb_neuro(
         7: "Silence",
         8: "Short pause"
     }
-    for class_value, class_label in enumerate(class_labels):
-        # Get the label for the class from the list
-        # Get the color from the colormap
-        color = cmap(class_value / (len(class_labels) -1 ))
-        # Create a dummy scatter plot for each class with a single point
-        dummy_scatter = matplotlib.lines.Line2D([0], [0], marker='o', color=color, label=class_labels[class_label], markersize=10)
-        legend_elements.append(dummy_scatter)
-
-    ax.legend(
-        handles=legend_elements,
-        loc="upper right",
-        bbox_to_anchor=(1.15, 1),
-        title="Classes",
-    )
+    for i in range(9):
+        sct = ax.scatter(
+            latent_mu_train[:, 0][np.where(manner_train == i)],
+            latent_mu_train[:, 1][np.where(manner_train == i)],
+            color=cmap(i),
+            label = class_labels[i],
+        )
+    # Add labels and title
+    ax.set_xlabel(xlabel) 
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
+    ax.legend()
     fig.savefig(
         f"local_results/spectrograms/manner_gmvae/latent_space_albayzin.png",
     )
@@ -206,13 +193,15 @@ def plot_logopeda_alb_neuro(
         # Scatter ax
 
         # Divide the scatter in two scatters: frst all healhty samples.
-        ax.scatter(
-            latent_mu_train[:, 0],
-            latent_mu_train[:, 1],
-            c=manner_train,
-            alpha=0.2,
-            cmap=cmap,
-        )
+        for j in range(9):
+            sct = ax.scatter(
+                latent_mu_train[:, 0][np.where(manner_train == j)],
+                latent_mu_train[:, 1][np.where(manner_train == j)],
+                color=cmap(j),
+                label = class_labels[j],
+                alpha=0.2
+            )
+
         
 
         idx = np.argwhere(manner_test_copy == i).ravel()
@@ -225,39 +214,14 @@ def plot_logopeda_alb_neuro(
             latent_mu_test_healthy[idx, 0],
             latent_mu_test_healthy[idx, 1],
             alpha=1,
-            color=cmap(i/(len(class_labels))),
+            color=cmap(i),
+            label = class_labels[i],
         )
         # Add labels and title
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
-
-        legend_elements = []
-        class_labels = {
-            0: "Plosives",
-            1: "Plosives voiced",
-            2: "Nasals",
-            3: "Fricatives",
-            4: "Liquids",
-            5: "Vowels",
-            6: "Affricates",
-            7: "Silence",
-            8: "Short pause"
-        }
-        for class_value, class_label in enumerate(class_labels):
-            # Get the label for the class from the list
-            # Get the color from the colormap
-            color = cmap(class_value / len(class_labels))
-            # Create a dummy scatter plot for each class with a single point
-            dummy_scatter = matplotlib.lines.Line2D([0], [0], marker='o', color=color, label=class_labels[class_label], markersize=10)
-            legend_elements.append(dummy_scatter)
-
-        ax.legend(
-            handles=legend_elements,
-            loc="upper right",
-            bbox_to_anchor=(1.15, 1),
-            title="Classes",
-        )
+        ax.legend()
         fig.savefig(
             f"local_results/spectrograms/manner_gmvae/latent_space_healthy_albayzin_vs_neurovoz_class_{i}.png",
         )
@@ -283,13 +247,14 @@ def plot_logopeda_alb_neuro(
         # Scatter ax
 
         # Divide the scatter in two scatters: frst all healhty samples.
-        ax.scatter(
-            latent_mu_train[:, 0],
-            latent_mu_train[:, 1],
-            c=manner_train,
-            alpha=0.2,
-            cmap=cmap,
-        )
+        for j in range(9):
+            sct = ax.scatter(
+                latent_mu_train[:, 0][np.where(manner_train == j)],
+                latent_mu_train[:, 1][np.where(manner_train == j)],
+                color=cmap(j),
+                label = class_labels[j],
+                alpha=0.2
+            )
         idx = np.argwhere(manner_test_copy == i).ravel()
         if (len(idx) == 0) or (len(idx) < 32):
             kde_test_parkinsonians.append(None)
@@ -300,39 +265,16 @@ def plot_logopeda_alb_neuro(
             latent_mu_test_park[idx, 0],
             latent_mu_test_park[idx, 1],
             alpha=1,
-            color=cmap(i/(len(class_labels))),
+            color=cmap(i),
+            label = class_labels[i],
         )
         # Add labels and title
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
 
-        legend_elements = []
-        class_labels = {
-            0: "Plosives",
-            1: "Plosives voiced",
-            2: "Nasals",
-            3: "Fricatives",
-            4: "Liquids",
-            5: "Vowels",
-            6: "Affricates",
-            7: "Silence",
-            8: "Short pause"
-        }
-        for class_value, class_label in enumerate(class_labels):
-            # Get the label for the class from the list
-            # Get the color from the colormap
-            color = cmap(class_value / len(class_labels))
-            # Create a dummy scatter plot for each class with a single point
-            dummy_scatter = matplotlib.lines.Line2D([0], [0], marker='o', color=color, label=class_labels[class_label], markersize=10)
-            legend_elements.append(dummy_scatter)
+        ax.legend()
 
-        ax.legend(
-            handles=legend_elements,
-            loc="upper right",
-            bbox_to_anchor=(1.15, 1),
-            title="Classes",
-        )
         fig.savefig(
             f"local_results/spectrograms/manner_gmvae/latent_space_park_albayzin_vs_neurovoz_class_{i}.png",
         )
@@ -344,44 +286,6 @@ def plot_logopeda_alb_neuro(
 
        
 
-    # distances_healthy = []
-    # distances_parkinsonians = []
-    # positions_healhty = np.random.uniform(
-    #             low=latent_mu_test_healthy_original_space.min(),
-    #             high=latent_mu_test_healthy_original_space.max(),
-    #             size=(1000, 32),
-    #         )
-    # positions_parkinsonians = np.random.uniform(
-    #             low=latent_mu_test_park_original_space.min(),
-    #             high=latent_mu_test_park_original_space.max(),
-    #             size=(1000, 32),
-    #         )
-    # for i in range(9):
-    #     # Check if KDE is None
-    #     if kde_train[i] is None or kde_test_healthy[i] is None or kde_test_parkinsonians[i] is None:
-    #         distances_healthy.append(0)
-    #         distances_parkinsonians.append(0)
-    #         continue
-    #     # Sample from a uniform distribution of the limits of the latent_mu space which can be N-Dimensional
-    #     distances_healthy.append(jensenshannon(kde_train[i].pdf(positions_healhty.T), kde_test_healthy[i].pdf(positions_healhty.T)))
-    #     distances_parkinsonians.append(jensenshannon(kde_train[i].pdf(positions_parkinsonians.T), kde_test_parkinsonians[i].pdf(positions_parkinsonians.T)))
-
-    # # Plot the distances
-    # fig, ax = plt.subplots(figsize=(20, 20))
-    # ax.bar(np.arange(9), distances_healthy, label="Healthy")
-    # ax.bar(np.arange(9), distances_parkinsonians, label="Parkinsonians")
-    # ax.set_xticks(np.arange(9))
-    # ax.set_xticklabels(["Plosives", "Plosives voiced", "Nasals", "Fricatives", "Liquids", "Vowels", "Affricates", "Silence", "Short pause"])
-    # ax.set_xlabel("Phonemes")
-    # ax.set_ylabel("Jensen-Shannon distance")
-    # ax.set_title(f"Jensen-Shannon distance between KDEs of healthy and parkinsonian samples")
-    # ax.legend()
-    # fig.savefig(
-    #     f"local_results/spectrograms/manner_gmvae/jensen_shannon_distance_healthy_vs_parkinsonian.png",
-    # )
-
-    # if wandb_flag:
-    #     wandb.log({str(name) + "/jensen_shannon_distance_healthy_vs_parkinsonian": wandb.Image(fig)})
 
 
 def plot_logopeda(
