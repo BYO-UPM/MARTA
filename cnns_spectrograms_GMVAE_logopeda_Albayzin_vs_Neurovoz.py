@@ -3,6 +3,7 @@ from training.pt_training import GMVAE_trainer, GMVAE_tester
 from utils.utils import (
     plot_logopeda,
     calculate_distances_manner,
+    plot_logopeda_alb_neuro
 )
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
@@ -156,14 +157,23 @@ def main(args):
 
     if hyperparams["material"] == "MANNER":
         # Plot the latent space in test
-        plot_logopeda(
+        # plot_logopeda(
+        #     model,
+        #     df_train,
+        #     df_test,
+        #     hyperparams["wandb_flag"],
+        #     name="test",
+        #     supervised=hyperparams["supervised"],
+        #     samples=2000,
+        # )
+        plot_logopeda_alb_neuro(
             model,
             df_train,
             df_test,
             hyperparams["wandb_flag"],
             name="test",
             supervised=hyperparams["supervised"],
-            samples=2000,
+            samples=4000,
         )
 
     if hyperparams["wandb_flag"]:

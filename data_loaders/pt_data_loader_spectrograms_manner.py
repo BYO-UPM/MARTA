@@ -380,10 +380,13 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             lambda x: [manner_classes[phoneme] for phoneme in x]
         )
 
+        # Current data has 3 ["label"] values: 0, 1, 2. However, 0 and 1 are both Healthy and 2 is Parkinson. We need to map that: 0 and 1 to 0 and 2 to 1
+        self.data["label"] = self.data["label"].apply(lambda x: 0 if x < 2 else 1)
+
         print("Splitting in train, test and validation sets...")
-        # Split the data into train and test. In train we will set all healhty patients and in test only PD
-        train_data = self.data[self.data["label"] == 0]
-        test_data = self.data[self.data["label"] == 1]
+        # Split the data into train and test. We will train only with albayzin data
+        train_data = self.data[self.data["dataset"] == "albayzin"]
+        test_data = self.data[self.data["dataset"] != "albayzin"]
 
         # Split the train data into train and validation sets
         train_data, val_data = train_test_split(
