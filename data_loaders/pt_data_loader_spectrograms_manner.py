@@ -38,7 +38,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Check if the data has been already processed and saved
         name_save = (
-            "local_results/data_frame_with_phonemes"
+            "local_results/data_frame_with_phonemes_albayzin_neurovoz_"
             + str(self.hyperparams["frame_size_ms"])
             + "spec_winsize_"
             + str(self.hyperparams["spectrogram_win_size"])
@@ -50,17 +50,19 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         if os.path.exists(name_save):
             self.data = pd.read_pickle(name_save)["data"]
         else:
-            self.data = self.read_dataset(data_path)
+            self.data = self.read_dataset()
 
     def __len__(self):
         return len(self.data)
-
-    def read_manner(self, datapath):
+    
+    def read_neurovoz(self, dataset="albayzin"):
         file_paths = []
         labels = []
         id_patient = []
         texts = []
         phonemes = []
+
+        datapath = "labeled/NeuroVoz"
 
         for file in os.listdir(datapath):
             # If the file does not end with .wav, skip it
@@ -102,6 +104,63 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
+    def read_albayzin(self):
+        file_paths = []
+        labels = []
+        id_patient = []
+        texts = []
+        phonemes = []
+
+
+        datapath_wav = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/SUB_APRE_WAV/"
+        datapath_textgrid = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/textgrid/"
+
+        i=0
+        for file in os.listdir(datapath_wav):
+            # If the file does not end with .wav, skip it
+            if not file.endswith(".wav"):
+                continue
+            file_path = os.path.join(datapath_wav, file)
+            file_paths.append(file_path)
+            # Each file is named as follows: aabbXXXX.wav where aa is the id_patient, bb is the train/test partition, XXXX is the text
+            labels.append(0) # In albayzin all are healthy
+            id_patient.append(file.split(".")[0][0:4])
+            texts.append(file.split(".")[0][4:])
+
+            # Read the text grid file
+            tg_file = os.path.join(datapath_textgrid, file.split(".")[0] + ".TextGrid")
+            # Check if the file exists
+            if not os.path.exists(tg_file):
+                print("File does not exist: ", tg_file)
+                i+=1
+                phonemes.append(None)
+                continue
+            tg_file = tg.TextGrid(tg_file)
+            phonemes.append(tg_file["phones"])
+
+        print("Total WAV files: ", len(os.listdir(datapath_wav)))
+        print("Total TextGrid files: ", len(os.listdir(datapath_textgrid)))
+        print("Total files without textgrid: ", i)
+
+        # Generate a dataframe with all the data
+        data = pd.DataFrame(
+            {
+                "file_path": file_paths,
+                "label": labels,
+                "text": texts,
+                "phonemes": phonemes,
+                "id_patient": id_patient,
+            }
+        )
+        # Drop na
+        data = data.dropna()
+        # sort by id_patient
+        data = data.sort_values(by=["id_patient"])
+        # reset index
+        data = data.reset_index(drop=True)
+
+        return data
+
     def match_phonemes(self, phonemes, signal, sr):
         phoneme_labels = []
 
@@ -122,13 +181,43 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 phoneme_labels.append(None)
 
         return phoneme_labels
+    
+    def match_phonemes2(self, phonemes, signal, sr):
+        # Create a dictionary for fast interval lookup
+        phoneme_dict = {interval.xmin: interval.text for interval in phonemes}
 
-    def read_dataset(self, path_to_data):
+        # Convert signal timestamps to seconds
+        timestamps_seconds = np.arange(len(signal)) / sr
+
+        # Initialize an array to store phoneme labels
+        phoneme_labels = np.empty(len(signal), dtype=object)
+
+        # Iterate through timestamps and fill in phoneme labels
+        for timestamp_index, timestamp_seconds in enumerate(timestamps_seconds):
+            # Use binary search to find the matching interval
+            interval_start_times = np.array(list(phoneme_dict.keys()))
+            matching_interval_index = np.searchsorted(interval_start_times, timestamp_seconds) - 1
+
+            if matching_interval_index >= 0:
+                matching_interval = phonemes[matching_interval_index]
+                phoneme_labels[timestamp_index] = matching_interval.text
+            else:
+                phoneme_labels[timestamp_index] = None
+
+        return phoneme_labels
+
+    def read_dataset(self):
         print("Reading the data...")
 
-        data = self.read_manner(path_to_data)
-        # Generate the folds by splitting the data by id_patient
-        data["fold"] = data.groupby("id_patient").cumcount() % 10
+        data_train = self.read_albayzin()
+        # add a column with the dataset name
+        data_train["dataset"] = "albayzin"
+        data_test = self.read_neurovoz()
+        # add a column with the dataset name
+        data_test["dataset"] = "neurovoz"
+
+        data = pd.concat([data_train, data_test])
+
         # Categorise label to 0 and 1
         data["label"] = data["label"].astype("category").cat.codes
 
@@ -162,6 +251,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         data["phonemes_matched"] = data.apply(
             lambda x: self.match_phonemes(x["phonemes"], x["signal"], x["sr"]), axis=1
         )
+
         t2 = time.time()
         print("Time to match phonemes: ", t2 - t1)
 
