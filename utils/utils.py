@@ -1155,6 +1155,14 @@ def calculate_distances_manner(
     distances_healthy_parkinson = np.zeros((8, 8))
     print("Calculating jensen-shannon distances sampling uniformly from the space...")
     for i in np.unique(manner_train):
+        # Assert if its possible to calculate gaussian kde: if data for that class is less than dimensions, skip
+        if (
+            latent_mu_train[idxH_train][manner_train[idxH_train] == i].shape[0]
+            < latent_mu_train[idxH_train][manner_train[idxH_train] == i].shape[1]
+        ):
+            distances_healthy[i, :] = np.nan
+            distances_healthy_parkinson = np.nan
+            continue
         kde1 = gaussian_kde(
             latent_mu_train[idxH_train][manner_train[idxH_train] == i].T
         )

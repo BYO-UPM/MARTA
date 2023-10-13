@@ -3,7 +3,7 @@ import timm
 import numpy as np
 import copy
 import time
-from pytorch_metric_learning import miners, losses, reducers
+from pytorch_metric_learning import miners, losses, reducers, samplers
 
 
 width = 64
@@ -20,6 +20,7 @@ def Selec_embedding(model_name, **params):
         raise Exception("No encoder selected")
     return model
 
+
 def Selec_model_two_classes(model_name, **params):
     if model_name == "Resnet_18":
         model = ResNet_TwoClass(**params)
@@ -28,6 +29,8 @@ def Selec_model_two_classes(model_name, **params):
     elif model_name == "ViT":
         model = ViT_TwoClass(**params)
     return model
+
+
 class ViT_TwoClass(torch.nn.Module):
     def __init__(self, channels=3, freeze=True):
         super(ViT_TwoClass, self).__init__()
@@ -52,6 +55,8 @@ class ViT_TwoClass(torch.nn.Module):
         x = self.relu(x)
         x = self.output(x)
         return x
+
+
 class ResNet_TwoClass(torch.nn.Module):
     def __init__(self, num_layers=18, channels=3, freeze=True):
         super(ResNet_TwoClass, self).__init__()
@@ -87,6 +92,8 @@ class ResNet_TwoClass(torch.nn.Module):
     def forward(self, x):
         x = self.Rnet(x)
         return x
+
+
 class VGG_TwoClass(torch.nn.Module):
     def __init__(self, num_layers=11, channels=3, freeze=True):
         super(VGG_TwoClass, self).__init__()
@@ -138,6 +145,8 @@ class VGG_TwoClass(torch.nn.Module):
     def forward(self, x):
         x = self.Rnet(x)
         return x
+
+
 class ViT_Encoder(torch.nn.Module):
     def __init__(self, channels=3, freeze=True):
         super(ViT_Encoder, self).__init__()
@@ -176,6 +185,7 @@ class ViT_Encoder(torch.nn.Module):
         projection = self.projection_head(embedding)
 
         return projection
+
 
 class Resnet_Encoder(torch.nn.Module):
     def __init__(self, num_layers=18, channels=3, freeze=True):
@@ -220,6 +230,8 @@ class Resnet_Encoder(torch.nn.Module):
         projection = self.projection_head(embedding)
 
         return projection
+
+
 class VGG_Encoder(torch.nn.Module):
     def __init__(self, num_layers=11, channels=3, freeze=True):
         super(VGG_Encoder, self).__init__()
@@ -275,6 +287,7 @@ class VGG_Encoder(torch.nn.Module):
 
         return projection
 
+
 def finetuning_model(embedding_input, freeze=True):
     class final_model(torch.nn.Module):
         def __init__(self, embedding, freeze=True):
@@ -301,6 +314,8 @@ def finetuning_model(embedding_input, freeze=True):
             return x
 
     return final_model(embedding_input, freeze=freeze)
+
+
 class VAE_images(torch.nn.Module):
     def __init__(
         self,
@@ -401,6 +416,8 @@ class VAE_images(torch.nn.Module):
         else:
             x_hat = self.decoder(z)
             return x_hat, mu, logvar
+
+
 class VAE(torch.nn.Module):
     def __init__(
         self,
@@ -485,6 +502,8 @@ class VAE(torch.nn.Module):
         else:
             x_hat = self.decoder(z)
             return x_hat, mu, logvar
+
+
 class VectorQuantizer(torch.nn.Module):
     def __init__(
         self,
@@ -561,6 +580,8 @@ class VectorQuantizer(torch.nn.Module):
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
         return z_q, vq_loss, enc_idx
+
+
 class VQVAE(torch.nn.Module):
     def __init__(
         self,
@@ -637,6 +658,8 @@ class VQVAE(torch.nn.Module):
         x_hat, y_hat = self.decoder(z_q, z)
         self.usage = self.vq.usage
         return x_hat, y_hat, vq_loss, z, z_q, enc_idx
+
+
 class Spectrogram_networks_vowels(torch.nn.Module):
     def __init__(self, x_dim, hidden_dims, cnn=False):
         super().__init__()
@@ -690,6 +713,8 @@ class Spectrogram_networks_vowels(torch.nn.Module):
             )
         else:
             raise NotImplementedError
+
+
 class Spectrogram_networks_manner(torch.nn.Module):
     def __init__(self, x_dim, hidden_dims, cnn=False):
         super().__init__()
@@ -978,19 +1003,30 @@ class GMVAE(torch.nn.Module):
 
     def metric_loss(self, x_hat, labels):
         sumreducer = reducers.SumReducer()
-        miner = miners.MultiSimilarityMiner()
-        # loss_func = losses.MultiSimilarityLoss(reducer=sumreducer)
+        miner = miners.MultiSimilarityMiner(epsilon=0.1)
         loss_func = losses.GeneralizedLiftedStructureLoss(reducer=sumreducer).to(
             self.device
         )
 
-        # # Move labels to GPU
-        # labels = labels.to(self.device)
+        # Reshape labels
+        labels = labels.reshape(-1)
 
-        hard_pairs = miner(x_hat, labels.view(-1))
-        metric_loss = loss_func(x_hat, labels.view(-1), hard_pairs)
+        # Oversample labels and x_hat to have the same number of samples
+        count_labels = np.unique(labels, return_counts=True)[1]
+        max_count = np.max(count_labels)
+        idx_sampled = []
+        for label in np.unique(labels):
+            idx = np.where(labels == label)[0]
+            idx_sampled.append(np.random.choice(idx, max_count))
+        idx_sampled = np.concatenate(idx_sampled)
+        labels = labels[idx_sampled]
+        x_hat = x_hat[idx_sampled]
 
-        # metric_loss = self.lifted_struct_loss(x_hat, labels, hard_pairs)
+        # Miner
+        hard_pairs = miner(x_hat, labels)
+
+        # Loss
+        metric_loss = loss_func(x_hat, labels, hard_pairs)
 
         return metric_loss
 

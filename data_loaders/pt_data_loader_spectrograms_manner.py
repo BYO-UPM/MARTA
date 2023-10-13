@@ -469,8 +469,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             ),
             drop_last=False,
             batch_size=self.hyperparams["batch_size"],
-            shuffle=True
-            # sampler=sampler,
+            shuffle=True,
         )
         val_loader = torch.utils.data.DataLoader(
             dataset=list(
