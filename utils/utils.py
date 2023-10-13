@@ -39,7 +39,6 @@ def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
     return train_idx, test_idx
 
 
-
 def plot_logopeda_alb_neuro(
     model,
     data_train,
@@ -49,11 +48,6 @@ def plot_logopeda_alb_neuro(
     supervised=False,
     samples=1000,
 ):
-    from scipy.stats import gaussian_kde
-    from scipy.spatial.distance import jensenshannon
-    import copy
-
-        
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
@@ -98,7 +92,6 @@ def plot_logopeda_alb_neuro(
     labels_train = np.repeat(labels_train, manner_train.shape[1], axis=0)[idx]
     manner_train = manner_train.reshape(-1)[idx]
     latent_mu_train = latent_mu_train_original_space[idx].cpu().detach().numpy()
-    latent_mu_train_original_space = copy.copy(latent_mu_train)
 
     # Select only SAMPLES from test
     idx = np.random.choice(len(latent_mu_test_original_space), samples)
@@ -106,7 +99,6 @@ def plot_logopeda_alb_neuro(
     labels_test = np.repeat(labels_test, manner_test.shape[1], axis=0)[idx]
     manner_test = manner_test.reshape(-1)[idx]
     latent_mu_test = latent_mu_test_original_space[idx].cpu().detach().numpy()
-    latent_mu_test_original_space = copy.copy(latent_mu_test)
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu_train.shape[1] > 2:
@@ -135,6 +127,7 @@ def plot_logopeda_alb_neuro(
 
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ===========================================
     import matplotlib
+
     cmap = matplotlib.cm.get_cmap("Set1")
 
     fig, ax = plt.subplots(figsize=(20, 20))
@@ -147,17 +140,17 @@ def plot_logopeda_alb_neuro(
         5: "Vowels",
         6: "Affricates",
         7: "Silence",
-        8: "Short pause"
+        8: "Short pause",
     }
     for i in range(9):
-        sct = ax.scatter(
+        ax.scatter(
             latent_mu_train[:, 0][np.where(manner_train == i)],
             latent_mu_train[:, 1][np.where(manner_train == i)],
             color=cmap(i),
-            label = class_labels[i],
+            label=class_labels[i],
         )
     # Add labels and title
-    ax.set_xlabel(xlabel) 
+    ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
     ax.legend()
@@ -169,24 +162,17 @@ def plot_logopeda_alb_neuro(
         wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
 
     # =========================================== HEALTHY TEST SAMPLES from NEUROVOZ. We are going to do 7 plots. One per phoneme. ===========================================
+    import copy
 
     # select only latent_mu_test with labels_test = 0
     idx = np.argwhere(labels_test == 0).ravel()
     latent_mu_test_healthy = latent_mu_test[idx]
-    latent_mu_test_healthy_original_space = latent_mu_test_original_space[idx]
-    manner_test_copy = manner_test[idx]
-    # Calculate KDE for each manner class in train
-    kde_train = []
-    kde_test_healthy = []
+    manner_test_copy = copy.copy(manner_test[idx])
 
     for i in range(9):
-        i=int(i)
+        i = int(i)
 
         idx = np.argwhere(manner_train == i).ravel()
-        if len(idx) == 0:
-            kde_train.append(None)
-        else:
-            kde_train.append(gaussian_kde(latent_mu_train_original_space[idx].T))
 
         fig, ax = plt.subplots(figsize=(20, 20))
 
@@ -194,28 +180,22 @@ def plot_logopeda_alb_neuro(
 
         # Divide the scatter in two scatters: frst all healhty samples.
         for j in range(9):
-            sct = ax.scatter(
+            ax.scatter(
                 latent_mu_train[:, 0][np.where(manner_train == j)],
                 latent_mu_train[:, 1][np.where(manner_train == j)],
                 color=cmap(j),
-                label = class_labels[j],
-                alpha=0.2
+                label=class_labels[j],
+                alpha=0.2,
             )
 
-        
-
         idx = np.argwhere(manner_test_copy == i).ravel()
-        if (len(idx) == 0) or (len(idx) < 32):
-            kde_test_healthy.append(None)
-        else:
-            kde_test_healthy.append(gaussian_kde(latent_mu_test_healthy_original_space[idx].T))
 
         ax.scatter(
             latent_mu_test_healthy[idx, 0],
             latent_mu_test_healthy[idx, 1],
             alpha=1,
             color=cmap(i),
-            label = class_labels[i],
+            label=class_labels[i],
         )
         # Add labels and title
         ax.set_xlabel(xlabel)
@@ -227,7 +207,13 @@ def plot_logopeda_alb_neuro(
         )
 
         if wandb_flag:
-            wandb.log({str(name) + "/latent_space_healthy_albayzin_vs_neurovoz_class_" + str(i): wandb.Image(fig)})
+            wandb.log(
+                {
+                    str(name)
+                    + "/latent_space_healthy_albayzin_vs_neurovoz_class_"
+                    + str(i): wandb.Image(fig)
+                }
+            )
 
         plt.close()
 
@@ -236,37 +222,30 @@ def plot_logopeda_alb_neuro(
     # select only latent_mu_test with ["label"] = 1
     idx = np.argwhere(labels_test == 1).ravel()
     latent_mu_test_park = latent_mu_test[idx]
-    latent_mu_test_park_original_space = latent_mu_test_original_space[idx]
-    manner_test_copy = manner_test[idx]
-    kde_test_parkinsonians = []
+    manner_test_copy = copy.copy(manner_test[idx])
 
     for i in range(9):
-        i=int(i)
+        i = int(i)
         fig, ax = plt.subplots(figsize=(20, 20))
 
         # Scatter ax
-
         # Divide the scatter in two scatters: frst all healhty samples.
         for j in range(9):
             sct = ax.scatter(
                 latent_mu_train[:, 0][np.where(manner_train == j)],
                 latent_mu_train[:, 1][np.where(manner_train == j)],
                 color=cmap(j),
-                label = class_labels[j],
-                alpha=0.2
+                label=class_labels[j],
+                alpha=0.2,
             )
         idx = np.argwhere(manner_test_copy == i).ravel()
-        if (len(idx) == 0) or (len(idx) < 32):
-            kde_test_parkinsonians.append(None)
-        else:
-            kde_test_parkinsonians.append(gaussian_kde(latent_mu_test_park_original_space[idx].T))
 
         ax.scatter(
             latent_mu_test_park[idx, 0],
             latent_mu_test_park[idx, 1],
             alpha=1,
             color=cmap(i),
-            label = class_labels[i],
+            label=class_labels[i],
         )
         # Add labels and title
         ax.set_xlabel(xlabel)
@@ -280,12 +259,15 @@ def plot_logopeda_alb_neuro(
         )
 
         if wandb_flag:
-            wandb.log({str(name) + "/latent_space_park_albayzin_vs_neurovoz_class_" + str(i): wandb.Image(fig)})
+            wandb.log(
+                {
+                    str(name)
+                    + "/latent_space_park_albayzin_vs_neurovoz_class_"
+                    + str(i): wandb.Image(fig)
+                }
+            )
 
         plt.close()
-
-       
-
 
 
 def plot_logopeda(
@@ -375,6 +357,7 @@ def plot_logopeda(
 
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS ===========================================
     import matplotlib
+
     cmap = matplotlib.cm.get_cmap("Set1")
 
     fig, ax = plt.subplots(figsize=(20, 20))
@@ -385,7 +368,7 @@ def plot_logopeda(
         cmap=cmap,
     )
     # Add labels and title
-    ax.set_xlabel(xlabel) 
+    ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
     legend_elements = []
@@ -398,14 +381,21 @@ def plot_logopeda(
         5: "Vowels",
         6: "Affricates",
         7: "Silence",
-        8: "Short pause"
+        8: "Short pause",
     }
     for class_value, class_label in enumerate(class_labels):
         # Get the label for the class from the list
         # Get the color from the colormap
-        color = cmap(class_value / (len(class_labels) -1 ))
+        color = cmap(class_value / (len(class_labels) - 1))
         # Create a dummy scatter plot for each class with a single point
-        dummy_scatter = matplotlib.lines.Line2D([0], [0], marker='o', color=color, label=class_labels[class_label], markersize=10)
+        dummy_scatter = matplotlib.lines.Line2D(
+            [0],
+            [0],
+            marker="o",
+            color=color,
+            label=class_labels[class_label],
+            markersize=10,
+        )
         legend_elements.append(dummy_scatter)
 
     ax.legend(
@@ -426,7 +416,7 @@ def plot_logopeda(
     # First plot. How the parkinsonian plosives are distributed in the latent space
 
     for i in range(8):
-        i=int(i)
+        i = int(i)
         fig, ax = plt.subplots(figsize=(20, 20))
 
         # Scatter ax
@@ -445,7 +435,7 @@ def plot_logopeda(
             latent_mu_test[idx, 0],
             latent_mu_test[idx, 1],
             alpha=1,
-            color=cmap(i/(len(class_labels))),
+            color=cmap(i / (len(class_labels))),
         )
         # Add labels and title
         ax.set_xlabel(xlabel)
@@ -462,14 +452,21 @@ def plot_logopeda(
             5: "Vowels",
             6: "Affricates",
             7: "Silence",
-            8: "Short pause"
+            8: "Short pause",
         }
         for class_value, class_label in enumerate(class_labels):
             # Get the label for the class from the list
             # Get the color from the colormap
             color = cmap(class_value / len(class_labels))
             # Create a dummy scatter plot for each class with a single point
-            dummy_scatter = matplotlib.lines.Line2D([0], [0], marker='o', color=color, label=class_labels[class_label], markersize=10)
+            dummy_scatter = matplotlib.lines.Line2D(
+                [0],
+                [0],
+                marker="o",
+                color=color,
+                label=class_labels[class_label],
+                markersize=10,
+            )
             legend_elements.append(dummy_scatter)
 
         ax.legend(
@@ -483,7 +480,13 @@ def plot_logopeda(
         )
 
         if wandb_flag:
-            wandb.log({str(name) + "/latent_space_parkinsonian_class_" + str(i): wandb.Image(fig)})
+            wandb.log(
+                {
+                    str(name)
+                    + "/latent_space_parkinsonian_class_"
+                    + str(i): wandb.Image(fig)
+                }
+            )
 
         plt.close()
 
