@@ -11,12 +11,7 @@ import wandb
 import numpy as np
 import pandas as pd
 
-import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 # Print the cuda device to use
-print("Using cuda device: ", torch.cuda.current_device())
 fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
 
 
@@ -30,7 +25,7 @@ def main(args):
         "n_mfccs": 0,
         "spectrogram": True,
         "wandb_flag": False,
-        "epochs": 5,
+        "epochs": 300,
         "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 32,
@@ -156,16 +151,6 @@ def main(args):
     df_test["manner"] = [t[2] for t in test_loader.dataset]
 
     if hyperparams["material"] == "MANNER":
-        # Plot the latent space in test
-        # plot_logopeda(
-        #     model,
-        #     df_train,
-        #     df_test,
-        #     hyperparams["wandb_flag"],
-        #     name="test",
-        #     supervised=hyperparams["supervised"],
-        #     samples=2000,
-        # )
         plot_logopeda_alb_neuro(
             model,
             df_train,
@@ -173,7 +158,7 @@ def main(args):
             hyperparams["wandb_flag"],
             name="test",
             supervised=hyperparams["supervised"],
-            samples=4000,
+            samples=5000,
         )
 
     if hyperparams["wandb_flag"]:

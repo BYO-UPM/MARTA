@@ -113,6 +113,7 @@ def plot_logopeda_alb_neuro(
         manner_test,
         labels_train,
         labels_test,
+        wandb_flag,
     )
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
@@ -1122,6 +1123,7 @@ def calculate_distances_manner(
     manner_test,
     labels_train,
     labels_test,
+    wandb_flag,
 ):
     print("Calculating distances...")
     # Import KDE
@@ -1148,7 +1150,9 @@ def calculate_distances_manner(
     idxPD_test = np.argwhere(labels_test == 1).ravel()
 
     # First distance metric: all healthys from train vs all healthys from test by manner class
-    distances = np.zeros((8, 8))
+    distances_healthy = np.zeros((8, 8))
+    # Second distance metric: all healhty from train vs all parkinsons from test by manner class
+    distances_healthy_parkinson = np.zeros((8, 8))
     print("Calculating jensen-shannon distances sampling uniformly from the space...")
     for i in np.unique(manner_train):
         kde1 = gaussian_kde(
@@ -1160,10 +1164,20 @@ def calculate_distances_manner(
                 latent_mu_test[idxH_test][manner_test[idxH_test] == j].shape[0]
                 < latent_mu_test[idxH_test][manner_test[idxH_test] == j].shape[1]
             ):
-                distances[i, j] = np.nan
+                distances_healthy[i, j] = np.nan
                 continue
+            if (
+                latent_mu_test[idxPD_test][manner_test[idxPD_test] == i].shape[0]
+                < latent_mu_test[idxPD_test][manner_test[idxPD_test] == i].shape[1]
+            ):
+                distances_healthy_parkinson[i, j] = np.nan
+                continue
+
             kde2 = gaussian_kde(
                 latent_mu_test[idxH_test][manner_test[idxH_test] == j].T
+            )
+            kde3 = gaussian_kde(
+                latent_mu_test[idxPD_test][manner_test[idxPD_test] == j].T
             )
 
             # Sample from a uniform distribution of the limits of the latent_mu space which can be N-Dimensional
@@ -1178,30 +1192,95 @@ def calculate_distances_manner(
             # Calculate logprob of each kde
             logprob1 = kde1.logpdf(positions)
             logprob2 = kde2.logpdf(positions)
+            logprob3 = kde3.logpdf(positions)
 
             # Calculate the jensen-shannon distance
-            distances[i, j] = jensenshannon(logprob1, logprob2)
+            distances_healthy[i, j] = jensenshannon(logprob1, logprob2)
+            distances_healthy_parkinson[i, j] = jensenshannon(logprob1, logprob3)
 
     # Plot the distances as a heatmap using seaborn
     print("Plotting distances...")
     import seaborn as sns
 
     fig, ax = plt.subplots(figsize=(10, 10))
-    sns.heatmap(distances, annot=True, ax=ax)
+    sns.heatmap(distances_healthy, annot=True, ax=ax)
     ax.set_title(f"Jensen-Shannon distance between Albayzin and Neurovoz healthy")
     ax.set_xticklabels(
-        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
+        [
+            "Plosives",
+            "Plosives voiced",
+            "Nasals",
+            "Fricatives",
+            "Liquids",
+            "Vowels",
+            "Affricates",
+            "Silence",
+        ],
+        rotation=45,
     )
     ax.set_yticklabels(
-        ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
+        [
+            "Plosives",
+            "Plosives voiced",
+            "Nasals",
+            "Fricatives",
+            "Liquids",
+            "Vowels",
+            "Affricates",
+            "Silence",
+        ]
     )
-    ax.set_xlabel("Vowels (Healthy / PD)")
-    ax.set_ylabel("Vowels (Healthy / PD)")
-    save_path = "local_results/plps/vae_supervised/" + f"js_dist_{fold}_{name}.png"
+    ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
+    ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
+    save_path = (
+        "local_results/spectrograms/manner_gmvae/"
+        + f"js_dist_Albayzin_h_Neurovoz_h.png"
+    )
     fig.savefig(save_path)
 
     if wandb_flag:
-        wandb.log({str(name) + "/js_distances": wandb.Image(fig)})
+        wandb.log({"test/js_dist_Albayzin_h_Neurovoz_h": wandb.Image(fig)})
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    sns.heatmap(distances_healthy_parkinson, annot=True, ax=ax)
+    ax.set_title(
+        f"Jensen-Shannon distance between Albayzin healthy and Neurovoz parkinson"
+    )
+    ax.set_xticklabels(
+        [
+            "Plosives",
+            "Plosives voiced",
+            "Nasals",
+            "Fricatives",
+            "Liquids",
+            "Vowels",
+            "Affricates",
+            "Silence",
+        ],
+        rotation=45,
+    )
+    ax.set_yticklabels(
+        [
+            "Plosives",
+            "Plosives voiced",
+            "Nasals",
+            "Fricatives",
+            "Liquids",
+            "Vowels",
+            "Affricates",
+            "Silence",
+        ]
+    )
+    ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
+    ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
+    save_path = (
+        "local_results/spectrograms/manner_gmvae/"
+        + f"js_distances_Albayzin_h_Neurovoz_pd.png"
+    )
+    fig.savefig(save_path)
+
+    if wandb_flag:
+        wandb.log({"test/js_distances_Albayzin_h_Neurovoz_pd": wandb.Image(fig)})
 
     plt.close()
 
