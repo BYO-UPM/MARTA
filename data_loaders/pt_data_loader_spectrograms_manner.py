@@ -54,7 +54,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.data)
-    
+
     def read_neurovoz(self, dataset="albayzin"):
         file_paths = []
         labels = []
@@ -111,11 +111,14 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         texts = []
         phonemes = []
 
+        datapath_wav = (
+            "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/SUB_APRE_WAV/"
+        )
+        datapath_textgrid = (
+            "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/textgrid/"
+        )
 
-        datapath_wav = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/SUB_APRE_WAV/"
-        datapath_textgrid = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/textgrid/"
-
-        i=0
+        i = 0
         for file in os.listdir(datapath_wav):
             # If the file does not end with .wav, skip it
             if not file.endswith(".wav"):
@@ -123,7 +126,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             file_path = os.path.join(datapath_wav, file)
             file_paths.append(file_path)
             # Each file is named as follows: aabbXXXX.wav where aa is the id_patient, bb is the train/test partition, XXXX is the text
-            labels.append(0) # In albayzin all are healthy
+            labels.append(0)  # In albayzin all are healthy
             id_patient.append(file.split(".")[0][0:4])
             texts.append(file.split(".")[0][4:])
 
@@ -132,7 +135,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             # Check if the file exists
             if not os.path.exists(tg_file):
                 print("File does not exist: ", tg_file)
-                i+=1
+                i += 1
                 phonemes.append(None)
                 continue
             tg_file = tg.TextGrid(tg_file)
@@ -181,7 +184,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 phoneme_labels.append(None)
 
         return phoneme_labels
-    
+
     def match_phonemes2(self, phonemes, signal, sr):
         # Create a dictionary for fast interval lookup
         phoneme_dict = {interval.xmin: interval.text for interval in phonemes}
@@ -196,7 +199,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         for timestamp_index, timestamp_seconds in enumerate(timestamps_seconds):
             # Use binary search to find the matching interval
             interval_start_times = np.array(list(phoneme_dict.keys()))
-            matching_interval_index = np.searchsorted(interval_start_times, timestamp_seconds) - 1
+            matching_interval_index = (
+                np.searchsorted(interval_start_times, timestamp_seconds) - 1
+            )
 
             if matching_interval_index >= 0:
                 matching_interval = phonemes[matching_interval_index]
@@ -346,13 +351,13 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             "N": 2,
             "m": 2,
             "NY": 2,
-            "J": 2, # enye
+            "J": 2,  # enye
             "f": 3,  # fricatives
             "s": 3,
             "z": 3,
             "x": 3,
             "h": 3,
-            "T": 3, # theta
+            "T": 3,  # theta
             "R": 4,  # liquids
             "r": 4,
             "4": 4,
@@ -369,10 +374,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             "u": 5,
             "w": 5,
             "CH": 6,  # affricates
-            "tS": 6 ,   
+            "tS": 6,
             "sil": 7,  # silence
-            "_": 7, 
-            "sp": 8, # short pause
+            "_": 7,
+            "sp": 7,  # short pause
         }
 
         # Map all self.data["collapsed_phonemes"] to manner classes

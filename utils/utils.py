@@ -48,6 +48,8 @@ def plot_logopeda_alb_neuro(
     supervised=False,
     samples=1000,
 ):
+    import copy
+
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
@@ -91,14 +93,27 @@ def plot_logopeda_alb_neuro(
     # Repeat labels manner.shape[1] times
     labels_train = np.repeat(labels_train, manner_train.shape[1], axis=0)[idx]
     manner_train = manner_train.reshape(-1)[idx]
-    latent_mu_train = latent_mu_train_original_space[idx].cpu().detach().numpy()
+    latent_mu_train = copy.copy(
+        latent_mu_train_original_space[idx].cpu().detach().numpy()
+    )
 
     # Select only SAMPLES from test
     idx = np.random.choice(len(latent_mu_test_original_space), samples)
     # Repeat labels manner.shape[1] times
     labels_test = np.repeat(labels_test, manner_test.shape[1], axis=0)[idx]
     manner_test = manner_test.reshape(-1)[idx]
-    latent_mu_test = latent_mu_test_original_space[idx].cpu().detach().numpy()
+    latent_mu_test = copy.copy(
+        latent_mu_test_original_space[idx].cpu().detach().numpy()
+    )
+
+    calculate_distances_manner(
+        latent_mu_train,
+        latent_mu_test,
+        manner_train,
+        manner_test,
+        labels_train,
+        labels_test,
+    )
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu_train.shape[1] > 2:
@@ -162,8 +177,6 @@ def plot_logopeda_alb_neuro(
         wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
 
     # =========================================== HEALTHY TEST SAMPLES from NEUROVOZ. We are going to do 7 plots. One per phoneme. ===========================================
-    import copy
-
     # select only latent_mu_test with labels_test = 0
     idx = np.argwhere(labels_test == 0).ravel()
     latent_mu_test_healthy = latent_mu_test[idx]
@@ -1103,13 +1116,12 @@ def plot_latent_space_vowels_3D(
 
 
 def calculate_distances_manner(
-    model,
-    data,
-    fold,
-    wandb_flag,
-    name="default",
-    gmvae=False,
-    audio_features="spectrograms",
+    latent_mu_train,
+    latent_mu_test,
+    manner_train,
+    manner_test,
+    labels_train,
+    labels_test,
 ):
     print("Calculating distances...")
     # Import KDE
@@ -1118,77 +1130,41 @@ def calculate_distances_manner(
     # Import jensen-shannon distance
     from scipy.spatial.distance import jensenshannon
 
-    model.eval()
-    with torch.no_grad():
-        if gmvae:
-            if audio_features == "spectrograms":
-                data_input = (
-                    torch.Tensor(np.vstack(data["spectrogram"]))
-                    .to(model.device)
-                    .unsqueeze(1)
-                )
-                (
-                    z,
-                    qy_logits,
-                    qy,
-                    latent_mu,
-                    qz_logvar,
-                    x_hat,
-                    x_hat_unflatten,
-                ) = model.infere(data_input)
-            else:
-                _, _, _, latent_mu, latent_sigma, _ = model.infere(
-                    torch.Tensor(np.vstack(data[audio_features])).to(model.device)
-                )
-        else:
-            latent_mu, latent_sigma = model.encoder(
-                torch.Tensor(np.vstack(data[audio_features])).to(model.device)
-            )
+    # Calculate the distances between the gaussians of the latent space
 
-    latent_mu = latent_mu.detach().cpu().numpy()
+    # Concatenate both latents
+    latent_mu = np.concatenate((latent_mu_train, latent_mu_test), axis=0)
 
-    labels = data["label"].values
-    vowels = np.vstack(data["manner"].values)
+    # Get index of all healthy in train
+    idxH_train = np.argwhere(labels_train == 0).ravel()
+    # Get index of all parkinson in train
+    idxPD_train = np.argwhere(
+        labels_train == 1
+    ).ravel()  # Should be 0 if albayzin dataset
 
-    labels = np.repeat(labels, vowels.shape[1])
-    vowels = vowels.ravel()
+    # Get index of all healthy in test
+    idxH_test = np.argwhere(labels_test == 0).ravel()
+    # Get index of all parkinson in test
+    idxPD_test = np.argwhere(labels_test == 1).ravel()
 
-    idxH = np.argwhere(labels == 0).ravel()
-    idxPD = np.argwhere(labels == 1).ravel()
-
-    idxPlos = np.argwhere(vowels[idxH] == 0).ravel()
-    idxPlos2 = np.argwhere(vowels[idxH] == 1).ravel()
-    idxNasals = np.argwhere(vowels[idxH] == 2).ravel()
-    idxFri = np.argwhere(vowels[idxH] == 3).ravel()
-    idxV = np.argwhere(vowels[idxH] == 4).ravel()
-    idxAf = np.argwhere(vowels[idxH] == 5).ravel()
-    idxS = np.argwhere(vowels[idxH] == 6).ravel()
-
-    idx = np.argwhere(vowels[idxPD] == 0).ravel()
-    idxEPD = np.argwhere(vowels[idxPD] == 1).ravel()
-    idxIPD = np.argwhere(vowels[idxPD] == 2).ravel()
-    idxOPD = np.argwhere(vowels[idxPD] == 3).ravel()
-    idxUPD = np.argwhere(vowels[idxPD] == 4).ravel()
-
-    all_idx = [
-        idxAH,
-        idxEH,
-        idxIH,
-        idxOH,
-        idxUH,
-        idxAPD,
-        idxEPD,
-        idxIPD,
-        idxOPD,
-        idxUPD,
-    ]
-
-    distances = np.zeros((10, 10))
+    # First distance metric: all healthys from train vs all healthys from test by manner class
+    distances = np.zeros((8, 8))
     print("Calculating jensen-shannon distances sampling uniformly from the space...")
-    for i in range(len(all_idx)):
-        kde1 = gaussian_kde(latent_mu[all_idx[i]].T)
-        for j in range(len(all_idx)):
-            kde2 = gaussian_kde(latent_mu[all_idx[j]].T)
+    for i in np.unique(manner_train):
+        kde1 = gaussian_kde(
+            latent_mu_train[idxH_train][manner_train[idxH_train] == i].T
+        )
+        for j in np.unique(manner_train):
+            # Assert if its possible to calculate gaussian kde: if data for that class is less than dimensions, skip
+            if (
+                latent_mu_test[idxH_test][manner_test[idxH_test] == j].shape[0]
+                < latent_mu_test[idxH_test][manner_test[idxH_test] == j].shape[1]
+            ):
+                distances[i, j] = np.nan
+                continue
+            kde2 = gaussian_kde(
+                latent_mu_test[idxH_test][manner_test[idxH_test] == j].T
+            )
 
             # Sample from a uniform distribution of the limits of the latent_mu space which can be N-Dimensional
             positions = np.random.uniform(
@@ -1212,7 +1188,7 @@ def calculate_distances_manner(
 
     fig, ax = plt.subplots(figsize=(10, 10))
     sns.heatmap(distances, annot=True, ax=ax)
-    ax.set_title(f"Jensen-Shannon distance between all vowels in fold {fold}")
+    ax.set_title(f"Jensen-Shannon distance between Albayzin and Neurovoz healthy")
     ax.set_xticklabels(
         ["A-H", "E-H", "I-H", "O-H", "U-H", "A-PD", "E-PD", "I-PD", "O-PD", "U-PD"]
     )
