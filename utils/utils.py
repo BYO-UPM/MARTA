@@ -1148,13 +1148,17 @@ def calculate_distances_manner(model, latent_mu_train, latent_mu_test, manner_tr
         return jensenshannon(p, q)
 
     def calculate_cluster_distance(latent_mu_one, latent_mu_two, kde_train, kde_test):
-        latent_mu = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
+        
         # Sample from the GMM of the generative model
-        # # First generate uniformly distributed samples up to model.k
-        # cat_samples = np.random.choice(model.k, size=1000 * latent_mu.shape[1], replace=True)
-        # # Convert them to one-hot-encoder
-        # positions = torch.chunk(model.generative_pz_y(torch.eye(model.k)[cat_samples].to(model.device)), 2, dim=1)[0].cpu().detach().numpy().T
-        positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(1000 * latent_mu.shape[1], latent_mu.shape[1])).T
+        # First generate uniformly distributed samples up to model.k
+        cat_samples = np.random.choice(model.k, size=1000 * latent_mu.shape[1], replace=True)
+        # Convert them to one-hot-encoder
+        positions = torch.chunk(model.generative_pz_y(torch.eye(model.k)[cat_samples].to(model.device)), 2, dim=1)[0].cpu().detach().numpy().T
+
+        # Uniformly sampling from the latent space restricted to the min and max of the classes we are comparing
+        # latent_mu = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
+        # positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(1000 * latent_mu.shape[1], latent_mu.shape[1])).T
+
         distance = calculate_js_distance(kde_train, kde_test, positions)
         return distance
 
