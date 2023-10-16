@@ -107,6 +107,7 @@ def plot_logopeda_alb_neuro(
     )
 
     calculate_distances_manner(
+        model,
         latent_mu_train,
         latent_mu_test,
         manner_train,
@@ -1124,7 +1125,7 @@ def plot_latent_space_vowels_3D(
         wandb.log({str(name) + "/latent_space_labels": wandb.Image(fig)})
     plt.close(fig)
 
-def calculate_distances_manner(latent_mu_train, latent_mu_test, manner_train, manner_test, labels_train, labels_test, wandb_flag):
+def calculate_distances_manner(model, latent_mu_train, latent_mu_test, manner_train, manner_test, labels_train, labels_test, wandb_flag):
     from scipy.stats import gaussian_kde
     from scipy.spatial.distance import jensenshannon
     print("Calculating distances...")
@@ -1140,12 +1141,19 @@ def calculate_distances_manner(latent_mu_train, latent_mu_test, manner_train, ma
     def calculate_js_distance(kde1, kde2, positions):
         if kde1 is None or kde2 is None:
             return 0
-        logprob1 = kde1.logpdf(positions)
-        logprob2 = kde2.logpdf(positions)
-        return jensenshannon(logprob1, logprob2)
+        p = kde1.pdf(positions)
+        p = p / np.sum(p)
+        q = kde2.pdf(positions)
+        q = q / np.sum(q)
+        return jensenshannon(p, q)
 
     def calculate_cluster_distance(latent_mu_one, latent_mu_two, kde_train, kde_test):
         latent_mu = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
+        # Sample from the GMM of the generative model
+        # # First generate uniformly distributed samples up to model.k
+        # cat_samples = np.random.choice(model.k, size=1000 * latent_mu.shape[1], replace=True)
+        # # Convert them to one-hot-encoder
+        # positions = torch.chunk(model.generative_pz_y(torch.eye(model.k)[cat_samples].to(model.device)), 2, dim=1)[0].cpu().detach().numpy().T
         positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(1000 * latent_mu.shape[1], latent_mu.shape[1])).T
         distance = calculate_js_distance(kde_train, kde_test, positions)
         return distance
