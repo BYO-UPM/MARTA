@@ -115,6 +115,15 @@ def plot_logopeda_alb_neuro(
         labels_test,
         wandb_flag,
     )
+    calculate_euclidean_distances_manner(
+        latent_mu_train,
+        latent_mu_test,
+        manner_train,
+        manner_test,
+        labels_train,
+        labels_test,
+        wandb_flag,
+    )
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu_train.shape[1] > 2:
@@ -1115,180 +1124,229 @@ def plot_latent_space_vowels_3D(
         wandb.log({str(name) + "/latent_space_labels": wandb.Image(fig)})
     plt.close(fig)
 
-
-def calculate_distances_manner(
-    latent_mu_train,
-    latent_mu_test,
-    manner_train,
-    manner_test,
-    labels_train,
-    labels_test,
-    wandb_flag,
-):
-    print("Calculating distances...")
-    # Import KDE
+def calculate_distances_manner(latent_mu_train, latent_mu_test, manner_train, manner_test, labels_train, labels_test, wandb_flag):
     from scipy.stats import gaussian_kde
-
-    # Import jensen-shannon distance
     from scipy.spatial.distance import jensenshannon
-
-    # Calculate the distances between the gaussians of the latent space
-
+    print("Calculating distances...")
+    
     # Concatenate both latents
     latent_mu = np.concatenate((latent_mu_train, latent_mu_test), axis=0)
 
-    # Get index of all healthy in train
-    idxH_train = np.argwhere(labels_train == 0).ravel()
-    # Get index of all parkinson in train
-    idxPD_train = np.argwhere(
-        labels_train == 1
-    ).ravel()  # Should be 0 if albayzin dataset
+    def calculate_kde(data):
+        if data.shape[0] < 2*data.shape[1]:
+            return None
+        return gaussian_kde(data.T)
 
-    # Get index of all healthy in test
-    idxH_test = np.argwhere(labels_test == 0).ravel()
-    # Get index of all parkinson in test
-    idxPD_test = np.argwhere(labels_test == 1).ravel()
+    def calculate_js_distance(kde1, kde2, positions):
+        if kde1 is None or kde2 is None:
+            return 0
+        logprob1 = kde1.logpdf(positions)
+        logprob2 = kde2.logpdf(positions)
+        return jensenshannon(logprob1, logprob2)
 
-    # First distance metric: all healthys from train vs all healthys from test by manner class
-    distances_healthy = np.zeros((8, 8))
-    # Second distance metric: all healhty from train vs all parkinsons from test by manner class
-    distances_healthy_parkinson = np.zeros((8, 8))
-    print("Calculating jensen-shannon distances sampling uniformly from the space...")
-    for i in np.unique(manner_train):
-        # Assert if its possible to calculate gaussian kde: if data for that class is less than dimensions, skip
-        if (
-            latent_mu_train[idxH_train][manner_train[idxH_train] == i].shape[0]
-            < latent_mu_train[idxH_train][manner_train[idxH_train] == i].shape[1]
-        ):
-            distances_healthy[i, :] = np.nan
-            distances_healthy_parkinson = np.nan
-            continue
-        kde1 = gaussian_kde(
-            latent_mu_train[idxH_train][manner_train[idxH_train] == i].T
-        )
-        for j in np.unique(manner_train):
-            # Assert if its possible to calculate gaussian kde: if data for that class is less than dimensions, skip
-            if (
-                latent_mu_test[idxH_test][manner_test[idxH_test] == j].shape[0]
-                < latent_mu_test[idxH_test][manner_test[idxH_test] == j].shape[1]
-            ):
-                distances_healthy[i, j] = np.nan
-                continue
-            if (
-                latent_mu_test[idxPD_test][manner_test[idxPD_test] == i].shape[0]
-                < latent_mu_test[idxPD_test][manner_test[idxPD_test] == i].shape[1]
-            ):
-                distances_healthy_parkinson[i, j] = np.nan
-                continue
+    def calculate_cluster_distance(latent_mu_one, latent_mu_two, kde_train, kde_test):
+        latent_mu = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
+        positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(1000 * latent_mu.shape[1], latent_mu.shape[1])).T
+        distance = calculate_js_distance(kde_train, kde_test, positions)
+        return distance
 
-            kde2 = gaussian_kde(
-                latent_mu_test[idxH_test][manner_test[idxH_test] == j].T
+    # Get unique manner classes
+    unique_manner_train = np.unique(manner_train)
+    unique_manner_test = np.unique(manner_test)
+
+    distances_albayzin = np.zeros((len(unique_manner_train), len(unique_manner_train)))
+    distances_healthy = np.zeros((len(unique_manner_train), len(unique_manner_test)))
+    distances_healthy_parkinson = np.zeros((len(unique_manner_train), len(unique_manner_test)))
+
+    kde_albayzin = [calculate_kde(latent_mu_train[(labels_train == 0) & (manner_train == manner)]) for manner in unique_manner_train]
+    kde_neurovoz_healhty = [calculate_kde(latent_mu_test[(labels_test == 0) & (manner_test == manner)]) for manner in unique_manner_test]
+    kde_neurovoz_parkinson = [calculate_kde(latent_mu_test[(labels_test == 1) & (manner_test == manner)]) for manner in unique_manner_test]
+
+    for i, manner_i in enumerate(unique_manner_train):
+        for j, manner_j in enumerate(unique_manner_test):
+            print("Calculating KDE for Albayzin vs Albayzin for manner classes " + str(manner_i) + " and " + str(manner_j) + "...")
+            distances_albayzin[i, j] = calculate_cluster_distance(
+                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
+                latent_mu_train[(labels_train == 0) & (manner_train == manner_j)],
+                kde_albayzin[i],
+                kde_albayzin[j]
             )
-            kde3 = gaussian_kde(
-                latent_mu_test[idxPD_test][manner_test[idxPD_test] == j].T
+            print("Calculating KDE for Albayzin Healthy vs Neurovoz Healthy for manner classes " + str(manner_i) + " and " + str(manner_j) + "...")
+            distances_healthy[i, j] = calculate_cluster_distance(
+                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
+                latent_mu_test[(labels_test == 0) & (manner_test == manner_j)],
+                kde_albayzin[i],
+                kde_neurovoz_healhty[j]
             )
-
-            # Sample from a uniform distribution of the limits of the latent_mu space which can be N-Dimensional
-            positions = np.random.uniform(
-                low=latent_mu.min(),
-                high=latent_mu.max(),
-                size=(1000, latent_mu.shape[1]),
+            print("Calculating KDE for Albayzin Healthy vs Neurovoz Parkinson for manner classes " + str(manner_i) + " and " + str(manner_j) + "...")
+            distances_healthy_parkinson[i, j] = calculate_cluster_distance(
+                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
+                latent_mu_test[(labels_test == 1) & (manner_test == manner_j)],
+                kde_albayzin[i],
+                kde_neurovoz_parkinson[j]
             )
 
-            positions = positions.T
-
-            # Calculate logprob of each kde
-            logprob1 = kde1.logpdf(positions)
-            logprob2 = kde2.logpdf(positions)
-            logprob3 = kde3.logpdf(positions)
-
-            # Calculate the jensen-shannon distance
-            distances_healthy[i, j] = jensenshannon(logprob1, logprob2)
-            distances_healthy_parkinson[i, j] = jensenshannon(logprob1, logprob3)
+    distances = [distances_albayzin, distances_healthy, distances_healthy_parkinson]
+    
 
     # Plot the distances as a heatmap using seaborn
     print("Plotting distances...")
     import seaborn as sns
 
-    fig, ax = plt.subplots(figsize=(10, 10))
-    sns.heatmap(distances_healthy, annot=True, ax=ax)
-    ax.set_title(f"Jensen-Shannon distance between Albayzin and Neurovoz healthy")
-    ax.set_xticklabels(
-        [
-            "Plosives",
-            "Plosives voiced",
-            "Nasals",
-            "Fricatives",
-            "Liquids",
-            "Vowels",
-            "Affricates",
-            "Silence",
-        ],
-        rotation=45,
-    )
-    ax.set_yticklabels(
-        [
-            "Plosives",
-            "Plosives voiced",
-            "Nasals",
-            "Fricatives",
-            "Liquids",
-            "Vowels",
-            "Affricates",
-            "Silence",
-        ]
-    )
-    ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
-    ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
-    save_path = (
-        "local_results/spectrograms/manner_gmvae/"
-        + f"js_dist_Albayzin_h_Neurovoz_h.png"
-    )
-    fig.savefig(save_path)
+    for i in range(len(distances)):
+        fig, ax = plt.subplots(figsize=(10, 10))
+        sns.heatmap(distances[i], annot=True, ax=ax)
+        if i==0:
+            title = "Jensen-Shannon distance Albayzin vs Albayzin"
+            savename = "js_dist_Albayzin_Albayzin"
+        elif i==1:
+            title = "Jensen-Shannon distance Albayzin Healthy vs NeuroVoz Healthy"
+            savename = "js_dist_Albayzin_h_Neurovoz_h"
+        else:
+            title = "Jensen-Shannon distance Albayzin Healthy vs NeuroVoz Parkinson"
+            savename = "js_dist_Albayzin_h_Neurovoz_pd"
+        ax.set_title(title)
+        ax.set_xticklabels(
+            [
+                "Plosives",
+                "Plosives voiced",
+                "Nasals",
+                "Fricatives",
+                "Liquids",
+                "Vowels",
+                "Affricates",
+                "Silence",
+            ],
+            rotation=45,
+        )
+        ax.set_yticklabels(
+            [
+                "Plosives",
+                "Plosives voiced",
+                "Nasals",
+                "Fricatives",
+                "Liquids",
+                "Vowels",
+                "Affricates",
+                "Silence",
+            ]
+        )
+        ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
+        ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
+        save_path = (
+            "local_results/spectrograms/manner_gmvae/"
+            + f"{savename}.png"
+        )
+        fig.savefig(save_path)
 
-    if wandb_flag:
-        wandb.log({"test/js_dist_Albayzin_h_Neurovoz_h": wandb.Image(fig)})
+        if wandb_flag:
+            wandb.log({"test/"+savename: wandb.Image(fig)})
 
-    fig, ax = plt.subplots(figsize=(10, 10))
-    sns.heatmap(distances_healthy_parkinson, annot=True, ax=ax)
-    ax.set_title(
-        f"Jensen-Shannon distance between Albayzin healthy and Neurovoz parkinson"
-    )
-    ax.set_xticklabels(
-        [
-            "Plosives",
-            "Plosives voiced",
-            "Nasals",
-            "Fricatives",
-            "Liquids",
-            "Vowels",
-            "Affricates",
-            "Silence",
-        ],
-        rotation=45,
-    )
-    ax.set_yticklabels(
-        [
-            "Plosives",
-            "Plosives voiced",
-            "Nasals",
-            "Fricatives",
-            "Liquids",
-            "Vowels",
-            "Affricates",
-            "Silence",
-        ]
-    )
-    ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
-    ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
-    save_path = (
-        "local_results/spectrograms/manner_gmvae/"
-        + f"js_distances_Albayzin_h_Neurovoz_pd.png"
-    )
-    fig.savefig(save_path)
+        plt.close()
 
-    if wandb_flag:
-        wandb.log({"test/js_distances_Albayzin_h_Neurovoz_pd": wandb.Image(fig)})
+    plt.close()
+
+
+def calculate_euclidean_distances_manner(latent_mu_train, latent_mu_test, manner_train, manner_test, labels_train, labels_test, wandb_flag):
+    from scipy.spatial.distance import euclidean
+    print("Calculating distances...")
+    
+    # Index each dataset
+    
+    # Get unique manner classes
+    unique_manner_classes = np.unique(manner_train)
+
+    # Create dictionaries to store distances
+    distances_albayzin = np.zeros((len(unique_manner_classes), len(unique_manner_classes)))
+    distances_healthy = np.zeros((len(unique_manner_classes), len(unique_manner_classes)))
+    distances_healthy_parkinson = np.zeros((len(unique_manner_classes), len(unique_manner_classes)))
+    
+    print("Calculating Euclidean distances...")
+    
+    for i in range(len(unique_manner_classes)):
+        for j in range(len(unique_manner_classes)):
+            manner_i = unique_manner_classes[i]
+            manner_j = unique_manner_classes[j]
+
+            # Get the indices of data points with manner_i in train and test sets
+            indices_albayzin_i = np.where((manner_train == manner_i) & (labels_train == 0))[0]
+
+            # Get the indices of data points with manner_j in train and test sets
+            indices_albayzin_j = np.where((manner_train == manner_j) & (labels_train == 0))[0]
+            indices_neurovoz_healthy = np.where((manner_test == manner_j) & (labels_test == 0))[0]
+            indices_neurovoz_parkinson = np.where((manner_test == manner_j) & (labels_test == 1))[0]
+
+            # Calculate the cluster centroids for manner_i and manner_j
+            centroid_albayzin_i = latent_mu_train[indices_albayzin_i].mean(axis=0)
+            centroid_albayzin_j = latent_mu_train[indices_albayzin_j].mean(axis=0)
+            centroid_neurovoz_healhty = latent_mu_test[indices_neurovoz_healthy].mean(axis=0)
+            centroid_neurovoz_parkinson = latent_mu_test[indices_neurovoz_parkinson].mean(axis=0)
+
+            # Calculate Euclidean distance between centroids
+            distances_albayzin[i, j] = euclidean(centroid_albayzin_i, centroid_albayzin_j)
+            distances_healthy[i, j] = euclidean(centroid_albayzin_i, centroid_neurovoz_healhty)
+            distances_healthy_parkinson[i, j] = euclidean(centroid_albayzin_i, centroid_neurovoz_parkinson)
+            
+            # If you want to calculate distances for other scenarios (e.g., healthy vs. parkinson),
+            # you can add similar calculations here.
+
+    distances = [distances_albayzin, distances_healthy, distances_healthy_parkinson]
+
+    
+    # Plot the distances as a heatmap using seaborn
+    print("Plotting distances...")
+    import seaborn as sns
+
+    for i in range(len(distances)):
+        fig, ax = plt.subplots(figsize=(10, 10))
+        sns.heatmap(distances[i], annot=True, ax=ax)
+        if i==0:
+            title = "Euclidean distance Albayzin vs Albayzin"
+            savename = "eu_dist_Albayzin_Albayzin"
+        elif i==1:
+            title = "Euclidean distance Albayzin Healthy vs NeuroVoz Healthy"
+            savename = "eu_dist_Albayzin_h_Neurovoz_h"
+        else:
+            title = "Euclidean distance Albayzin Healthy vs NeuroVoz Parkinson"
+            savename = "eu_dist_Albayzin_h_Neurovoz_pd"
+        ax.set_title(title)
+        ax.set_xticklabels(
+            [
+                "Plosives",
+                "Plosives voiced",
+                "Nasals",
+                "Fricatives",
+                "Liquids",
+                "Vowels",
+                "Affricates",
+                "Silence",
+            ],
+            rotation=45,
+        )
+        ax.set_yticklabels(
+            [
+                "Plosives",
+                "Plosives voiced",
+                "Nasals",
+                "Fricatives",
+                "Liquids",
+                "Vowels",
+                "Affricates",
+                "Silence",
+            ]
+        )
+        ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
+        ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
+        save_path = (
+            "local_results/spectrograms/manner_gmvae/"
+            + f"{savename}.png"
+        )
+        fig.savefig(save_path)
+
+        if wandb_flag:
+            wandb.log({"test/"+savename: wandb.Image(fig)})
+
+        plt.close()
 
     plt.close()
 
