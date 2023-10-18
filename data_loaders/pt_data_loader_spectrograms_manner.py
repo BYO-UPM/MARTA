@@ -112,10 +112,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         phonemes = []
 
         datapath_wav = (
-            "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/SUB_APRE_WAV/"
+            "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
         )
         datapath_textgrid = (
-            "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/textgrid/"
+            "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
         )
 
         i = 0
@@ -139,7 +139,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 phonemes.append(None)
                 continue
             tg_file = tg.TextGrid(tg_file)
-            phonemes.append(tg_file["phones"])
+            phonemes.append(tg_file["speaker : phones"])
 
         print("Total WAV files: ", len(os.listdir(datapath_wav)))
         print("Total TextGrid files: ", len(os.listdir(datapath_textgrid)))
