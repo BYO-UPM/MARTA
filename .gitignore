@@ -20,6 +20,9 @@ __pycache__/
 # All tmp folders
 /**/tmp/
 
+# All zip files
+*.zip
+
 # fasealign htk
 /fasealign/htk/*
 /fasealign/albayzin/*
