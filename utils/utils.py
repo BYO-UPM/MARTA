@@ -190,7 +190,7 @@ def plot_logopeda_alb_neuro(
         # 7: "Silence",
         # 8: "Short pause",
     }
-    for i in range(9):
+    for i in range(6):
         ax.scatter(
             latent_mu_train[:, 0][np.where(manner_train == i)],
             latent_mu_train[:, 1][np.where(manner_train == i)],
@@ -215,7 +215,7 @@ def plot_logopeda_alb_neuro(
     latent_mu_test_healthy = latent_mu_test[idx]
     manner_test_copy = copy.copy(manner_test[idx])
 
-    for i in range(9):
+    for i in range(6):
         i = int(i)
 
         idx = np.argwhere(manner_train == i).ravel()
@@ -225,7 +225,7 @@ def plot_logopeda_alb_neuro(
         # Scatter ax
 
         # Divide the scatter in two scatters: frst all healhty samples.
-        for j in range(9):
+        for j in range(6):
             ax.scatter(
                 latent_mu_train[:, 0][np.where(manner_train == j)],
                 latent_mu_train[:, 1][np.where(manner_train == j)],
@@ -270,13 +270,13 @@ def plot_logopeda_alb_neuro(
     latent_mu_test_park = latent_mu_test[idx]
     manner_test_copy = copy.copy(manner_test[idx])
 
-    for i in range(9):
+    for i in range(6):
         i = int(i)
         fig, ax = plt.subplots(figsize=(20, 20))
 
         # Scatter ax
         # Divide the scatter in two scatters: frst all healhty samples.
-        for j in range(9):
+        for j in range(6):
             sct = ax.scatter(
                 latent_mu_train[:, 0][np.where(manner_train == j)],
                 latent_mu_train[:, 1][np.where(manner_train == j)],
