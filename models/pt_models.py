@@ -1009,12 +1009,10 @@ class GMVAE(torch.nn.Module):
         )
 
         # Silences and affricates should be not used to compute the metric loss
+        labels = labels.reshape(-1)
         idx = np.where((labels != 6) & (labels != 7))[0]
         x_hat = x_hat[idx]
         labels = labels[idx]
-
-        # Reshape labels
-        labels = labels.reshape(-1)
 
         # Oversample labels and x_hat to have the same number of samples
         count_labels = np.unique(labels, return_counts=True)[1]
