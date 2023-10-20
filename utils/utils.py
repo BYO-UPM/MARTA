@@ -186,9 +186,9 @@ def plot_logopeda_alb_neuro(
         3: "Fricatives",
         4: "Liquids",
         5: "Vowels",
-        6: "Affricates",
-        7: "Silence",
-        8: "Short pause",
+        # 6: "Affricates",
+        # 7: "Silence",
+        # 8: "Short pause",
     }
     for i in range(9):
         ax.scatter(
@@ -425,9 +425,9 @@ def plot_logopeda(
         3: "Fricatives",
         4: "Liquids",
         5: "Vowels",
-        6: "Affricates",
-        7: "Silence",
-        8: "Short pause",
+        # 6: "Affricates",
+        # 7: "Silence",
+        # 8: "Short pause",
     }
     for class_value, class_label in enumerate(class_labels):
         # Get the label for the class from the list
@@ -496,9 +496,9 @@ def plot_logopeda(
             3: "Fricatives",
             4: "Liquids",
             5: "Vowels",
-            6: "Affricates",
-            7: "Silence",
-            8: "Short pause",
+            # 6: "Affricates",
+            # 7: "Silence",
+            # 8: "Short pause",
         }
         for class_value, class_label in enumerate(class_labels):
             # Get the label for the class from the list
