@@ -1102,13 +1102,12 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
 
 
 def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag):
-
     # Define lr scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     T_max = 50  # Maximum number of iterations or epochs
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=0.0001)  # Adjust parameters as needed
-
-
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=T_max, eta_min=0.0001
+    )  # Adjust parameters as needed
 
     valid_loss_store = []
 
@@ -1160,16 +1159,19 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
             true_label_list.append(manner.view(-1))
             pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
 
-        
         # Scheduler step
         scheduler.step()
-        
+
         # Check reconstruction of X
         check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
 
         # Check unsupervised cluster accuracy and NMI
         true_label = torch.tensor(np.concatenate(true_label_list))
         pred_label = torch.tensor(np.concatenate(pred_label_list))
+        # Remove affricates and silences from the acc and nmi calculations (label==6 and label==7)
+        idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
+        true_label = true_label[~idx6_7]
+        pred_label = pred_label[~idx6_7]
         acc = cluster_acc(pred_label, true_label)
         nmi_score = nmi(pred_label, true_label)
 
@@ -1251,6 +1253,10 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
                 # Check unsupervised cluster accuracy and NMI
                 true_label = torch.tensor(np.concatenate(true_label_list))
                 pred_label = torch.tensor(np.concatenate(pred_label_list))
+                # Remove affricates and silences from the acc and nmi calculations (label==6 and label==7)
+                idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
+                true_label = true_label[~idx6_7]
+                pred_label = pred_label[~idx6_7]
                 acc = cluster_acc(pred_label, true_label)
                 nmi_score = nmi(pred_label, true_label)
 
