@@ -1014,7 +1014,7 @@ class GMVAE(torch.nn.Module):
 
         # Silences and affricates should be not used to compute the metric loss
         labels = labels.reshape(-1)
-        idx = np.where((labels != 6) & (labels != 7))[0]
+        idx = np.where((labels != 6) & (labels != 7))[0] # 6: affricates, 7: silences
         x_hat = x_hat[idx]
         labels = labels[idx]
 

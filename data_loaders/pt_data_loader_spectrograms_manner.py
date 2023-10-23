@@ -389,9 +389,21 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         self.data["label"] = self.data["label"].apply(lambda x: 0 if x < 2 else 1)
 
         print("Splitting in train, test and validation sets...")
-        # Split the data into train and test. We will train only with albayzin data
+        # Split the data into train and test. 
         train_data = self.data[self.data["dataset"] == "albayzin"]
         test_data = self.data[self.data["dataset"] != "albayzin"]
+
+        # # Add half of healthy patients of the rest_data to the train_data
+        # healthy_patients = rest_data[rest_data["label"] == 0]["id_patient"].unique()
+        # healthy_patients = np.random.choice(
+        #     healthy_patients, size=int(len(healthy_patients) / 2), replace=False
+        # )
+        # train_data = pd.concat(
+        #     [train_data, rest_data[rest_data["id_patient"].isin(healthy_patients)]]
+        # )
+
+        # # Add the other half of healthy patients of the rest_data to the test_data
+        # test_data = rest_data[~rest_data["id_patient"].isin(healthy_patients)]
 
         # Split the train data into train and validation sets
         train_data, val_data = train_test_split(

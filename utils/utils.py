@@ -140,8 +140,9 @@ def plot_logopeda_alb_neuro(
             (latent_mu_train, latent_mu_test),
             axis=0,
         )
-
+        print("Calculating t-SNE...")
         all_2D = TSNE(n_components=2).fit_transform(all_vec)
+        print("t-SNE calculated!")
 
         # Separate info
         latent_mu_train = all_2D[: train_mu_shape[0]]
@@ -154,6 +155,7 @@ def plot_logopeda_alb_neuro(
         xlabel = "Latent dim 1"
         ylabel = "Latent dim 2"
 
+
     calculate_euclidean_distances_manner(
         latent_mu_train,
         latent_mu_test,
@@ -164,6 +166,7 @@ def plot_logopeda_alb_neuro(
         wandb_flag,
     )
 
+    print("Calculating jensen shannon")
     calculate_distances_manner(
         model,
         latent_mu_train,
