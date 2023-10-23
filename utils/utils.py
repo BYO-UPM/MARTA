@@ -117,36 +117,17 @@ def plot_logopeda_alb_neuro(
     latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
 
     # Select randomly samples of each dataset
-    idx = np.random.choice(len(latent_mu_train), samples)
-    manner_train = manner_train[idx]
-    labels_train = labels_train[idx]
-    latent_mu_train = latent_mu_train[idx]
+    # idx = np.random.choice(len(latent_mu_train), samples)
+    # manner_train = manner_train[idx]
+    # labels_train = labels_train[idx]
+    # latent_mu_train = latent_mu_train[idx]
 
-    # Select only SAMPLES from test
-    idx = np.random.choice(len(latent_mu_test), samples)
-    manner_test = manner_test[idx]
-    labels_test = labels_test[idx]
-    latent_mu_test = latent_mu_test[idx]
+    # # Select only SAMPLES from test
+    # idx = np.random.choice(len(latent_mu_test), samples)
+    # manner_test = manner_test[idx]
+    # labels_test = labels_test[idx]
+    # latent_mu_test = latent_mu_test[idx]
 
-    calculate_distances_manner(
-        model,
-        latent_mu_train,
-        latent_mu_test,
-        manner_train,
-        manner_test,
-        labels_train,
-        labels_test,
-        wandb_flag,
-    )
-    calculate_euclidean_distances_manner(
-        latent_mu_train,
-        latent_mu_test,
-        manner_train,
-        manner_test,
-        labels_train,
-        labels_test,
-        wandb_flag,
-    )
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu_train.shape[1] > 2:
@@ -172,6 +153,27 @@ def plot_logopeda_alb_neuro(
     else:
         xlabel = "Latent dim 1"
         ylabel = "Latent dim 2"
+
+    calculate_euclidean_distances_manner(
+        latent_mu_train,
+        latent_mu_test,
+        manner_train,
+        manner_test,
+        labels_train,
+        labels_test,
+        wandb_flag,
+    )
+
+    calculate_distances_manner(
+        model,
+        latent_mu_train,
+        latent_mu_test,
+        manner_train,
+        manner_test,
+        labels_train,
+        labels_test,
+        wandb_flag,
+    )
 
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ===========================================
     import matplotlib
@@ -1158,25 +1160,26 @@ def calculate_distances_manner(
     labels_test,
     wandb_flag,
 ):
-    from scipy.stats import gaussian_kde
+    from sklearn.neighbors import KernelDensity
     from scipy.spatial.distance import jensenshannon
 
     print("Calculating distances...")
 
-    # Concatenate both latents
-    latent_mu = np.concatenate((latent_mu_train, latent_mu_test), axis=0)
 
     def calculate_kde(data):
-        if data.shape[0] < 2 * data.shape[1]:
-            return None
-        return gaussian_kde(data.T)
+        # if data.shape[0] < 2 * data.shape[1]:
+        #     return None
+        kde = KernelDensity(kernel="gaussian", bandwidth="scott").fit(data)
+        return kde.fit(data)
 
     def calculate_js_distance(kde1, kde2, positions):
         if kde1 is None or kde2 is None:
             return 0
-        p = kde1.pdf(positions)
+        p = kde1.score_samples(positions) # This returns the log-likelihood of the data
+        p = np.exp(p) # Convert to probabilities
         p = p / np.sum(p)
-        q = kde2.pdf(positions)
+        q = kde2.score_samples(positions)
+        q = np.exp(q)
         q = q / np.sum(q)
         return jensenshannon(p, q)
 
@@ -1184,24 +1187,23 @@ def calculate_distances_manner(
         # Sample from the GMM of the generative model
         # First generate uniformly distributed samples up to model.k
         cat_samples = np.random.choice(
-            model.k, size=1000 * latent_mu.shape[1], replace=True
+            model.k, size=1000 * latent_mu_one.shape[1], replace=True
         )
         # Convert them to one-hot-encoder
-        positions = (
-            torch.chunk(
-                model.generative_pz_y(torch.eye(model.k)[cat_samples].to(model.device)),
-                2,
-                dim=1,
-            )[0]
-            .cpu()
-            .detach()
-            .numpy()
-            .T
-        )
+        # positions = (
+        #     torch.chunk(
+        #         model.generative_pz_y(torch.eye(model.k)[cat_samples].to(model.device)),
+        #         2,
+        #         dim=1,
+        #     )[0]
+        #     .cpu()
+        #     .detach()
+        #     .numpy()
+        # )
 
         # Uniformly sampling from the latent space restricted to the min and max of the classes we are comparing
-        # latent_mu = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
-        # positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(1000 * latent_mu.shape[1], latent_mu.shape[1])).T
+        latent_mu = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
+        positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(5000 * latent_mu.shape[1], latent_mu.shape[1]))
 
         distance = calculate_js_distance(kde_train, kde_test, positions)
         return distance
