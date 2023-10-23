@@ -24,8 +24,8 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": False,
-        "epochs": 1,
+        "wandb_flag": True,
+        "epochs": 500,
         "batch_size": 64,
         "lr": 1e-3,
         "latent_dim": 32,
@@ -88,7 +88,7 @@ def main(args):
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
             1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-            1,  # w5 is metric loss
+            10,  # w5 is metric loss
         ],
         cnn=hyperparams["spectrogram"],
     )

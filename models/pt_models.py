@@ -735,6 +735,7 @@ class Spectrogram_networks_manner(torch.nn.Module):
                     stride=[2, 1],
                 ),
                 torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[0]),
                 torch.nn.Conv2d(
                     self.hidden_dims[0],
                     self.hidden_dims[1],
@@ -743,6 +744,7 @@ class Spectrogram_networks_manner(torch.nn.Module):
                     stride=[2, 1],
                 ),
                 torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[1]),
                 torch.nn.Conv2d(
                     self.hidden_dims[1],
                     self.hidden_dims[2],
@@ -776,6 +778,7 @@ class Spectrogram_networks_manner(torch.nn.Module):
                     stride=[2, 1],
                 ),
                 torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[1]),
                 # ConvTranspose
                 torch.nn.ConvTranspose2d(
                     self.hidden_dims[1],
@@ -785,6 +788,7 @@ class Spectrogram_networks_manner(torch.nn.Module):
                     stride=[2, 1],
                 ),
                 torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[2]),
                 # ConvTranspose
                 torch.nn.ConvTranspose2d(
                     self.hidden_dims[2],
