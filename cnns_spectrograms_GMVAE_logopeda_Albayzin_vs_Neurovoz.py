@@ -24,7 +24,7 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": True,
+        "wandb_flag": False,
         "epochs": 500,
         "batch_size": 64,
         "lr": 1e-3,
@@ -34,6 +34,7 @@ def main(args):
         "supervised": False,
         "n_gaussians": 9,
         "semisupervised": False,
+        "train": False,
     }
 
     print("Reading data...")
@@ -95,19 +96,22 @@ def main(args):
 
     model = torch.compile(model)
 
-    print("Training GMVAE...")
-    # Train the model
-    GMVAE_trainer(
-        model=model,
-        trainloader=train_loader,
-        validloader=val_loader,
-        epochs=hyperparams["epochs"],
-        lr=hyperparams["lr"],
-        supervised=hyperparams["supervised"],
-        wandb_flag=hyperparams["wandb_flag"],
-    )
+    if hyperparams["train"]:
+        print("Training GMVAE...")
+        # Train the model
+        GMVAE_trainer(
+            model=model,
+            trainloader=train_loader,
+            validloader=val_loader,
+            epochs=hyperparams["epochs"],
+            lr=hyperparams["lr"],
+            supervised=hyperparams["supervised"],
+            wandb_flag=hyperparams["wandb_flag"],
+        )
 
-    print("Training finished!")
+        print("Training finished!")
+    else:
+        print("Loading model...")
 
     # Restoring best model
     if hyperparams["supervised"]:

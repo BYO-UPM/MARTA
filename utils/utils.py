@@ -87,30 +87,32 @@ def plot_logopeda_alb_neuro(
 
     labels_train = np.array(data_train["label"].values, dtype=int)
     labels_test = np.array(data_test["label"].values, dtype=int)
-
-    # Remove all samples with manner class == 6 and 7
+    
     # Repeat labels manner.shape[1] times
+    latent_mu_train = copy.copy(latent_mu_train_original_space.cpu().detach().numpy())
     labels_train = np.repeat(labels_train, manner_train.shape[1], axis=0)
     manner_train = manner_train.reshape(-1)
-    labels_test = np.repeat(labels_test, manner_test.shape[1], axis=0)
-    manner_test = manner_test.reshape(-1)
+    # Remove all affricates
     idx = np.argwhere(manner_train == 6).ravel()
     manner_train = np.delete(manner_train, idx)
     labels_train = np.delete(labels_train, idx)
-    latent_mu_train = copy.copy(latent_mu_train_original_space.cpu().detach().numpy())
     latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
-
+    # Remove all silence
     idx = np.argwhere(manner_train == 7).ravel()
     manner_train = np.delete(manner_train, idx)
     labels_train = np.delete(labels_train, idx)
     latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
 
+    # Repeat labels manner.shape[1] times
+    latent_mu_test = copy.copy(latent_mu_test_original_space.cpu().detach().numpy())
+    labels_test = np.repeat(labels_test, manner_test.shape[1], axis=0)
+    manner_test = manner_test.reshape(-1)
+    # Remove all affricates
     idx = np.argwhere(manner_test == 6).ravel()
     manner_test = np.delete(manner_test, idx)
     labels_test = np.delete(labels_test, idx)
-    latent_mu_test = copy.copy(latent_mu_test_original_space.cpu().detach().numpy())
     latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
-
+    # Remove all silence
     idx = np.argwhere(manner_test == 7).ravel()
     manner_test = np.delete(manner_test, idx)
     labels_test = np.delete(labels_test, idx)
@@ -134,6 +136,9 @@ def plot_logopeda_alb_neuro(
         from sklearn.manifold import TSNE
 
         train_mu_shape = latent_mu_train.shape
+
+        # TSNE only albayzin
+        alb = TSNE(n_components=2).fit_transform(latent_mu_train)
 
         # Convert all to 2D
         all_vec = np.concatenate(
@@ -178,6 +183,43 @@ def plot_logopeda_alb_neuro(
         wandb_flag,
     )
 
+    # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ===========================================
+    import matplotlib
+
+    cmap = matplotlib.cm.get_cmap("Set1")
+
+    fig, ax = plt.subplots(figsize=(20, 20))
+    class_labels = {
+        0: "Plosives",
+        1: "Plosives voiced",
+        2: "Nasals",
+        3: "Fricatives",
+        4: "Liquids",
+        5: "Vowels",
+        # 6: "Affricates",
+        # 7: "Silence",
+        # 8: "Short pause",
+    }
+    for i in range(6):
+        ax.scatter(
+            alb[:, 0][np.where(manner_train == i)],
+            alb[:, 1][np.where(manner_train == i)],
+            color=cmap(i),
+            label=class_labels[i],
+        )
+    # Add labels and title
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
+    ax.legend()
+    fig.savefig(
+        f"local_results/spectrograms/manner_gmvae/latent_space_albayzin_alone.png",
+    )
+
+    if wandb_flag:
+        wandb.log({str(name) + "/latent_space_albayzin_alone": wandb.Image(fig)})
+
+    plt.close()
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ===========================================
     import matplotlib
 
@@ -1173,7 +1215,7 @@ def calculate_distances_manner(
         # if data.shape[0] < 2 * data.shape[1]:
         #     return None
         kde = KernelDensity(kernel="gaussian", bandwidth="scott").fit(data)
-        return kde.fit(data)
+        return kde
 
     def calculate_js_distance(kde1, kde2, positions):
         if kde1 is None or kde2 is None:
@@ -1192,7 +1234,7 @@ def calculate_distances_manner(
         cat_samples = np.random.choice(
             model.k, size=1000 * latent_mu_one.shape[1], replace=True
         )
-        # Convert them to one-hot-encoder
+        # # Convert them to one-hot-encoder
         # positions = (
         #     torch.chunk(
         #         model.generative_pz_y(torch.eye(model.k)[cat_samples].to(model.device)),
@@ -1203,10 +1245,13 @@ def calculate_distances_manner(
         #     .detach()
         #     .numpy()
         # )
+        # # TSNE to 2D
+        # from sklearn.manifold import TSNE
+        # positions = TSNE(n_components=2).fit_transform(positions)
 
         # Uniformly sampling from the latent space restricted to the min and max of the classes we are comparing
-        latent_mu = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
-        positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(5000 * latent_mu.shape[1], latent_mu.shape[1]))
+        positions = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
+        # positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(5000 * latent_mu.shape[1], latent_mu.shape[1]))
 
         distance = calculate_js_distance(kde_train, kde_test, positions)
         return distance
