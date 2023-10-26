@@ -28,14 +28,20 @@ def main(args):
         "epochs": 500,
         "batch_size": 64,
         "lr": 1e-3,
-        "latent_dim": 32,
+        "latent_dim": 2,
         "hidden_dims_enc": [64, 128, 64, 32],
         "hidden_dims_dec": [32, 64, 128, 64],
         "supervised": False,
         "n_gaussians": 9,
         "semisupervised": False,
-        "train": False,
+        "train": True,
+        "train_albayzin": False, # If True, only albayzin is used for training. If False both albayzin and neuro are used for training
     }
+
+    if hyperparams["train_albayzin"]:
+        hyperparams["path_to_save"] = "local_results/spectrograms/manner_gmvae"
+    else:
+        hyperparams["path_to_save"] = "local_results/spectrograms/manner_gmvae_neurovoz"
 
     print("Reading data...")
     # Read the data
@@ -73,7 +79,7 @@ def main(args):
         train_data,
         val_data,
         test_data,
-    ) = dataset.get_dataloaders(fold)
+    ) = dataset.get_dataloaders(train_albayzin=hyperparams["train_albayzin"])
 
     print("Defining models...")
     # Create the model
@@ -107,6 +113,7 @@ def main(args):
             lr=hyperparams["lr"],
             supervised=hyperparams["supervised"],
             wandb_flag=hyperparams["wandb_flag"],
+            path_to_save = hyperparams["path_to_save"]
         )
 
         print("Training finished!")
@@ -117,7 +124,7 @@ def main(args):
     if hyperparams["supervised"]:
         name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model.pt"
     else:
-        name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model_2d.pt"
+        name = hyperparams["path_to_save"]+"/GMVAE_cnn_best_model_2d.pt"
     tmp = torch.load(name)
     model.load_state_dict(tmp["model_state_dict"])
 
@@ -137,6 +144,7 @@ def main(args):
         audio_features=audio_features,
         supervised=False,  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
+        path_to_plot=	hyperparams["path_to_save"]
     )
 
     # Create an empty pd dataframe with three columns: data, label and manner
@@ -163,6 +171,7 @@ def main(args):
             name="test",
             supervised=hyperparams["supervised"],
             samples=5000,
+            path_to_plot=hyperparams["path_to_save"]
         )
 
     if hyperparams["wandb_flag"]:

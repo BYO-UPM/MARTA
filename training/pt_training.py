@@ -1101,7 +1101,7 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
     )
 
 
-def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag):
+def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag, path_to_save):
     # Define lr scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     T_max = 50  # Maximum number of iterations or epochs
@@ -1294,11 +1294,11 @@ def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
         # If the validation loss is the best, save the model
         if valid_loss_store[-1] <= min(valid_loss_store):
             print("Storing the best model at epoch ", e)
-            name = "local_results/spectrograms/manner_gmvae/"
+            name = path_to_save
             # check if the folder exists if not create it
             if not os.path.exists(name):
                 os.makedirs(name)
-            name += "GMVAE_cnn_best_model_2d.pt"
+            name += "/GMVAE_cnn_best_model_2d.pt"
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
@@ -1345,7 +1345,6 @@ def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):
     axs[2].set_title("Error")
     axs[2].imshow(error.cpu().detach().numpy(), cmap=cmap, norm=normalizer)
     fig.colorbar(im, ax=axs.ravel().tolist())
-    plt.show()
     if wandb_flag:
         if train_flag:
             name = "train/rec_img"
@@ -1641,6 +1640,7 @@ def GMVAE_tester(
     audio_features="plps",
     supervised=False,
     wandb_flag=False,
+    path_to_plot=None,
 ):
     # Warning for the precision of the matrix multiplication
     torch.set_float32_matmul_precision("high")
@@ -1721,6 +1721,21 @@ def GMVAE_tester(
         # Results for all frames
         print(f"Reconstruction loss: {mse}")
 
+        # Plot randomly a test sample and its reconstruction
+        idx = np.random.randint(0, x_array.shape[0])
+        x_sample = x_array[idx].squeeze()
+        x_hat_sample = x_hat_array[idx].squeeze()
+        # plot using imshow
+        fig, axs = plt.subplots(2, 1, figsize=(20, 20))
+        cmap = cm.get_cmap("viridis")
+        axs[0].set_title("Original")
+        axs[0].imshow(x_sample, cmap=cmap)
+        axs[1].set_title("Reconstruction")
+        axs[1].imshow(x_hat_sample, cmap=cmap)
+        plt.savefig(path_to_plot + "/rec_img.png")
+        if wandb_flag:
+            wandb.log({"test/rec_img": fig})
+
         # Results per patient
         rec_loss_per_patient = []
         for i in test_data["id_patient"].unique():
@@ -1766,6 +1781,7 @@ def GMVAE_tester(
             print(
                 f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
             )
+
             if wandb_flag:
                 wandb.log(
                     {

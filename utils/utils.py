@@ -47,6 +47,7 @@ def plot_logopeda_alb_neuro(
     name="default",
     supervised=False,
     samples=1000,
+    path_to_plot='local_results/spectrograms/manner_gmvae_neurovoz',
 ):
     import copy
 
@@ -90,6 +91,7 @@ def plot_logopeda_alb_neuro(
     
     # Repeat labels manner.shape[1] times
     latent_mu_train = copy.copy(latent_mu_train_original_space.cpu().detach().numpy())
+    lm_train_original = latent_mu_train_original_space.cpu().detach().numpy()
     labels_train = np.repeat(labels_train, manner_train.shape[1], axis=0)
     manner_train = manner_train.reshape(-1)
     # Remove all affricates
@@ -97,14 +99,17 @@ def plot_logopeda_alb_neuro(
     manner_train = np.delete(manner_train, idx)
     labels_train = np.delete(labels_train, idx)
     latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
+    lm_train_original = np.delete(lm_train_original, idx, axis=0)
     # Remove all silence
     idx = np.argwhere(manner_train == 7).ravel()
     manner_train = np.delete(manner_train, idx)
     labels_train = np.delete(labels_train, idx)
     latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
+    lm_train_original = np.delete(lm_train_original, idx, axis=0)
 
     # Repeat labels manner.shape[1] times
     latent_mu_test = copy.copy(latent_mu_test_original_space.cpu().detach().numpy())
+    lm_test_original = latent_mu_test_original_space.cpu().detach().numpy()
     labels_test = np.repeat(labels_test, manner_test.shape[1], axis=0)
     manner_test = manner_test.reshape(-1)
     # Remove all affricates
@@ -112,11 +117,13 @@ def plot_logopeda_alb_neuro(
     manner_test = np.delete(manner_test, idx)
     labels_test = np.delete(labels_test, idx)
     latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
+    lm_test_original = np.delete(lm_test_original, idx, axis=0)
     # Remove all silence
     idx = np.argwhere(manner_test == 7).ravel()
     manner_test = np.delete(manner_test, idx)
     labels_test = np.delete(labels_test, idx)
     latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
+    lm_test_original = np.delete(lm_test_original, idx, axis=0)
 
     # Select randomly samples of each dataset
     # idx = np.random.choice(len(latent_mu_train), samples)
@@ -133,25 +140,21 @@ def plot_logopeda_alb_neuro(
 
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu_train.shape[1] > 2:
-        from sklearn.manifold import TSNE
+        # Import UMAP
+        import umap
 
         train_mu_shape = latent_mu_train.shape
 
         # TSNE only albayzin
-        alb = TSNE(n_components=2).fit_transform(latent_mu_train)
+        umapmodel = umap.UMAP(n_components=2, metric="mahalanobis", n_neighbors=200).fit(latent_mu_train)
 
-        # Convert all to 2D
-        all_vec = np.concatenate(
-            (latent_mu_train, latent_mu_test),
-            axis=0,
-        )
-        print("Calculating t-SNE...")
-        all_2D = TSNE(n_components=2).fit_transform(all_vec)
-        print("t-SNE calculated!")
+        # Convert test to 2d
+        print("Calculating UMAP...")
+        latent_mu_train = umapmodel.transform(latent_mu_train)
+        latent_mu_test = umapmodel.transform(latent_mu_test)
 
-        # Separate info
-        latent_mu_train = all_2D[: train_mu_shape[0]]
-        latent_mu_test = all_2D[train_mu_shape[0] :]
+        print("The shape of the train latent space is now: ", latent_mu_train.shape)
+        print("The shape of the test latent space is now: ", latent_mu_test.shape)
 
         xlabel = "t-SNE dim 1"
         ylabel = "t-SNE dim 2"
@@ -162,25 +165,28 @@ def plot_logopeda_alb_neuro(
 
 
     calculate_euclidean_distances_manner(
-        latent_mu_train,
-        latent_mu_test,
+        lm_train_original,
+        lm_test_original,
         manner_train,
         manner_test,
         labels_train,
         labels_test,
         wandb_flag,
+        path_to_plot=path_to_plot,
     )
 
     print("Calculating jensen shannon")
     calculate_distances_manner(
         model,
-        latent_mu_train,
-        latent_mu_test,
+        lm_train_original,
+        lm_test_original,
         manner_train,
         manner_test,
         labels_train,
         labels_test,
+        umapmodel,
         wandb_flag,
+        path_to_plot=path_to_plot,
     )
 
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ===========================================
@@ -201,9 +207,12 @@ def plot_logopeda_alb_neuro(
         # 8: "Short pause",
     }
     for i in range(6):
+        if i==5:
+            print("Skipping vowels from plotting")
+            continue
         ax.scatter(
-            alb[:, 0][np.where(manner_train == i)],
-            alb[:, 1][np.where(manner_train == i)],
+            latent_mu_train[:, 0][np.where(manner_train == i)],
+            latent_mu_train[:, 1][np.where(manner_train == i)],
             color=cmap(i),
             label=class_labels[i],
         )
@@ -213,7 +222,7 @@ def plot_logopeda_alb_neuro(
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
     ax.legend()
     fig.savefig(
-        f"local_results/spectrograms/manner_gmvae/latent_space_albayzin_alone.png",
+        path_to_plot + f"//latent_space_albayzin_alone.png",
     )
 
     if wandb_flag:
@@ -238,6 +247,9 @@ def plot_logopeda_alb_neuro(
         # 8: "Short pause",
     }
     for i in range(6):
+        if i==5:
+            print("Skipping vowels from plotting")
+            continue
         ax.scatter(
             latent_mu_train[:, 0][np.where(manner_train == i)],
             latent_mu_train[:, 1][np.where(manner_train == i)],
@@ -250,7 +262,7 @@ def plot_logopeda_alb_neuro(
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
     ax.legend()
     fig.savefig(
-        f"local_results/spectrograms/manner_gmvae/latent_space_albayzin.png",
+        path_to_plot + f"/latent_space_albayzin.png",
     )
 
     if wandb_flag:
@@ -263,6 +275,9 @@ def plot_logopeda_alb_neuro(
     manner_test_copy = copy.copy(manner_test[idx])
 
     for i in range(6):
+        if i==5:
+            print("Skipping vowels from plotting")
+            continue
         i = int(i)
 
         idx = np.argwhere(manner_train == i).ravel()
@@ -273,6 +288,10 @@ def plot_logopeda_alb_neuro(
 
         # Divide the scatter in two scatters: frst all healhty samples.
         for j in range(6):
+            if j==5:
+                print("Skipping vowels from plotting")
+                continue
+
             ax.scatter(
                 latent_mu_train[:, 0][np.where(manner_train == j)],
                 latent_mu_train[:, 1][np.where(manner_train == j)],
@@ -296,7 +315,7 @@ def plot_logopeda_alb_neuro(
         ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
         ax.legend()
         fig.savefig(
-            f"local_results/spectrograms/manner_gmvae/latent_space_healthy_albayzin_vs_neurovoz_class_{i}.png",
+            path_to_plot + f"/latent_space_healthy_albayzin_vs_neurovoz_class_{i}.png",
         )
 
         if wandb_flag:
@@ -318,12 +337,18 @@ def plot_logopeda_alb_neuro(
     manner_test_copy = copy.copy(manner_test[idx])
 
     for i in range(6):
+        if i==5:
+            print("Skipping vowels from plotting")
+            continue
         i = int(i)
         fig, ax = plt.subplots(figsize=(20, 20))
 
         # Scatter ax
         # Divide the scatter in two scatters: frst all healhty samples.
         for j in range(6):
+            if i==5:
+                print("Skipping vowels from plotting")
+                continue
             sct = ax.scatter(
                 latent_mu_train[:, 0][np.where(manner_train == j)],
                 latent_mu_train[:, 1][np.where(manner_train == j)],
@@ -348,7 +373,7 @@ def plot_logopeda_alb_neuro(
         ax.legend()
 
         fig.savefig(
-            f"local_results/spectrograms/manner_gmvae/latent_space_park_albayzin_vs_neurovoz_class_{i}.png",
+            path_to_plot + f"/latent_space_park_albayzin_vs_neurovoz_class_{i}.png",
         )
 
         if wandb_flag:
@@ -498,7 +523,7 @@ def plot_logopeda(
         title="Classes",
     )
     fig.savefig(
-        f"local_results/spectrograms/manner_gmvae/latent_space_healthy.png",
+        path_to_plot + f"/latent_space_healthy.png",
     )
 
     if wandb_flag:
@@ -569,7 +594,7 @@ def plot_logopeda(
             title="Classes",
         )
         fig.savefig(
-            f"local_results/spectrograms/manner_gmvae/latent_space_parkinsonian_class_{i}.png",
+            path_to_plot + f"/latent_space_parkinsonian_class_{i}.png",
         )
 
         if wandb_flag:
@@ -624,7 +649,7 @@ def plot_logopeda(
     # ax.set_ylabel("Latent dim 2")
     # ax.set_title(f"Latent space with Gaussians distributions")
     # ax.legend()
-    # save_path = f"local_results/spectrograms/manner_gmvae/gaussians_generative_and_test_vowels_{fold}_{name}.png"
+    # save_path = path_to_plot + f"/gaussians_generative_and_test_vowels_{fold}_{name}.png"
     # fig.savefig(
     #     save_path,
     # )
@@ -754,7 +779,7 @@ def plot_latent_space(
         title="Classes",
     )
     fig.savefig(
-        f"local_results/spectrograms/manner_gmvae/latent_space_{fold}_{name}.png",
+        path_to_plot + f"/latent_space_{fold}_{name}.png",
     )
 
     if wandb_flag:
@@ -801,7 +826,7 @@ def plot_latent_space(
     ax.set_ylabel("Latent dim 2")
     ax.set_title(f"Latent space with Gaussians distributions")
     ax.legend()
-    save_path = f"local_results/spectrograms/manner_gmvae/gaussians_generative_and_test_vowels_{fold}_{name}.png"
+    save_path = path_to_plot + f"/gaussians_generative_and_test_vowels_{fold}_{name}.png"
     fig.savefig(
         save_path,
     )
@@ -1203,7 +1228,9 @@ def calculate_distances_manner(
     manner_test,
     labels_train,
     labels_test,
+    umapmodel,
     wandb_flag,
+    path_to_plot,
 ):
     from sklearn.neighbors import KernelDensity
     from scipy.spatial.distance import jensenshannon
@@ -1228,7 +1255,7 @@ def calculate_distances_manner(
         q = q / np.sum(q)
         return jensenshannon(p, q)
 
-    def calculate_cluster_distance(latent_mu_one, latent_mu_two, kde_train, kde_test):
+    def calculate_cluster_distance(latent_mu_one, latent_mu_two, kde_train, kde_test, umapmodel):
         # Sample from the GMM of the generative model
         # First generate uniformly distributed samples up to model.k
         cat_samples = np.random.choice(
@@ -1245,12 +1272,17 @@ def calculate_distances_manner(
         #     .detach()
         #     .numpy()
         # )
-        # # TSNE to 2D
-        # from sklearn.manifold import TSNE
-        # positions = TSNE(n_components=2).fit_transform(positions)
+        # UMAP to 2D
+        # positions = umapmodel.transform(positions)
 
         # Uniformly sampling from the latent space restricted to the min and max of the classes we are comparing
         positions = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
+        # Get randomly 32000 points
+        positions = positions[
+            np.random.choice(
+                positions.shape[0], size=10000, replace=len(positions) < 10000
+            )
+        ]
         # positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(5000 * latent_mu.shape[1], latent_mu.shape[1]))
 
         distance = calculate_js_distance(kde_train, kde_test, positions)
@@ -1282,7 +1314,7 @@ def calculate_distances_manner(
     for i, manner_i in enumerate(unique_manner_train):
         for j, manner_j in enumerate(unique_manner_test):
             print(
-                "Calculating KDE for Albayzin vs Albayzin for manner classes "
+                "Calculating distance for Albayzin vs Albayzin for manner classes "
                 + str(manner_i)
                 + " and "
                 + str(manner_j)
@@ -1293,9 +1325,10 @@ def calculate_distances_manner(
                 latent_mu_train[(labels_train == 0) & (manner_train == manner_j)],
                 kde_albayzin[i],
                 kde_albayzin[j],
+                umapmodel=umapmodel,
             )
             print(
-                "Calculating KDE for Albayzin Healthy vs Neurovoz Healthy for manner classes "
+                "Calculating distance for Albayzin Healthy vs Neurovoz Healthy for manner classes "
                 + str(manner_i)
                 + " and "
                 + str(manner_j)
@@ -1306,9 +1339,10 @@ def calculate_distances_manner(
                 latent_mu_test[(labels_test == 0) & (manner_test == manner_j)],
                 kde_albayzin[i],
                 kde_neurovoz_healhty[j],
+                umapmodel=umapmodel,
             )
             print(
-                "Calculating KDE for Albayzin Healthy vs Neurovoz Parkinson for manner classes "
+                "Calculating distance for Albayzin Healthy vs Neurovoz Parkinson for manner classes "
                 + str(manner_i)
                 + " and "
                 + str(manner_j)
@@ -1319,6 +1353,7 @@ def calculate_distances_manner(
                 latent_mu_test[(labels_test == 1) & (manner_test == manner_j)],
                 kde_albayzin[i],
                 kde_neurovoz_parkinson[j],
+                umapmodel=umapmodel,
             )
 
     distances = [distances_albayzin, distances_healthy, distances_healthy_parkinson]
@@ -1367,7 +1402,7 @@ def calculate_distances_manner(
         )
         ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
         ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
-        save_path = "local_results/spectrograms/manner_gmvae/" + f"{savename}.png"
+        save_path = path_to_plot +"/" + f"{savename}.png"
         fig.savefig(save_path)
 
         if wandb_flag:
@@ -1386,6 +1421,7 @@ def calculate_euclidean_distances_manner(
     labels_train,
     labels_test,
     wandb_flag,
+    path_to_plot,
 ):
     from scipy.spatial.distance import euclidean
 
@@ -1500,7 +1536,7 @@ def calculate_euclidean_distances_manner(
         )
         ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
         ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
-        save_path = "local_results/spectrograms/manner_gmvae/" + f"{savename}.png"
+        save_path = path_to_plot + "/" + f"{savename}.png"
         fig.savefig(save_path)
 
         if wandb_flag:
