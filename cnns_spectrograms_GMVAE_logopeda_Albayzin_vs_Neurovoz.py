@@ -35,7 +35,7 @@ def main(args):
         "n_gaussians": 9,
         "semisupervised": False,
         "train": True,
-        "train_albayzin": False, # If True, only albayzin is used for training. If False both albayzin and neuro are used for training
+        "train_albayzin": True, # If True, only albayzin is used for training. If False both albayzin and neuro are used for training
     }
 
     if hyperparams["train_albayzin"]:

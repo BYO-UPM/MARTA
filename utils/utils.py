@@ -160,6 +160,7 @@ def plot_logopeda_alb_neuro(
         ylabel = "t-SNE dim 2"
 
     else:
+        umapmodel = None
         xlabel = "Latent dim 1"
         ylabel = "Latent dim 2"
 
