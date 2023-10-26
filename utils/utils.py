@@ -164,32 +164,6 @@ def plot_logopeda_alb_neuro(
         xlabel = "Latent dim 1"
         ylabel = "Latent dim 2"
 
-
-    calculate_euclidean_distances_manner(
-        lm_train_original,
-        lm_test_original,
-        manner_train,
-        manner_test,
-        labels_train,
-        labels_test,
-        wandb_flag,
-        path_to_plot=path_to_plot,
-    )
-
-    print("Calculating jensen shannon")
-    calculate_distances_manner(
-        model,
-        lm_train_original,
-        lm_test_original,
-        manner_train,
-        manner_test,
-        labels_train,
-        labels_test,
-        umapmodel,
-        wandb_flag,
-        path_to_plot=path_to_plot,
-    )
-
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ===========================================
     import matplotlib
 
@@ -207,10 +181,7 @@ def plot_logopeda_alb_neuro(
         # 7: "Silence",
         # 8: "Short pause",
     }
-    for i in range(6):
-        if i==5:
-            print("Skipping vowels from plotting")
-            continue
+    for i in range(5):
         ax.scatter(
             latent_mu_train[:, 0][np.where(manner_train == i)],
             latent_mu_train[:, 1][np.where(manner_train == i)],
@@ -223,48 +194,19 @@ def plot_logopeda_alb_neuro(
     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
     ax.legend()
     fig.savefig(
-        path_to_plot + f"//latent_space_albayzin_alone.png",
+        path_to_plot + f"/latent_space_albayzin_wo_vowels.png",
     )
-
-    if wandb_flag:
-        wandb.log({str(name) + "/latent_space_albayzin_alone": wandb.Image(fig)})
-
-    plt.close()
-    # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ===========================================
-    import matplotlib
-
-    cmap = matplotlib.cm.get_cmap("Set1")
-
-    fig, ax = plt.subplots(figsize=(20, 20))
-    class_labels = {
-        0: "Plosives",
-        1: "Plosives voiced",
-        2: "Nasals",
-        3: "Fricatives",
-        4: "Liquids",
-        5: "Vowels",
-        # 6: "Affricates",
-        # 7: "Silence",
-        # 8: "Short pause",
-    }
-    for i in range(6):
-        if i==5:
-            print("Skipping vowels from plotting")
-            continue
-        ax.scatter(
-            latent_mu_train[:, 0][np.where(manner_train == i)],
-            latent_mu_train[:, 1][np.where(manner_train == i)],
-            color=cmap(i),
-            label=class_labels[i],
+    ax.scatter(
+            latent_mu_train[:, 0][np.where(manner_train == 5)],
+            latent_mu_train[:, 1][np.where(manner_train == 5)],
+            color=cmap(5),
+            label=class_labels[5],
         )
-    # Add labels and title
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
     ax.legend()
     fig.savefig(
-        path_to_plot + f"/latent_space_albayzin.png",
+        path_to_plot + f"/latent_space_albayzin_w_vowels.png",
     )
+
 
     if wandb_flag:
         wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
@@ -275,10 +217,7 @@ def plot_logopeda_alb_neuro(
     latent_mu_test_healthy = latent_mu_test[idx]
     manner_test_copy = copy.copy(manner_test[idx])
 
-    for i in range(6):
-        if i==5:
-            print("Skipping vowels from plotting")
-            continue
+    for i in range(5):
         i = int(i)
 
         idx = np.argwhere(manner_train == i).ravel()
@@ -288,11 +227,7 @@ def plot_logopeda_alb_neuro(
         # Scatter ax
 
         # Divide the scatter in two scatters: frst all healhty samples.
-        for j in range(6):
-            if j==5:
-                print("Skipping vowels from plotting")
-                continue
-
+        for j in range(5):
             ax.scatter(
                 latent_mu_train[:, 0][np.where(manner_train == j)],
                 latent_mu_train[:, 1][np.where(manner_train == j)],
@@ -318,7 +253,7 @@ def plot_logopeda_alb_neuro(
         fig.savefig(
             path_to_plot + f"/latent_space_healthy_albayzin_vs_neurovoz_class_{i}.png",
         )
-
+        
         if wandb_flag:
             wandb.log(
                 {
@@ -337,19 +272,13 @@ def plot_logopeda_alb_neuro(
     latent_mu_test_park = latent_mu_test[idx]
     manner_test_copy = copy.copy(manner_test[idx])
 
-    for i in range(6):
-        if i==5:
-            print("Skipping vowels from plotting")
-            continue
+    for i in range(5):
         i = int(i)
         fig, ax = plt.subplots(figsize=(20, 20))
 
         # Scatter ax
         # Divide the scatter in two scatters: frst all healhty samples.
-        for j in range(6):
-            if i==5:
-                print("Skipping vowels from plotting")
-                continue
+        for j in range(5):
             sct = ax.scatter(
                 latent_mu_train[:, 0][np.where(manner_train == j)],
                 latent_mu_train[:, 1][np.where(manner_train == j)],
@@ -387,6 +316,31 @@ def plot_logopeda_alb_neuro(
             )
 
         plt.close()
+
+    calculate_euclidean_distances_manner(
+        lm_train_original,
+        lm_test_original,
+        manner_train,
+        manner_test,
+        labels_train,
+        labels_test,
+        wandb_flag,
+        path_to_plot=path_to_plot,
+    )
+
+    print("Calculating jensen shannon")
+    calculate_distances_manner(
+        model,
+        lm_train_original,
+        lm_test_original,
+        manner_train,
+        manner_test,
+        labels_train,
+        labels_test,
+        umapmodel,
+        wandb_flag,
+        path_to_plot=path_to_plot,
+    )
 
 
 def plot_logopeda(
@@ -1358,6 +1312,26 @@ def calculate_distances_manner(
             )
 
     distances = [distances_albayzin, distances_healthy, distances_healthy_parkinson]
+
+    # Calculate the mean and std of the diagonals
+    alb_diag = np.diag(distances_albayzin)
+    healthy_diag = np.diag(distances_healthy)
+    parkinson_diag = np.diag(distances_healthy_parkinson)
+
+    print("Albayzin vs Albayzin")
+    print("Mean: " + str(np.mean(alb_diag)))
+    print("Std: " + str(np.std(alb_diag)))
+
+    print("Albayzin Healthy vs Neurovoz Healthy")
+    print("Mean: " + str(np.mean(healthy_diag)))
+    print("Std: " + str(np.std(healthy_diag)))
+
+    print("Albayzin Healthy vs Neurovoz Parkinson")
+    print("Mean: " + str(np.mean(parkinson_diag)))
+    print("Std: " + str(np.std(parkinson_diag)))
+
+    
+    
 
     # Plot the distances as a heatmap using seaborn
     print("Plotting distances...")

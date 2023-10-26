@@ -10,6 +10,7 @@ import torch
 import wandb
 import numpy as np
 import pandas as pd
+import sys
 
 # Print the cuda device to use
 fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
@@ -26,22 +27,26 @@ def main(args):
         "spectrogram": True,
         "wandb_flag": False,
         "epochs": 500,
-        "batch_size": 64,
+        "batch_size": 128,
         "lr": 1e-3,
         "latent_dim": 2,
-        "hidden_dims_enc": [64, 128, 64, 32],
-        "hidden_dims_dec": [32, 64, 128, 64],
+        "hidden_dims_enc": [16, 128, 64, 16],
+        "hidden_dims_dec": [16, 128, 64, 16],
         "supervised": False,
-        "n_gaussians": 9,
+        "n_gaussians": 16,
         "semisupervised": False,
         "train": True,
-        "train_albayzin": True, # If True, only albayzin is used for training. If False both albayzin and neuro are used for training
+        "train_albayzin": False, # If True, only albayzin is used for training. If False both albayzin and neuro are used for training
     }
-
+    
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = "local_results/spectrograms/manner_gmvae"
     else:
         hyperparams["path_to_save"] = "local_results/spectrograms/manner_gmvae_neurovoz"
+
+    old_stdout = sys.stdout
+    log_file = open(hyperparams["path_to_save"]+"/log.txt", "w")
+    sys.stdout = log_file
 
     print("Reading data...")
     # Read the data
@@ -176,6 +181,9 @@ def main(args):
 
     if hyperparams["wandb_flag"]:
         wandb.finish()
+
+    sys.stdout = old_stdout
+    log_file.close()
 
 
 if __name__ == "__main__":
