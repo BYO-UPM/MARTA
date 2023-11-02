@@ -13,7 +13,10 @@ import pandas as pd
 import sys
 import os
 
-# Print the cuda device to use
+# Select the free GPU if there is one available
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+print("Device being used:", device)
+
 fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
 
 
@@ -114,6 +117,7 @@ def main(args):
             10,  # w5 is metric loss
         ],
         cnn=hyperparams["spectrogram"],
+        device=device,
     )
 
     model = torch.compile(model)

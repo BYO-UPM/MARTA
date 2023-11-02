@@ -841,9 +841,10 @@ class GMVAE(torch.nn.Module):
         supervised=False,
         weights=[1, 3, 10, 10, 10],
         cnn=False,
+        device=None,
     ):
         super().__init__()
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = device
 
         self.x_dim = x_dim
         self.z_dim = z_dim
@@ -1014,7 +1015,7 @@ class GMVAE(torch.nn.Module):
 
         # Silences and affricates should be not used to compute the metric loss
         labels = labels.reshape(-1)
-        idx = np.where((labels != 6) & (labels != 7))[0] # 6: affricates, 7: silences
+        idx = np.where((labels != 6) & (labels != 7))[0]  # 6: affricates, 7: silences
         x_hat = x_hat[idx]
         labels = labels[idx]
 
