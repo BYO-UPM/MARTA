@@ -753,6 +753,7 @@ class Spectrogram_networks_manner(torch.nn.Module):
                     stride=[2, 1],
                 ),
                 torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[1]),
             )
             self.flatten = Flatten()
             self.x_hat_shape_before_flatten = self.inference_gx(
