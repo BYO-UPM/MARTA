@@ -874,8 +874,6 @@ class GMVAE(torch.nn.Module):
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss(reduction="sum")
         self.mse_loss = torch.nn.MSELoss(reduction="sum")
 
-        self.to(self.device)
-
         # weight initialization
         for m in self.modules():
             if (
@@ -886,6 +884,9 @@ class GMVAE(torch.nn.Module):
                 torch.nn.init.xavier_normal_(m.weight)
                 if m.bias.data is not None:
                     torch.nn.init.constant_(m.bias, 0)
+
+        print("Device used for training: ", self.device)
+        self.to(self.device)
 
     def inference_networks(self, cnn=False):
         # ===== Inference =====
@@ -905,7 +906,7 @@ class GMVAE(torch.nn.Module):
 
         # Gumbel softmax
         self.gumbel_softmax = torch.nn.Sequential(
-            GumbelSoftmax(self.hidden_dims[1], self.k)
+            GumbelSoftmax(self.hidden_dims[1], self.k, device=self.device)
         )
 
         # y_hat = h(qy)
@@ -1116,16 +1117,17 @@ class GMVAE(torch.nn.Module):
 
 # Borrowed from https://github.com/jariasf/GMVAE/blob/master/pytorch/networks/Layers.py
 class GumbelSoftmax(torch.nn.Module):
-    def __init__(self, f_dim, c_dim):
+    def __init__(self, f_dim, c_dim, device=None):
         super(GumbelSoftmax, self).__init__()
         self.logits = torch.nn.Linear(f_dim, c_dim)
         self.f_dim = f_dim
         self.c_dim = c_dim
+        self.device = device
 
     def sample_gumbel(self, shape, is_cuda=False, eps=1e-20):
         U = torch.rand(shape)
         if is_cuda:
-            U = U.cuda()
+            U = U.to(self.device)
         return -torch.log(-torch.log(U + eps) + eps)
 
     def gumbel_softmax_sample(self, logits, temperature):
