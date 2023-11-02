@@ -317,6 +317,8 @@ def plot_logopeda_alb_neuro(
 
         plt.close()
 
+    print("Calculating distance in a space of dimensions: ", lm_train_original.shape[1])
+
     calculate_euclidean_distances_manner(
         lm_train_original,
         lm_test_original,
@@ -329,6 +331,7 @@ def plot_logopeda_alb_neuro(
     )
 
     print("Calculating jensen shannon")
+    print("Calculating distances in a space of dimensions: ", lm_test_original.shape[1])
     calculate_distances_manner(
         model,
         lm_train_original,

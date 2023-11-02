@@ -390,23 +390,44 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         print("Splitting in train, test and validation sets...")
         # Split the data into train and test. 
-        train_data = self.data[self.data["dataset"] == "albayzin"]
-
-        if train_albayzin:
-            test_data = self.data[self.data["dataset"] != "albayzin"]
-        else:
-            rest_data = self.data[self.data["dataset"] != "albayzin"]
-            # Add half of healthy patients of the rest_data to the train_data
-            healthy_patients = rest_data[rest_data["label"] == 0]["id_patient"].unique()
-            healthy_patients = np.random.choice(
-                healthy_patients, size=int(len(healthy_patients) / 2), replace=False
-            )
+        if train_albayzin: # If we want to train with albayzin + 0.5 of neurovoz healthy patients
+            train_data = self.data[self.data["dataset"] == "albayzin"]
+            # Add 0.5 of neurovoz healthy patients to the train data
             train_data = pd.concat(
-                [train_data, rest_data[rest_data["id_patient"].isin(healthy_patients)]]
+                [
+                    train_data,
+                    self.data[
+                        (self.data["dataset"] == "neurovoz")
+                        & (self.data["label"] == 0)
+                    ].sample(frac=0.5, random_state=42),
+                ]
             )
-
-            # Add the other half of healthy patients of the rest_data to the test_data
-            test_data = rest_data[~rest_data["id_patient"].isin(healthy_patients)]
+            # Get the rest healhty patients not used for training
+            rest_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 0)].drop(train_data.index)
+            test_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 1)
+                ]
+            # Concatenate the rest of healthy patients with the test data
+            test_data = pd.concat([test_data, rest_data])
+        else: # If we want to train with only neurovoz healthy patients and not use albayzin for enriching the training data
+            # Train data will be 0.8 of neurovoz healthy patients
+            train_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 0)].sample(frac=0.8, random_state=42)
+            # Get the rest healhty patients not used for training
+            rest_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 0)].drop(train_data.index)
+            test_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 1)
+                ]
+            # Concatenate the rest of healthy patients with the test data
+            test_data = pd.concat([test_data, rest_data])
+            
 
         # Split the train data into train and validation sets
         train_data, val_data = train_test_split(

@@ -11,6 +11,7 @@ import wandb
 import numpy as np
 import pandas as pd
 import sys
+import os
 
 # Print the cuda device to use
 fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
@@ -25,27 +26,34 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": False,
+        "wandb_flag": True,
         "epochs": 500,
         "batch_size": 128,
         "lr": 1e-3,
-        "latent_dim": 2,
-        "hidden_dims_enc": [16, 128, 64, 16],
-        "hidden_dims_dec": [16, 128, 64, 16],
+        "latent_dim": 32,
+        "hidden_dims_enc": [64, 128, 64, 32],
+        "hidden_dims_dec": [32, 64, 128, 64],
         "supervised": False,
         "n_gaussians": 16,
         "semisupervised": False,
         "train": True,
-        "train_albayzin": False, # If True, only albayzin is used for training. If False both albayzin and neuro are used for training
+        "train_albayzin": False,  # If True, only albayzin is used for training. If False only neuro are used for training
     }
-    
+
     if hyperparams["train_albayzin"]:
-        hyperparams["path_to_save"] = "local_results/spectrograms/manner_gmvae"
+        hyperparams["path_to_save"] = "local_results/spectrograms/manner_gmvae_both"
+
     else:
-        hyperparams["path_to_save"] = "local_results/spectrograms/manner_gmvae_neurovoz"
+        hyperparams[
+            "path_to_save"
+        ] = "local_results/spectrograms/manner_gmvae_only_neurovoz"
+
+    # Create the path if does not exist
+    if not os.path.exists(hyperparams["path_to_save"]):
+        os.makedirs(hyperparams["path_to_save"])
 
     old_stdout = sys.stdout
-    log_file = open(hyperparams["path_to_save"]+"/log.txt", "w")
+    log_file = open(hyperparams["path_to_save"] + "/log.txt", "w")
     sys.stdout = log_file
 
     print("Reading data...")
@@ -65,7 +73,10 @@ def main(args):
             elif hyperparams["n_gaussians"] == 10:
                 gname += "_supervised_2labels"
             elif hyperparams["n_gaussians"] > 10:
-                gname += "_logopeda_9gaussians_9mannerclasses"
+                if hyperparams["train_albayzin"]:
+                    gname += "_supervised_16g_32d_alb_neurovoz"
+                else:
+                    gname += "_supervised_16g_32d_only_neurovoz"
         else:
             gname += "_UNsupervised"
         wandb.finish()
@@ -118,7 +129,7 @@ def main(args):
             lr=hyperparams["lr"],
             supervised=hyperparams["supervised"],
             wandb_flag=hyperparams["wandb_flag"],
-            path_to_save = hyperparams["path_to_save"]
+            path_to_save=hyperparams["path_to_save"],
         )
 
         print("Training finished!")
@@ -129,7 +140,7 @@ def main(args):
     if hyperparams["supervised"]:
         name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model.pt"
     else:
-        name = hyperparams["path_to_save"]+"/GMVAE_cnn_best_model_2d.pt"
+        name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
     tmp = torch.load(name)
     model.load_state_dict(tmp["model_state_dict"])
 
@@ -149,7 +160,7 @@ def main(args):
         audio_features=audio_features,
         supervised=False,  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
-        path_to_plot=	hyperparams["path_to_save"]
+        path_to_plot=hyperparams["path_to_save"],
     )
 
     # Create an empty pd dataframe with three columns: data, label and manner
@@ -176,7 +187,7 @@ def main(args):
             name="test",
             supervised=hyperparams["supervised"],
             samples=5000,
-            path_to_plot=hyperparams["path_to_save"]
+            path_to_plot=hyperparams["path_to_save"],
         )
 
     if hyperparams["wandb_flag"]:
