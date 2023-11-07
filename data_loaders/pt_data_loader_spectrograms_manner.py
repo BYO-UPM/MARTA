@@ -111,12 +111,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         texts = []
         phonemes = []
 
-        datapath_wav = (
-            "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
-        )
-        datapath_textgrid = (
-            "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
-        )
+        datapath_wav = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
+        datapath_textgrid = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
 
         i = 0
         for file in os.listdir(datapath_wav):
@@ -389,45 +385,48 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         self.data["label"] = self.data["label"].apply(lambda x: 0 if x < 2 else 1)
 
         print("Splitting in train, test and validation sets...")
-        # Split the data into train and test. 
-        if train_albayzin: # If we want to train with albayzin + 0.5 of neurovoz healthy patients
+        # Split the data into train and test.
+        if (
+            train_albayzin
+        ):  # If we want to train with albayzin + 0.5 of neurovoz healthy patients
             train_data = self.data[self.data["dataset"] == "albayzin"]
             # Add 0.5 of neurovoz healthy patients to the train data
             train_data = pd.concat(
                 [
                     train_data,
                     self.data[
-                        (self.data["dataset"] == "neurovoz")
-                        & (self.data["label"] == 0)
+                        (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
                     ].sample(frac=0.5, random_state=42),
                 ]
             )
             # Get the rest healhty patients not used for training
+            # Remove the train data from the neurovoz healthy patients
             rest_data = self.data[
-                (self.data["dataset"] == "neurovoz")
-                & (self.data["label"] == 0)].drop(train_data.index)
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
+            ]
+            # Drop only if the index exists
+            for index in train_data.index:
+                if index in rest_data.index:
+                    rest_data = rest_data.drop(index)
             test_data = self.data[
-                (self.data["dataset"] == "neurovoz")
-                & (self.data["label"] == 1)
-                ]
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+            ]
             # Concatenate the rest of healthy patients with the test data
             test_data = pd.concat([test_data, rest_data])
-        else: # If we want to train with only neurovoz healthy patients and not use albayzin for enriching the training data
+        else:  # If we want to train with only neurovoz healthy patients and not use albayzin for enriching the training data
             # Train data will be 0.8 of neurovoz healthy patients
             train_data = self.data[
-                (self.data["dataset"] == "neurovoz")
-                & (self.data["label"] == 0)].sample(frac=0.8, random_state=42)
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
+            ].sample(frac=0.8, random_state=42)
             # Get the rest healhty patients not used for training
             rest_data = self.data[
-                (self.data["dataset"] == "neurovoz")
-                & (self.data["label"] == 0)].drop(train_data.index)
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
+            ].drop(train_data.index)
             test_data = self.data[
-                (self.data["dataset"] == "neurovoz")
-                & (self.data["label"] == 1)
-                ]
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+            ]
             # Concatenate the rest of healthy patients with the test data
             test_data = pd.concat([test_data, rest_data])
-            
 
         # Split the train data into train and validation sets
         train_data, val_data = train_test_split(

@@ -726,6 +726,7 @@ class Spectrogram_networks_manner(torch.nn.Module):
         # ===== Inference =====
         # Deterministic x_hat = g(x)
         if cnn:
+            print(self.x_dim)
             self.inference_gx = torch.nn.Sequential(
                 torch.nn.Conv2d(
                     self.x_dim,
@@ -753,7 +754,7 @@ class Spectrogram_networks_manner(torch.nn.Module):
                     stride=[2, 1],
                 ),
                 torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[1]),
+                torch.nn.BatchNorm2d(self.hidden_dims[2]),
             )
             self.flatten = Flatten()
             self.x_hat_shape_before_flatten = self.inference_gx(

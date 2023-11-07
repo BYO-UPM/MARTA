@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
@@ -29,27 +29,33 @@ def main(args):
         "n_plps": 0,
         "n_mfccs": 0,
         "spectrogram": True,
-        "wandb_flag": True,
+        "wandb_flag": False,
         "epochs": 500,
         "batch_size": 128,
         "lr": 1e-3,
-        "latent_dim": 32,
-        "hidden_dims_enc": [64, 128, 64, 32],
-        "hidden_dims_dec": [32, 64, 128, 64],
+        "latent_dim": 2,
+        "hidden_dims_enc": [64, 128, 64],
+        "hidden_dims_dec": [64, 128, 64],
         "supervised": False,
         "n_gaussians": 16,
         "semisupervised": False,
         "train": True,
-        "train_albayzin": False,  # If True, only albayzin is used for training. If False only neuro are used for training
+        "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
     }
 
     if hyperparams["train_albayzin"]:
-        hyperparams["path_to_save"] = "local_results/spectrograms/manner_gmvae_both"
+        hyperparams["path_to_save"] = (
+            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
+            + str(hyperparams["latent_dim"])
+            + "d"
+        )
 
     else:
-        hyperparams[
-            "path_to_save"
-        ] = "local_results/spectrograms/manner_gmvae_only_neurovoz"
+        hyperparams["path_to_save"] = (
+            "local_results/spectrograms/manner_gmvae_only_neurovoz_"
+            + str(hyperparams["latent_dim"])
+            + "d"
+        )
 
     # Create the path if does not exist
     if not os.path.exists(hyperparams["path_to_save"]):
@@ -77,9 +83,17 @@ def main(args):
                 gname += "_supervised_2labels"
             elif hyperparams["n_gaussians"] > 10:
                 if hyperparams["train_albayzin"]:
-                    gname += "_supervised_16g_32d_alb_neurovoz"
+                    gname += (
+                        "_supervised_16g_"
+                        + str(hyperparams["latent_dim"])
+                        + "d_alb_neurovoz"
+                    )
                 else:
-                    gname += "_supervised_16g_32d_only_neurovoz"
+                    gname += (
+                        "_supervised_16g_"
+                        + str(hyperparams["latent_dim"])
+                        + "d_neurovoz"
+                    )
         else:
             gname += "_UNsupervised"
         wandb.finish()
