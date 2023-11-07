@@ -1101,7 +1101,9 @@ def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_f
     )
 
 
-def GMVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag, path_to_save):
+def GMVAE_trainer(
+    model, trainloader, validloader, epochs, lr, supervised, wandb_flag, path_to_save
+):
     # Define lr scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     T_max = 50  # Maximum number of iterations or epochs

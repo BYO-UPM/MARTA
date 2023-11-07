@@ -47,7 +47,7 @@ def plot_logopeda_alb_neuro(
     name="default",
     supervised=False,
     samples=1000,
-    path_to_plot='local_results/spectrograms/manner_gmvae_neurovoz',
+    path_to_plot="local_results/spectrograms/manner_gmvae_neurovoz",
 ):
     import copy
 
@@ -88,7 +88,7 @@ def plot_logopeda_alb_neuro(
 
     labels_train = np.array(data_train["label"].values, dtype=int)
     labels_test = np.array(data_test["label"].values, dtype=int)
-    
+
     # Repeat labels manner.shape[1] times
     latent_mu_train = copy.copy(latent_mu_train_original_space.cpu().detach().numpy())
     lm_train_original = latent_mu_train_original_space.cpu().detach().numpy()
@@ -137,7 +137,6 @@ def plot_logopeda_alb_neuro(
     # labels_test = labels_test[idx]
     # latent_mu_test = latent_mu_test[idx]
 
-
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu_train.shape[1] > 2:
         # Import UMAP
@@ -146,7 +145,9 @@ def plot_logopeda_alb_neuro(
         train_mu_shape = latent_mu_train.shape
 
         # TSNE only albayzin
-        umapmodel = umap.UMAP(n_components=2, metric="mahalanobis", n_neighbors=200).fit(latent_mu_train)
+        umapmodel = umap.UMAP(
+            n_components=2, metric="mahalanobis", n_neighbors=200
+        ).fit(latent_mu_train)
 
         # Convert test to 2d
         print("Calculating UMAP...")
@@ -197,16 +198,15 @@ def plot_logopeda_alb_neuro(
         path_to_plot + f"/latent_space_albayzin_wo_vowels.png",
     )
     ax.scatter(
-            latent_mu_train[:, 0][np.where(manner_train == 5)],
-            latent_mu_train[:, 1][np.where(manner_train == 5)],
-            color=cmap(5),
-            label=class_labels[5],
-        )
+        latent_mu_train[:, 0][np.where(manner_train == 5)],
+        latent_mu_train[:, 1][np.where(manner_train == 5)],
+        color=cmap(5),
+        label=class_labels[5],
+    )
     ax.legend()
     fig.savefig(
         path_to_plot + f"/latent_space_albayzin_w_vowels.png",
     )
-
 
     if wandb_flag:
         wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
@@ -253,7 +253,7 @@ def plot_logopeda_alb_neuro(
         fig.savefig(
             path_to_plot + f"/latent_space_healthy_albayzin_vs_neurovoz_class_{i}.png",
         )
-        
+
         if wandb_flag:
             wandb.log(
                 {
@@ -784,7 +784,9 @@ def plot_latent_space(
     ax.set_ylabel("Latent dim 2")
     ax.set_title(f"Latent space with Gaussians distributions")
     ax.legend()
-    save_path = path_to_plot + f"/gaussians_generative_and_test_vowels_{fold}_{name}.png"
+    save_path = (
+        path_to_plot + f"/gaussians_generative_and_test_vowels_{fold}_{name}.png"
+    )
     fig.savefig(
         save_path,
     )
@@ -1195,7 +1197,6 @@ def calculate_distances_manner(
 
     print("Calculating distances...")
 
-
     def calculate_kde(data):
         # if data.shape[0] < 2 * data.shape[1]:
         #     return None
@@ -1205,15 +1206,17 @@ def calculate_distances_manner(
     def calculate_js_distance(kde1, kde2, positions):
         if kde1 is None or kde2 is None:
             return 0
-        p = kde1.score_samples(positions) # This returns the log-likelihood of the data
-        p = np.exp(p) # Convert to probabilities
+        p = kde1.score_samples(positions)  # This returns the log-likelihood of the data
+        p = np.exp(p)  # Convert to probabilities
         p = p / np.sum(p)
         q = kde2.score_samples(positions)
         q = np.exp(q)
         q = q / np.sum(q)
         return jensenshannon(p, q)
 
-    def calculate_cluster_distance(latent_mu_one, latent_mu_two, kde_train, kde_test, umapmodel):
+    def calculate_cluster_distance(
+        latent_mu_one, latent_mu_two, kde_train, kde_test, umapmodel
+    ):
         # Sample from the GMM of the generative model
         # First generate uniformly distributed samples up to model.k
         cat_samples = np.random.choice(
@@ -1333,9 +1336,6 @@ def calculate_distances_manner(
     print("Mean: " + str(np.mean(parkinson_diag)))
     print("Std: " + str(np.std(parkinson_diag)))
 
-    
-    
-
     # Plot the distances as a heatmap using seaborn
     print("Plotting distances...")
     import seaborn as sns
@@ -1380,7 +1380,7 @@ def calculate_distances_manner(
         )
         ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
         ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
-        save_path = path_to_plot +"/" + f"{savename}.png"
+        save_path = path_to_plot + "/" + f"{savename}.png"
         fig.savefig(save_path)
 
         if wandb_flag:

@@ -14,40 +14,19 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
 
 
-def main(args):
-    hyperparams = {
-        "frame_size_ms": 0.400,  # 400ms
-        "spectrogram_win_size": 0.023,  # 23ms as it is recommended in the librosa library for speech recognition
-        "material": "MANNER",
-        "hop_size_percent": 0.5,
-        "n_plps": 0,
-        "n_mfccs": 0,
-        "spectrogram": True,
-        "wandb_flag": False,
-        "epochs": 500,
-        "batch_size": 128,
-        "lr": 1e-3,
-        "latent_dim": 2,
-        "hidden_dims_enc": [64, 128, 64],
-        "hidden_dims_dec": [64, 128, 64],
-        "supervised": False,
-        "n_gaussians": 16,
-        "semisupervised": False,
-        "train": True,
-        "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
-    }
-
+def main(args, hyperparams):
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "d"
+            + "cross_validation"
         )
 
     else:
@@ -73,29 +52,29 @@ def main(args):
     )
 
     if hyperparams["wandb_flag"]:
-        gname = "SPECTROGRAMS_GMVAE_" + hyperparams["material"]
-        if hyperparams["n_gaussians"] > 0:
-            if hyperparams["n_gaussians"] == 2:
-                gname += "_supervised_PD"
-            elif hyperparams["n_gaussians"] == 5:
-                gname += "_supervised_vowels"
-            elif hyperparams["n_gaussians"] == 10:
-                gname += "_supervised_2labels"
-            elif hyperparams["n_gaussians"] > 10:
-                if hyperparams["train_albayzin"]:
-                    gname += (
-                        "_supervised_16g_"
-                        + str(hyperparams["latent_dim"])
-                        + "d_alb_neurovoz"
-                    )
-                else:
-                    gname += (
-                        "_supervised_16g_"
-                        + str(hyperparams["latent_dim"])
-                        + "d_neurovoz"
-                    )
-        else:
-            gname += "_UNsupervised"
+        gname = "SPECTROGRAMS_GMVAE_" + hyperparams["material"] + "_crossvalidation"
+        # if hyperparams["n_gaussians"] > 0:
+        #     if hyperparams["n_gaussians"] == 2:
+        #         gname += "_supervised_PD"
+        #     elif hyperparams["n_gaussians"] == 5:
+        #         gname += "_supervised_vowels"
+        #     elif hyperparams["n_gaussians"] == 10:
+        #         gname += "_supervised_2labels"
+        #     elif hyperparams["n_gaussians"] > 10:
+        #         if hyperparams["train_albayzin"]:
+        #             gname += (
+        #                 "_supervised_16g_"
+        #                 + str(hyperparams["latent_dim"])
+        #                 + "d_alb_neurovoz"
+        #             )
+        #         else:
+        #             gname += (
+        #                 "_supervised_16g_"
+        #                 + str(hyperparams["latent_dim"])
+        #                 + "d_neurovoz"
+        #             )
+        # else:
+        #     gname += "_UNsupervised"
         wandb.finish()
         wandb.init(
             project="parkinson",
@@ -123,13 +102,7 @@ def main(args):
         hidden_dims=hyperparams["hidden_dims_enc"],
         ss=hyperparams["semisupervised"],
         supervised=hyperparams["supervised"],
-        weights=[
-            1,  # w1 is rec loss,
-            1,  # w2 is gaussian kl loss,
-            1,  # w3 is categorical kl loss,
-            1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
-            10,  # w5 is metric loss
-        ],
+        weights=hyperparams["weights"],
         cnn=hyperparams["spectrogram"],
         device=device,
     )
@@ -154,59 +127,54 @@ def main(args):
     else:
         print("Loading model...")
 
-    # Restoring best model
-    if hyperparams["supervised"]:
-        name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model.pt"
-    else:
-        name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
-    tmp = torch.load(name)
-    model.load_state_dict(tmp["model_state_dict"])
+    # # Restoring best model
+    # if hyperparams["supervised"]:
+    #     name = "local_results/spectrograms/manner_gmvae/GMVAE_cnn_best_model.pt"
+    # else:
+    #     name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
+    # tmp = torch.load(name)
+    # model.load_state_dict(tmp["model_state_dict"])
 
-    if hyperparams["n_plps"] > 0:
-        audio_features = "plps"
-    elif hyperparams["n_mfccs"] > 0:
-        audio_features = "mfccs"
-    elif hyperparams["spectrogram"]:
-        audio_features = "spectrogram"
-    print("Testing GMVAE...")
+    # audio_features = "spectrogram"
+    # print("Testing GMVAE...")
 
-    # Test the model
-    GMVAE_tester(
-        model=model,
-        testloader=test_loader,
-        test_data=test_data,
-        audio_features=audio_features,
-        supervised=False,  # Not implemented yet
-        wandb_flag=hyperparams["wandb_flag"],
-        path_to_plot=hyperparams["path_to_save"],
-    )
+    # # Test the model
+    # GMVAE_tester(
+    #     model=model,
+    #     testloader=test_loader,
+    #     test_data=test_data,
+    #     audio_features=audio_features,
+    #     supervised=False,  # Not implemented yet
+    #     wandb_flag=hyperparams["wandb_flag"],
+    #     path_to_plot=hyperparams["path_to_save"],
+    # )
 
-    # Create an empty pd dataframe with three columns: data, label and manner
-    df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    df_train[audio_features] = [t[0] for t in train_loader.dataset]
-    df_train["label"] = [t[1] for t in train_loader.dataset]
-    df_train["manner"] = [t[2] for t in train_loader.dataset]
+    # # Create an empty pd dataframe with three columns: data, label and manner
+    # df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
+    # df_train[audio_features] = [t[0] for t in train_loader.dataset]
+    # df_train["label"] = [t[1] for t in train_loader.dataset]
+    # df_train["manner"] = [t[2] for t in train_loader.dataset]
 
-    # Select randomly 1000 samples of dftrain
-    df_train = df_train.sample(n=1000)
+    # # Select randomly 1000 samples of dftrain
+    # df_train = df_train.sample(n=1000)
 
-    # Create an empty pd dataframe with three columns: data, label and manner
-    df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    df_test[audio_features] = [t[0] for t in test_loader.dataset]
-    df_test["label"] = [t[1] for t in test_loader.dataset]
-    df_test["manner"] = [t[2] for t in test_loader.dataset]
+    # # Create an empty pd dataframe with three columns: data, label and manner
+    # df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
+    # df_test[audio_features] = [t[0] for t in test_loader.dataset]
+    # df_test["label"] = [t[1] for t in test_loader.dataset]
+    # df_test["manner"] = [t[2] for t in test_loader.dataset]
 
-    if hyperparams["material"] == "MANNER":
-        plot_logopeda_alb_neuro(
-            model,
-            df_train,
-            df_test,
-            hyperparams["wandb_flag"],
-            name="test",
-            supervised=hyperparams["supervised"],
-            samples=5000,
-            path_to_plot=hyperparams["path_to_save"],
-        )
+    # if hyperparams["material"] == "MANNER":
+    #     plot_logopeda_alb_neuro(
+    #         model,
+    #         df_train,
+    #         df_test,
+    #         hyperparams["wandb_flag"],
+    #         name="test",
+    #         supervised=hyperparams["supervised"],
+    #         samples=5000,
+    #         path_to_plot=hyperparams["path_to_save"],
+    #     )
 
     if hyperparams["wandb_flag"]:
         wandb.finish()
@@ -218,4 +186,45 @@ def main(args):
 if __name__ == "__main__":
     args = {}
 
-    main(args)
+    hyperparams = {
+        "frame_size_ms": 0.400,  # 400ms
+        "n_plps": 0,
+        "n_mfccs": 0,
+        "spectrogram_win_size": 0.023,  # 23ms as it is recommended in the librosa library for speech recognition
+        "material": "MANNER",
+        "hop_size_percent": 0.5,
+        "spectrogram": True,
+        "wandb_flag": True,
+        "epochs": 500,
+        "batch_size": 128,
+        "lr": 1e-3,
+        "latent_dim": 2,
+        "hidden_dims_enc": [64, 32, 64],
+        "weights": [
+            1,  # w1 is rec loss,
+            1,  # w2 is gaussian kl loss,
+            1,  # w3 is categorical kl loss,
+            1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
+            10,  # w5 is metric loss
+        ],
+        "supervised": False,
+        "n_gaussians": 16,
+        "semisupervised": False,
+        "train": True,
+        "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
+    }
+
+    hp_cv = {
+        "hidden_dims_enc": [[64, 256, 64], [64, 128, 64], [64, 32, 64]],
+        "latent_dim": [2, 32, 64],
+        "n_gaussians": [2, 5, 8, 10, 16, 32],
+    }
+
+    # Lets cross validate all parameters
+    for hidden_dims in hp_cv["hidden_dims_enc"]:
+        for latent_dim in hp_cv["latent_dim"]:
+            for n_gaussians in hp_cv["n_gaussians"]:
+                hyperparams["hidden_dims_enc"] = hidden_dims
+                hyperparams["latent_dim"] = latent_dim
+                hyperparams["n_gaussians"] = n_gaussians
+                main(args, hyperparams)

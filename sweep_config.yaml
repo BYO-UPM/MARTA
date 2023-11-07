@@ -1,0 +1,29 @@
+sweep_config = {
+    "method": "random",  # grid, random, bayes
+    "metric": {"name": "valid/Loss", "goal": "minimize"},
+    "parameters": {
+        "epochs": {"value": 500},
+        "batch_size": {"value": 128},
+        "lr": {"values": [1e-2, 1e-3, 1e-4]},
+        "latent_dim": {"value": 2},
+        "hidden_dims_enc": {
+            "values": [[128, 256, 128], [64, 128, 64], [32, 64, 32], [16, 32, 16]]
+        },
+        "hidden_dims_dec": {
+            "values": [[128, 256, 128], [64, 128, 64], [32, 64, 32], [16, 32, 16]]
+        },
+        "weights": {
+            "values": [
+                [1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 10],
+                [1, 1, 1, 1, 100],
+                [1, 1, 1, 1, 1000],
+                [1, 10, 1, 1, 10],
+                [1, 10, 10, 1, 10],
+            ]
+        },
+        "n_gaussians": {"values": [5, 6, 8, 10, 12, 16, 32, 64]},
+        "train": {"value": True},
+        "train_albayzin": {"value": True},
+    },
+}
