@@ -52,7 +52,9 @@ def main(args, hyperparams):
     )
 
     if hyperparams["wandb_flag"]:
-        gname = "SPECTROGRAMS_GMVAE_" + hyperparams["material"] + "_crossvalidation"
+        gname = (
+            "SPECTROGRAMS_GMVAE_" + hyperparams["material"] + "_crossvalidation_bigger"
+        )
         # if hyperparams["n_gaussians"] > 0:
         #     if hyperparams["n_gaussians"] == 2:
         #         gname += "_supervised_PD"
@@ -215,9 +217,9 @@ if __name__ == "__main__":
     }
 
     hp_cv = {
-        "hidden_dims_enc": [[64, 256, 64], [64, 128, 64], [64, 32, 64]],
-        "latent_dim": [2, 32, 64],
-        "n_gaussians": [2, 5, 8, 10, 16, 32],
+        "hidden_dims_enc": [[64, 256, 64], [64, 512, 64], [64, 1024, 64]],
+        "latent_dim": [32, 64, 128],
+        "n_gaussians": [32, 64, 128],
     }
 
     # Lets cross validate all parameters
