@@ -170,8 +170,8 @@ if __name__ == "__main__":
         "material": "MANNER",
         "hop_size_percent": 0.5,
         "spectrogram": True,
-        "wandb_flag": True,
-        "epochs": 1000,
+        "wandb_flag": False,
+        "epochs": 1,
         "batch_size": 128,
         "lr": 1e-3,
         "latent_dim": 32,
@@ -183,7 +183,7 @@ if __name__ == "__main__":
             1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
             10,  # w5 is metric loss
         ],
-        "supervised": False,
+        "supervised": True,
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,

@@ -839,6 +839,7 @@ class GMVAE(torch.nn.Module):
         z_dim,
         n_gaussians=10,
         hidden_dims=[20, 10],
+        class_dims=[64, 32, 10],
         n_manner=8,
         ss=False,
         supervised=False,
@@ -874,6 +875,7 @@ class GMVAE(torch.nn.Module):
 
         # Classifier
         if self.supervised:
+            self.class_dims = class_dims
             self.classifier()
 
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
@@ -897,15 +899,37 @@ class GMVAE(torch.nn.Module):
         print("Device used for training: ", self.device)
         self.to(self.device)
 
-    def classifier(self):
-        self.manner_emb = torch.nn.Linear(1, self.z_dim).to(self.device)
+    def classifier(self, cnn=False):
+        self.hmc = torch.nn.Embedding(self.manner, self.z_dim, _freeze=True)
 
-        self.clf = torch.nn.Sequential(
-            torch.nn.Linear(self.z_dim * self.x_hat_shape_before_flat[-1], 256),
-            torch.nn.ReLU(),
-            torch.nn.Linear(256, 1),
-            torch.nn.Sigmoid(),
-        )
+        if cnn:
+            self.clf = torch.nn.Sequential(
+                # 2DConv with kernel_size = (32, 3), stride=2, padding=1
+                torch.nn.Conv2d(
+                    1,
+                    self.class_dims[0],
+                    kernel_size=[32, 3],
+                    stride=[1, 2],
+                    padding=[1, 1],
+                ),
+                torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.class_dims[0]),
+                # Flatten
+                Flatten(),
+                # Linear
+                torch.nn.Linear(self.class_dims[1], self.class_dims[2]),
+                torch.nn.ReLU(),
+                torch.nn.Linear(self.class_dims[2], 1),
+                torch.nn.Sigmoid(),
+            )
+
+        else:
+            self.clf = torch.nn.Sequential(
+                torch.nn.Linear(self.z_dim * self.x_hat_shape_before_flat[-1], 256),
+                torch.nn.ReLU(),
+                torch.nn.Linear(256, 1),
+                torch.nn.Sigmoid(),
+            )
 
     def inference_networks(self, cnn=False):
         # ===== Inference =====
@@ -1008,6 +1032,25 @@ class GMVAE(torch.nn.Module):
         x_rec = self.generative_fxhat(x_hat)
 
         return x_rec, z_mu, z_var
+
+    def classifier_forward(self, x, manner):
+        z, qy_logits, qy, qz_mu, qz_logvar, x_hat, x_hat_unflatten = self.infere(x)
+
+        # Calculate torch embedding, going from manner_class (int) to h(mc) (torch.Tensor) of shape (batch*window, z_dim)
+        hmc = self.hmc(manner)
+
+        # Reshape hmc to be of shape (batch, zdim, window)
+        hmc = hmc.reshape(-1, self.z_dim, 1)
+
+        # Check Z shape, if it is of shape (batch*window, z_dim) reshape it to (batch, z_dim, window)
+        if z.shape[0] != hmc.shape[0]:
+            z = z.reshape(-1, self.z_dim, 1)
+
+        # \tilde{z} = z + h(mc)
+        z = z.reshape(-1, self.z_dim, 1)
+        z = z + hmc
+
+        y_pred = self.clf(z)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z, qy_logits, qy, qz_mu, qz_logvar, x_hat, x_hat_unflatten = self.infere(x)
