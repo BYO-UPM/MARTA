@@ -839,6 +839,7 @@ class GMVAE(torch.nn.Module):
         z_dim,
         n_gaussians=10,
         hidden_dims=[20, 10],
+        n_manner=8,
         ss=False,
         supervised=False,
         weights=[1, 3, 10, 10, 10],
@@ -857,6 +858,7 @@ class GMVAE(torch.nn.Module):
         self.supervised = supervised
         self.hidden_dims = hidden_dims
         self.cnn = cnn
+        self.manner = n_manner
         self.usage = np.zeros(self.k)
 
         # Spectrogram networks
@@ -870,11 +872,16 @@ class GMVAE(torch.nn.Module):
         # Generative
         self.generative_networks(cnn=cnn)
 
+        # Classifier
+        if self.supervised:
+            self.classifier()
+
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
 
         # ===== Loss =====
-        self.cross_entropy_loss = torch.nn.CrossEntropyLoss(reduction="sum")
         self.mse_loss = torch.nn.MSELoss(reduction="sum")
+        if self.supervised:
+            self.cross_entropy_loss = torch.nn.BCELoss(reduction="sum")
 
         # weight initialization
         for m in self.modules():
@@ -889,6 +896,16 @@ class GMVAE(torch.nn.Module):
 
         print("Device used for training: ", self.device)
         self.to(self.device)
+
+    def classifier(self):
+        self.manner_emb = torch.nn.Linear(1, self.z_dim).to(self.device)
+
+        self.clf = torch.nn.Sequential(
+            torch.nn.Linear(self.z_dim * self.x_hat_shape_before_flat[-1], 256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 1),
+            torch.nn.Sigmoid(),
+        )
 
     def inference_networks(self, cnn=False):
         # ===== Inference =====
