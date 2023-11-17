@@ -1046,7 +1046,7 @@ class GMVAE(torch.nn.Module):
 
         return x_rec, z_mu, z_var
 
-    def classifier_forward(self, z, manner):
+    def classifier_forward(self, z, manner, labels):
         manner = manner.to(self.device)
         # Calculate torch embedding. Transform manner (shape: (batch, window)) to (batch, window, z_dim)
         hmc = self.hmc(manner)
@@ -1062,9 +1062,26 @@ class GMVAE(torch.nn.Module):
         z = z.reshape(hmc.shape[0], self.z_dim, hmc.shape[-1])
         z_hat = (z + hmc).unsqueeze(1)
 
+        # Oversample z_hat and labels to have the same number of samples in each class
+        # Oversample z_hat and labels to have the same number of samples in each class
+        unique_labels, count_labels = np.unique(labels, return_counts=True)
+        max_count = np.max(count_labels)
+
+        # Generate indices for oversampling
+        idx_sampled = np.concatenate(
+            [
+                np.random.choice(np.where(labels == label)[0], max_count)
+                for label in unique_labels
+            ]
+        )
+
+        # Apply oversampling
+        labels = labels[idx_sampled]
+        z_hat = z_hat[idx_sampled]
+
         y_pred = self.clf(z_hat)
 
-        return y_pred
+        return y_pred, labels
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z, qy_logits, qy, qz_mu, qz_logvar, x_hat, x_hat_unflatten = self.infere(x)
@@ -1097,13 +1114,18 @@ class GMVAE(torch.nn.Module):
         labels = labels[idx]
 
         # Oversample labels and x_hat to have the same number of samples
-        count_labels = np.unique(labels, return_counts=True)[1]
+        unique_labels, count_labels = np.unique(labels, return_counts=True)
         max_count = np.max(count_labels)
-        idx_sampled = []
-        for label in np.unique(labels):
-            idx = np.where(labels == label)[0]
-            idx_sampled.append(np.random.choice(idx, max_count))
-        idx_sampled = np.concatenate(idx_sampled)
+
+        # Generate indices for oversampling
+        idx_sampled = np.concatenate(
+            [
+                np.random.choice(np.where(labels == label)[0], max_count)
+                for label in unique_labels
+            ]
+        )
+
+        # Apply oversampling
         labels = labels[idx_sampled]
         x_hat = x_hat[idx_sampled]
 
@@ -1150,12 +1172,10 @@ class GMVAE(torch.nn.Module):
         cat_loss = torch.sum(cat_loss)
 
         if self.supervised:
-            y_pred = self.classifier_forward(z, manner)
+            y_pred, labels = self.classifier_forward(z, manner, labels)
             # Reshape labels tensor and make it float
             labels = labels.view(-1, 1).float().to(self.device)
             clf_loss = self.cross_entropy_loss(y_pred, labels)
-        else:
-            clf_loss = 0
 
         # Metric embedding loss: lifted structured loss
 
@@ -1168,9 +1188,12 @@ class GMVAE(torch.nn.Module):
         w1, w2, w3, w4, w5 = self.w1, self.w2, self.w3, self.w4, self.w5
 
         # Total loss
-        total_loss = (
-            w1 * rec_loss + w2 * gaussian_loss + w3 * cat_loss + w5 * metric_loss
-        )
+        if self.supervised:
+            total_loss = clf_loss
+        else:
+            total_loss = (
+                w1 * rec_loss + w2 * gaussian_loss + w3 * cat_loss + w5 * metric_loss
+            )
 
         return (
             total_loss,

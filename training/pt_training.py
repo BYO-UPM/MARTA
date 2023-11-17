@@ -1677,42 +1677,37 @@ def GMVAE_tester(
             for x, y, m in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
-                if model.k == 2:
-                    y = y.to(model.device).to(torch.float32)
-                elif model.k == 5:
-                    z = z.type(torch.LongTensor).to(model.device)
-                elif model.k == 10:
-                    c = c.type(torch.LongTensor).to(model.device)
-
-                # Forward pass
                 if supervised:
-                    x_hat, y_hat, mu, logvar = model(x)
-                    # Concatenate true values
-                    y_array = np.concatenate(
-                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
-                    )
-                    # Concatenate true values (vowels)
-                    z_array = np.concatenate(
-                        (z_array, z.cpu().detach().numpy().reshape(-1, 1))
-                    )
+                    y = y.to(model.device).to(torch.float32)
+                    m = m.to(model.device).to(torch.float32)
 
-                    # Concatenate predictions (labels)
-                    if model.n_classes == 2:
-                        y_hat_array = np.concatenate(
-                            (y_hat_array, y_hat.cpu().detach().numpy())
-                        )
-                    # Concatenate predictions (vowels)
-                    else:
-                        y_hat_array = np.concatenate(
-                            (
-                                y_hat_array,
-                                np.argmax(y_hat.cpu().detach().numpy(), axis=1).reshape(
-                                    -1, 1
-                                ),
-                            )
-                        )
-                else:
-                    x_hat, _, _, _, _, _, _, _, _, _ = model.forward(x)
+                (
+                    x_hat,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    z,
+                    _,
+                    _,
+                ) = model.forward(x)
+                if supervised:
+                    # Calculate torch embedding. Transform manner (shape: (batch, window)) to (batch, window, z_dim)
+                    hmc = model.hmc(m)
+                    # Reorder hmc to be (batch, z_dim, window)
+                    hmc = hmc.permute(0, 2, 1)
+                    # Check Z shape, if it is of shape (batch*window, z_dim) reshape it to (batch, z_dim, window)
+                    if z.shape[0] != hmc.shape[0]:
+                        z = z.reshape(-1, model.z_dim, 1)
+                    # \tilde{z} = z + h(mc)
+                    z = z.reshape(hmc.shape[0], model.z_dim, hmc.shape[-1])
+                    z_hat = (z + hmc).unsqueeze(1)
+                    y_pred = model.clf(z_hat)
+                    y_hat_array = np.concatenate(
+                        (y_hat_array, y_pred.cpu().detach().numpy())
+                    )
 
                 # Concatenate predictions
                 x_hat_array = np.concatenate(
@@ -1728,7 +1723,6 @@ def GMVAE_tester(
                 x_hat,
                 _,
             )
-            torch.cuda.empty_cache()
 
         print("Calculating MSE")
         # Remove the first batch_size elements

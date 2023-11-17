@@ -331,7 +331,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
-    def get_dataloaders(self, train_albayzin=False, verbose=True):
+    def get_dataloaders(self, train_albayzin=False, verbose=True, supervised=False):
         # Map phonemes to manner classes
         manner_classes = {
             "p": 0,  # plosives
@@ -413,6 +413,23 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             ]
             # Concatenate the rest of healthy patients with the test data
             test_data = pd.concat([test_data, rest_data])
+
+            if supervised:
+                # Get half of the parkinson patients from neurovoz and add them to train, remove them from test
+                train_data = pd.concat(
+                    [
+                        train_data,
+                        self.data[
+                            (self.data["dataset"] == "neurovoz")
+                            & (self.data["label"] == 1)
+                        ].sample(frac=0.5, random_state=42),
+                    ]
+                )
+                # Remove from test_data any patient that is in train_data
+                for index in train_data.index:
+                    if index in test_data.index:
+                        test_data = test_data.drop(index)
+
         else:  # If we want to train with only neurovoz healthy patients and not use albayzin for enriching the training data
             # Train data will be 0.8 of neurovoz healthy patients
             train_data = self.data[

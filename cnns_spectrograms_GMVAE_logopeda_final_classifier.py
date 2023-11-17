@@ -14,10 +14,10 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
-fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
+fold = 1  # Not used, just for compatibility with the other scripts #### this should be improved xD
 
 
 def main(args, hyperparams):
@@ -70,7 +70,10 @@ def main(args, hyperparams):
         train_data,
         val_data,
         test_data,
-    ) = dataset.get_dataloaders(train_albayzin=hyperparams["train_albayzin"])
+    ) = dataset.get_dataloaders(
+        train_albayzin=hyperparams["train_albayzin"],
+        supervised=hyperparams["supervised"],
+    )
 
     print("Defining models...")
     # Create the model
@@ -130,33 +133,6 @@ def main(args, hyperparams):
         path_to_plot=hyperparams["path_to_save"],
     )
 
-    # Create an empty pd dataframe with three columns: data, label and manner
-    df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    df_train[audio_features] = [t[0] for t in train_loader.dataset]
-    df_train["label"] = [t[1] for t in train_loader.dataset]
-    df_train["manner"] = [t[2] for t in train_loader.dataset]
-
-    # Select randomly 1000 samples of dftrain
-    df_train = df_train.sample(n=1000)
-
-    # Create an empty pd dataframe with three columns: data, label and manner
-    df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    df_test[audio_features] = [t[0] for t in test_loader.dataset]
-    df_test["label"] = [t[1] for t in test_loader.dataset]
-    df_test["manner"] = [t[2] for t in test_loader.dataset]
-
-    if hyperparams["material"] == "MANNER":
-        plot_logopeda_alb_neuro(
-            model,
-            df_train,
-            df_test,
-            hyperparams["wandb_flag"],
-            name="test",
-            supervised=hyperparams["supervised"],
-            samples=5000,
-            path_to_plot=hyperparams["path_to_save"],
-        )
-
     if hyperparams["wandb_flag"]:
         wandb.finish()
 
@@ -176,7 +152,7 @@ if __name__ == "__main__":
         "hop_size_percent": 0.5,
         "spectrogram": True,
         "wandb_flag": False,
-        "epochs": 1,
+        "epochs": 1000,
         "batch_size": 128,
         "lr": 1e-3,
         "latent_dim": 32,

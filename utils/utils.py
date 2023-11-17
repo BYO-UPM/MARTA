@@ -1288,26 +1288,26 @@ def calculate_distances_manner(
         calculate_kde(latent_mu_test[(labels_test == 0) & (manner_test == manner)])
         for manner in unique_manner_test
     ]
-    latent_park = latent_mu_test[(labels_test == 1)]
-    manner_test = manner_test[(labels_test == 1)]
-    # assert that latent_park and manner_test have the same shape
-    assert latent_park.shape[0] == manner_test.shape[0]
-    # Sample randomly to have the same amount as healthy
-    latent_park = latent_park[
-        np.random.choice(
-            latent_park.shape[0],
-            size=latent_mu_test[(labels_test == 0)].shape[0],
-            replace=False,
-        )
-    ]
-    kde_neurovoz_parkinson = [
-        calculate_kde(latent_park[manner_test == manner])
-        for manner in unique_manner_test
-    ]
+    # latent_park = latent_mu_test[(labels_test == 1)]
+    # manner_test = manner_test[(labels_test == 1)]
+    # # assert that latent_park and manner_test have the same shape
+    # assert latent_park.shape[0] == manner_test.shape[0]
+    # # Sample randomly to have the same amount as healthy
+    # latent_park = latent_park[
+    #     np.random.choice(
+    #         latent_park.shape[0],
+    #         size=latent_mu_test[(labels_test == 0)].shape[0],
+    #         replace=False,
+    #     )
+    # ]
     # kde_neurovoz_parkinson = [
-    #     calculate_kde(latent_mu_test[(labels_test == 1) & (manner_test == manner)])
+    #     calculate_kde(latent_park[manner_test == manner])
     #     for manner in unique_manner_test
     # ]
+    kde_neurovoz_parkinson = [
+        calculate_kde(latent_mu_test[(labels_test == 1) & (manner_test == manner)])
+        for manner in unique_manner_test
+    ]
 
     for i, manner_i in enumerate(unique_manner_train):
         for j, manner_j in enumerate(unique_manner_test):

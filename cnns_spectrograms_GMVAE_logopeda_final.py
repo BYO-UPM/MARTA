@@ -190,7 +190,7 @@ if __name__ == "__main__":
         "supervised": False,
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
-        "train": False,
+        "train": True,
         "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
     }
 
