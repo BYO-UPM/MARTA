@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
@@ -89,6 +89,11 @@ def main(args, hyperparams):
     model = torch.compile(model)
 
     if hyperparams["train"]:
+        # Load the best unsupervised model first
+        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_32final_model_unsupervised/GMVAE_cnn_best_model_2d.pt"
+        tmp = torch.load(name)
+        model.load_state_dict(tmp["model_state_dict"])
+
         print("Training GMVAE...")
         # Train the model
         GMVAE_trainer(

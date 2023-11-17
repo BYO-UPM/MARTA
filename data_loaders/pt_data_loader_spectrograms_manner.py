@@ -331,7 +331,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
-    def get_dataloaders(self, train_albayzin=False):
+    def get_dataloaders(self, train_albayzin=False, verbose=True):
         # Map phonemes to manner classes
         manner_classes = {
             "p": 0,  # plosives
@@ -432,6 +432,109 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         train_data, val_data = train_test_split(
             train_data, test_size=0.2, random_state=42, stratify=train_data["text"]
         )
+
+        if verbose:
+            print("================ Train data information ================")
+            print("Total audios in train data: ", len(train_data))
+            print(
+                "Total healthy audios in train data: ",
+                len(train_data[train_data["label"] == 0]),
+            )
+            print(
+                "Total parkinson audios in train data: ",
+                len(train_data[train_data["label"] == 1]),
+            )
+            print(
+                "Total patients in train data: ", len(train_data["id_patient"].unique())
+            )
+            print(
+                "Total patients healthy in train data: ",
+                len(train_data[train_data["label"] == 0]["id_patient"].unique()),
+            )
+            print(
+                "Total patients parkinson in train data: ",
+                len(train_data[train_data["label"] == 1]["id_patient"].unique()),
+            )
+            print(
+                "Manner class shape in train data: ",
+                np.stack(train_data["manner_class"].values).shape,
+            )
+            print(
+                "Total manner labels in train data: ",
+                np.stack(train_data["manner_class"].values).flatten().shape[0],
+            )
+
+            # VAL data information
+            print("================ Val data information ================")
+            print("Total audios in val data: ", len(val_data))
+            print(
+                "Total healthy audios in val data: ",
+                len(val_data[val_data["label"] == 0]),
+            )
+            print(
+                "Total parkinson audios in val data: ",
+                len(val_data[val_data["label"] == 1]),
+            )
+            print("Total patients in val data: ", len(val_data["id_patient"].unique()))
+            print(
+                "Total patients healthy in val data: ",
+                len(val_data[val_data["label"] == 0]["id_patient"].unique()),
+            )
+            print(
+                "Total patients parkinson in val data: ",
+                len(val_data[val_data["label"] == 1]["id_patient"].unique()),
+            )
+            print(
+                "Manner class shape in val data: ",
+                np.stack(val_data["manner_class"].values).shape,
+            )
+            print(
+                "Total manner labels in val data: ",
+                np.stack(val_data["manner_class"].values).flatten().shape[0],
+            )
+
+            # TEST data information
+            print("================ Test data information ================")
+            print("Total audios in test data: ", len(test_data))
+            print(
+                "Total healthy audios in test data: ",
+                len(test_data[test_data["label"] == 0]),
+            )
+            print(
+                "Total parkinson audios in test data: ",
+                len(test_data[test_data["label"] == 1]),
+            )
+            print(
+                "Total patients in test data: ", len(test_data["id_patient"].unique())
+            )
+            print(
+                "Total patients healthy in test data: ",
+                len(test_data[test_data["label"] == 0]["id_patient"].unique()),
+            )
+            print(
+                "Total patients parkinson in test data: ",
+                len(test_data[test_data["label"] == 1]["id_patient"].unique()),
+            )
+            print(
+                "Manner class shape in test data: ",
+                np.stack(test_data["manner_class"].values).shape,
+            )
+            print(
+                "Total manner labels in test data: ",
+                np.stack(test_data["manner_class"].values).flatten().shape[0],
+            )
+            print(
+                "Total manner labels parkinsonian in test data: ",
+                np.stack(test_data[test_data["label"] == 1]["manner_class"].values)
+                .flatten()
+                .shape[0],
+            )
+            print(
+                "Total manner class healthy in test data: ",
+                np.stack(test_data[test_data["label"] == 0]["manner_class"].values)
+                .flatten()
+                .shape[0],
+            )
 
         # Create the dataloaders
         if self.plps:

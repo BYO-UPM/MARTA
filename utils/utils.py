@@ -54,34 +54,53 @@ def plot_logopeda_alb_neuro(
     # Generate mu and sigma in training
     model.eval()
     with torch.no_grad():
-        data_input = (
-            torch.Tensor(np.vstack(data_train["spectrogram"]))
-            .to(model.device)
-            .unsqueeze(1)
-        )
-        (
-            z,
-            qy_logits,
-            qy,
-            latent_mu_train_original_space,
-            qz_logvar,
-            x_hat,
-            x_hat_unflatten,
-        ) = model.infere(data_input)
-        data_input = (
-            torch.Tensor(np.vstack(data_test["spectrogram"]))
-            .to(model.device)
-            .unsqueeze(1)
-        )
-        (
-            z,
-            qy_logits,
-            qy,
-            latent_mu_test_original_space,
-            qz_logvar,
-            x_hat,
-            x_hat_unflatten,
-        ) = model.infere(data_input)
+        data_input = torch.Tensor(np.vstack(data_train["spectrogram"]))
+        # do model_infere by batches
+        batch_size = 128
+        latent_mu_train_original_space = []
+        print("Calculating latent space for train samples")
+        for i in range(0, len(data_input), batch_size):
+            (
+                _,
+                _,
+                _,
+                latent_mu_train_original_space_batch,
+                _,
+                _,
+                _,
+            ) = model.infere(
+                data_input[i : i + batch_size].to(model.device).unsqueeze(1)
+            )
+            latent_mu_train_original_space.append(
+                latent_mu_train_original_space_batch.cpu().detach().numpy()
+            )
+            del _, latent_mu_train_original_space_batch
+        latent_mu_train_original_space = np.vstack(latent_mu_train_original_space)
+        torch.cuda.empty_cache()
+        print("Calculating latent space for test samples")
+        data_input = torch.Tensor(np.vstack(data_test["spectrogram"]))
+        latent_mu_test_original_space = []
+        # do model_infere by batches
+        for i in range(0, len(data_input), batch_size):
+            (
+                _,
+                _,
+                _,
+                latent_mu_test_original_space_batch,
+                _,
+                _,
+                _,
+            ) = model.infere(
+                data_input[i : i + batch_size].to(model.device).unsqueeze(1)
+            )
+            latent_mu_test_original_space.append(
+                latent_mu_test_original_space_batch.cpu().detach().numpy()
+            )
+            del _, latent_mu_test_original_space_batch
+        latent_mu_test_original_space = np.vstack(latent_mu_test_original_space)
+        torch.cuda.empty_cache()
+        del data_input
+        print("Latent space calculated")
 
     manner_train = np.array([np.array(x) for x in data_train["manner"]], dtype=int)
     manner_test = np.array([np.array(x) for x in data_test["manner"]], dtype=int)
@@ -90,8 +109,8 @@ def plot_logopeda_alb_neuro(
     labels_test = np.array(data_test["label"].values, dtype=int)
 
     # Repeat labels manner.shape[1] times
-    latent_mu_train = copy.copy(latent_mu_train_original_space.cpu().detach().numpy())
-    lm_train_original = latent_mu_train_original_space.cpu().detach().numpy()
+    latent_mu_train = copy.copy(latent_mu_train_original_space)
+    lm_train_original = latent_mu_train_original_space
     labels_train = np.repeat(labels_train, manner_train.shape[1], axis=0)
     manner_train = manner_train.reshape(-1)
     # Remove all affricates
@@ -108,8 +127,8 @@ def plot_logopeda_alb_neuro(
     lm_train_original = np.delete(lm_train_original, idx, axis=0)
 
     # Repeat labels manner.shape[1] times
-    latent_mu_test = copy.copy(latent_mu_test_original_space.cpu().detach().numpy())
-    lm_test_original = latent_mu_test_original_space.cpu().detach().numpy()
+    latent_mu_test = copy.copy(latent_mu_test_original_space)
+    lm_test_original = latent_mu_test_original_space
     labels_test = np.repeat(labels_test, manner_test.shape[1], axis=0)
     manner_test = manner_test.reshape(-1)
     # Remove all affricates
@@ -143,6 +162,8 @@ def plot_logopeda_alb_neuro(
         import umap
 
         train_mu_shape = latent_mu_train.shape
+
+        print("Fitting UMAP")
 
         # TSNE only albayzin
         umapmodel = umap.UMAP(
@@ -1267,10 +1288,26 @@ def calculate_distances_manner(
         calculate_kde(latent_mu_test[(labels_test == 0) & (manner_test == manner)])
         for manner in unique_manner_test
     ]
+    latent_park = latent_mu_test[(labels_test == 1)]
+    manner_test = manner_test[(labels_test == 1)]
+    # assert that latent_park and manner_test have the same shape
+    assert latent_park.shape[0] == manner_test.shape[0]
+    # Sample randomly to have the same amount as healthy
+    latent_park = latent_park[
+        np.random.choice(
+            latent_park.shape[0],
+            size=latent_mu_test[(labels_test == 0)].shape[0],
+            replace=False,
+        )
+    ]
     kde_neurovoz_parkinson = [
-        calculate_kde(latent_mu_test[(labels_test == 1) & (manner_test == manner)])
+        calculate_kde(latent_park[manner_test == manner])
         for manner in unique_manner_test
     ]
+    # kde_neurovoz_parkinson = [
+    #     calculate_kde(latent_mu_test[(labels_test == 1) & (manner_test == manner)])
+    #     for manner in unique_manner_test
+    # ]
 
     for i, manner_i in enumerate(unique_manner_train):
         for j, manner_j in enumerate(unique_manner_test):
@@ -1388,6 +1425,57 @@ def calculate_distances_manner(
 
         plt.close()
 
+    plt.close()
+
+    # Plot difference of the distances as a heatmap using seaborn. Make a colorbar where the positive values are red, and the negative are blue.
+    # Make the color change smooth.
+    # Difference of the distances
+    distances_diff = [
+        distances_healthy_parkinson - distances_healthy,
+    ]
+    print("Plotting distances...")
+    import seaborn as sns
+
+    for i in range(len(distances_diff)):
+        fig, ax = plt.subplots(figsize=(10, 10))
+        sns.heatmap(distances_diff[i], annot=True, ax=ax, cmap="RdBu_r")
+        if i == 0:
+            title = "Diff. of JSD of Healthy in test vs Parkinsonian in test"
+            savename = "diff_healthy_park_test"
+        ax.set_title(title)
+        ax.set_xticklabels(
+            [
+                "Plosives",
+                "Plosives voiced",
+                "Nasals",
+                "Fricatives",
+                "Liquids",
+                "Vowels",
+                # "Affricates",
+                # "Silence",
+            ],
+            rotation=45,
+        )
+        ax.set_yticklabels(
+            [
+                "Plosives",
+                "Plosives voiced",
+                "Nasals",
+                "Fricatives",
+                "Liquids",
+                "Vowels",
+                # "Affricates",
+                # "Silence",
+            ]
+        )
+        ax.set_xlabel("Manner classes (Healthy train clusters)")
+        ax.set_ylabel("Manner classes (Test clusters)")
+        save_path = path_to_plot + "/" + f"{savename}.png"
+        fig.savefig(save_path)
+        if wandb_flag:
+            wandb.log({"test/" + savename: wandb.Image(fig)})
+
+        plt.close()
     plt.close()
 
 
@@ -1521,7 +1609,6 @@ def calculate_euclidean_distances_manner(
             wandb.log({"test/" + savename: wandb.Image(fig)})
 
         plt.close()
-
     plt.close()
 
 

@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
@@ -126,6 +126,7 @@ def main(args, hyperparams):
         wandb_flag=hyperparams["wandb_flag"],
         path_to_plot=hyperparams["path_to_save"],
     )
+    print("Testing finished!")
 
     # Create an empty pd dataframe with three columns: data, label and manner
     df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
@@ -134,7 +135,7 @@ def main(args, hyperparams):
     df_train["manner"] = [t[2] for t in train_loader.dataset]
 
     # Select randomly 1000 samples of dftrain
-    df_train = df_train.sample(n=1000)
+    # df_train = df_train.sample(n=1000)
 
     # Create an empty pd dataframe with three columns: data, label and manner
     df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
@@ -143,6 +144,7 @@ def main(args, hyperparams):
     df_test["manner"] = [t[2] for t in test_loader.dataset]
 
     if hyperparams["material"] == "MANNER":
+        print("Starting to calculate distances...")
         plot_logopeda_alb_neuro(
             model,
             df_train,
@@ -172,7 +174,7 @@ if __name__ == "__main__":
         "material": "MANNER",
         "hop_size_percent": 0.5,
         "spectrogram": True,
-        "wandb_flag": True,
+        "wandb_flag": False,
         "epochs": 1000,
         "batch_size": 128,
         "lr": 1e-3,
@@ -188,7 +190,7 @@ if __name__ == "__main__":
         "supervised": False,
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
-        "train": True,
+        "train": False,
         "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
     }
 

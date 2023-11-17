@@ -818,6 +818,13 @@ class Flatten(torch.nn.Module):
         return x
 
 
+class ClassifierFlatten(torch.nn.Module):
+    def forward(self, x):
+        x = x.reshape(x.shape[0], -1)
+
+        return x
+
+
 class UnFlatten(torch.nn.Module):
     def forward(self, x):
         # x_hat is shaped as (B*W, C*H), lets conver it to (B*W, C, H)
@@ -844,7 +851,7 @@ class GMVAE(torch.nn.Module):
         ss=False,
         supervised=False,
         weights=[1, 3, 10, 10, 10],
-        cnn=False,
+        cnn=True,
         device=None,
     ):
         super().__init__()
@@ -873,10 +880,9 @@ class GMVAE(torch.nn.Module):
         # Generative
         self.generative_networks(cnn=cnn)
 
-        # Classifier
-        if self.supervised:
-            self.class_dims = class_dims
-            self.classifier()
+        # Classifier: initialize it always but only use it if supervised
+        self.class_dims = class_dims
+        self.classifier(cnn=cnn)
 
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
 
@@ -910,14 +916,21 @@ class GMVAE(torch.nn.Module):
                     self.class_dims[0],
                     kernel_size=[32, 3],
                     stride=[1, 2],
-                    padding=[1, 1],
                 ),
                 torch.nn.ReLU(),
                 torch.nn.BatchNorm2d(self.class_dims[0]),
+                torch.nn.Conv2d(
+                    self.class_dims[0],
+                    self.class_dims[1],
+                    kernel_size=[1, 3],
+                    stride=[1, 2],
+                ),
+                torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.class_dims[1]),
                 # Flatten
-                Flatten(),
+                ClassifierFlatten(),
                 # Linear
-                torch.nn.Linear(self.class_dims[1], self.class_dims[2]),
+                torch.nn.Linear(32 * 7, self.class_dims[2]),
                 torch.nn.ReLU(),
                 torch.nn.Linear(self.class_dims[2], 1),
                 torch.nn.Sigmoid(),
@@ -1033,24 +1046,25 @@ class GMVAE(torch.nn.Module):
 
         return x_rec, z_mu, z_var
 
-    def classifier_forward(self, x, manner):
-        z, qy_logits, qy, qz_mu, qz_logvar, x_hat, x_hat_unflatten = self.infere(x)
-
-        # Calculate torch embedding, going from manner_class (int) to h(mc) (torch.Tensor) of shape (batch*window, z_dim)
+    def classifier_forward(self, z, manner):
+        manner = manner.to(self.device)
+        # Calculate torch embedding. Transform manner (shape: (batch, window)) to (batch, window, z_dim)
         hmc = self.hmc(manner)
 
-        # Reshape hmc to be of shape (batch, zdim, window)
-        hmc = hmc.reshape(-1, self.z_dim, 1)
+        # Reorder hmc to be (batch, z_dim, window)
+        hmc = hmc.permute(0, 2, 1)
 
         # Check Z shape, if it is of shape (batch*window, z_dim) reshape it to (batch, z_dim, window)
         if z.shape[0] != hmc.shape[0]:
             z = z.reshape(-1, self.z_dim, 1)
 
         # \tilde{z} = z + h(mc)
-        z = z.reshape(-1, self.z_dim, 1)
-        z = z + hmc
+        z = z.reshape(hmc.shape[0], self.z_dim, hmc.shape[-1])
+        z_hat = (z + hmc).unsqueeze(1)
 
-        y_pred = self.clf(z)
+        y_pred = self.clf(z_hat)
+
+        return y_pred
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z, qy_logits, qy, qz_mu, qz_logvar, x_hat, x_hat_unflatten = self.infere(x)
@@ -1136,16 +1150,10 @@ class GMVAE(torch.nn.Module):
         cat_loss = torch.sum(cat_loss)
 
         if self.supervised:
-            if self.k < 10:
-                # Supervised loss
-                clf_loss = torch.nn.CrossEntropyLoss(reduction="mean")(
-                    qy_logits, labels.type(torch.int64)
-                )
-            else:
-                # Supervised loss
-                clf_loss = torch.nn.CrossEntropyLoss(reduction="sum")(
-                    qy_logits, manner.type(torch.float32)
-                )
+            y_pred = self.classifier_forward(z, manner)
+            # Reshape labels tensor and make it float
+            labels = labels.view(-1, 1).float().to(self.device)
+            clf_loss = self.cross_entropy_loss(y_pred, labels)
         else:
             clf_loss = 0
 

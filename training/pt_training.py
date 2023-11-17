@@ -1116,6 +1116,14 @@ def GMVAE_trainer(
     true_label_list = []
     pred_label_list = []
 
+    if supervised:
+        # Freeze all the network
+        for param in model.parameters():
+            param.requires_grad = False
+        # Unfreeze the classifier
+        for param in model.clf.parameters():
+            param.requires_grad = True
+
     for e in range(epochs):
         model.train()
         train_loss = 0
@@ -1665,6 +1673,7 @@ def GMVAE_tester(
 
         x_hat_array = np.zeros(x_array.shape)
         with tqdm(testloader, unit="batch") as tepoch:
+            print("Evaluating the VAE model")
             for x, y, m in tepoch:
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
@@ -1710,7 +1719,18 @@ def GMVAE_tester(
                     (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
                 )
                 x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
+            print("Removing unused elements")
+            # Remove all from GPU to release memory
+            del (
+                x,
+                y,
+                m,
+                x_hat,
+                _,
+            )
+            torch.cuda.empty_cache()
 
+        print("Calculating MSE")
         # Remove the first batch_size elements
         x_array = x_array[batch_size:]
         x_hat_array = x_hat_array[batch_size:]
