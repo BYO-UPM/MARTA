@@ -3,7 +3,7 @@ import timm
 import numpy as np
 import copy
 import time
-from utils import log_normal
+from utils import log_normal, KL_cat
 from pytorch_metric_learning import miners, losses, reducers, samplers
 
 
@@ -394,7 +394,14 @@ class SpeechTherapist(torch.nn.Module):
     3. Metric learning loss of the GMVAE: the metric learning loss will be the triplet loss. The anchor will be the latent space representation of each window of the spectrogram, the positive will be the latent space representation of the same manner class of the anchor and the negative will be the latent space representation of the other manner classes.
     """
 
-    def __init__(self, x_dim, hidden_dims_spectrogram, hidden_dims_gmvae):
+    def __init__(
+        self,
+        x_dim,
+        hidden_dims_spectrogram,
+        hidden_dims_gmvae,
+        k=10,
+        weights=[1, 1, 1, 10],
+    ):
         self.x_dim = x_dim
         self.hidden_dims_spectrogram = hidden_dims_spectrogram
         self.hidden_dims_gmvae = hidden_dims_gmvae
@@ -409,11 +416,17 @@ class SpeechTherapist(torch.nn.Module):
         # From encoded spectrogram (e_s) to spectrogram (x)
         self.SpecDecoder()
 
+        # ============ Losses ============
         sumreducer = reducers.SumReducer()
         self.miner = miners.MultiSimilarityMiner(epsilon=0.1)
         self.metric_loss_func = losses.GeneralizedLiftedStructureLoss(
             reducer=sumreducer
         ).to(self.device)
+        self.mse_loss = torch.nn.MSELoss(reduction="sum")
+
+        # ============ GMVAE parameters ============
+        self.k = k
+        self.w = weights
 
     def SpecEncoder(self):
         """This network will encode the spectrograms of N, 1, 65, 33 into a feature representation of N*33, Channels*Height."""
@@ -650,19 +663,28 @@ class SpeechTherapist(torch.nn.Module):
 
         # Gaussian loss
         gaussian_loss = torch.sum(
-            self.log_normal(z_sample, qz_mu, qz_var)  # q_phi(z|x,y)
-            - self.log_normal(z_sample, pz_mu, pz_var)  # p_theta(z|y)
+            log_normal(z_sample, qz_mu, qz_var)  # q(z | e_s, y):
+            - log_normal(z_sample, pz_mu, pz_var)  # p(z | y)
         )
 
         # Categorical loss
-        categorical_loss = self.categorical_loss(y_logits, y)
+        categorical_loss = KL_cat(y, y_logits, self.k)
 
         # Metric loss
         metric_loss = self.metric_loss(z_sample, manner_classes)
 
-        return recon_loss, gaussian_loss, categorical_loss, metric_loss
+        # Total loss is the weighted sum of the four losses
+        complete_loss = (
+            self.w[0] * recon_loss
+            + self.w[1] * gaussian_loss
+            + self.w[2] * categorical_loss
+            + self.w[3] * metric_loss
+        )
+
+        return complete_loss, recon_loss, gaussian_loss, categorical_loss, metric_loss
 
 
+# ======================================= Remove this after checking the new code is working =======================================
 class GMVAE(torch.nn.Module):
     def __init__(
         self,
@@ -1052,53 +1074,6 @@ class GMVAE(torch.nn.Module):
         )
 
 
-# Borrowed from https://github.com/jariasf/GMVAE/blob/master/pytorch/networks/Layers.py
-class GumbelSoftmax(torch.nn.Module):
-    def __init__(self, f_dim, c_dim, device=None):
-        super(GumbelSoftmax, self).__init__()
-        self.logits = torch.nn.Linear(f_dim, c_dim)
-        self.f_dim = f_dim
-        self.c_dim = c_dim
-        self.device = device
-
-    def sample_gumbel(self, shape, is_cuda=False, eps=1e-20):
-        U = torch.rand(shape)
-        if is_cuda:
-            U = U.to(self.device)
-        return -torch.log(-torch.log(U + eps) + eps)
-
-    def gumbel_softmax_sample(self, logits, temperature):
-        y = logits + self.sample_gumbel(logits.size(), logits.is_cuda)
-        return torch.nn.functional.softmax(y / temperature, dim=-1)
-
-    def gumbel_softmax(self, logits, temperature, hard=False):
-        """
-        ST-gumple-softmax
-        input: [*, n_class]
-        return: flatten --> [*, n_class] an one-hot vector
-        """
-        # categorical_dim = 10
-        y = self.gumbel_softmax_sample(logits, temperature)
-
-        if not hard:
-            return y
-
-        shape = y.size()
-        _, ind = y.max(dim=-1)
-        y_hard = torch.zeros_like(y).view(-1, shape[-1])
-        y_hard.scatter_(1, ind.view(-1, 1), 1)
-        y_hard = y_hard.view(*shape)
-        # Set gradients w.r.t. y_hard gradients w.r.t. y
-        y_hard = (y_hard - y).detach() + y
-        return y_hard
-
-    def forward(self, x, temperature=1.0, hard=False):
-        logits = self.logits(x).view(-1, self.c_dim)
-        prob = torch.nn.functional.softmax(logits, dim=-1)
-        y = self.gumbel_softmax(logits, temperature, hard)
-        return logits, prob, y
-
-
 class Spectrogram_networks_manner(torch.nn.Module):
     def __init__(self, x_dim, hidden_dims, cnn=False):
         super().__init__()
@@ -1188,25 +1163,14 @@ class Spectrogram_networks_manner(torch.nn.Module):
             raise NotImplementedError
 
 
-class Flatten(torch.nn.Module):
-    def forward(self, x):
-        # x_hat is shaped as (B, C, H, W), lets conver it to (B, W, C, H)
-        x = x.permute(0, 3, 1, 2)
-
-        # Flatten the two first dimensions so now is (B*W, C, H)
-        x = x.reshape(x.shape[0] * x.shape[1], x.shape[2], x.shape[3])
-
-        # Flatten now the last two dimension so is (B*W, C*H)
-        x = x.reshape(x.shape[0], x.shape[1] * x.shape[2])
-
-        return x
-
-
 class ClassifierFlatten(torch.nn.Module):
     def forward(self, x):
         x = x.reshape(x.shape[0], -1)
 
         return x
+
+
+# ========================================= START of utils for SpeechTherapist =========================================
 
 
 class UnFlatten(torch.nn.Module):
@@ -1221,3 +1185,67 @@ class UnFlatten(torch.nn.Module):
         x = x.permute(0, 2, 3, 1)
 
         return x
+
+
+class Flatten(torch.nn.Module):
+    def forward(self, x):
+        # x_hat is shaped as (B, C, H, W), lets conver it to (B, W, C, H)
+        x = x.permute(0, 3, 1, 2)
+
+        # Flatten the two first dimensions so now is (B*W, C, H)
+        x = x.reshape(x.shape[0] * x.shape[1], x.shape[2], x.shape[3])
+
+        # Flatten now the last two dimension so is (B*W, C*H)
+        x = x.reshape(x.shape[0], x.shape[1] * x.shape[2])
+
+        return x
+
+
+# Borrowed from https://github.com/jariasf/GMVAE/blob/master/pytorch/networks/Layers.py
+class GumbelSoftmax(torch.nn.Module):
+    def __init__(self, f_dim, c_dim, device=None):
+        super(GumbelSoftmax, self).__init__()
+        self.logits = torch.nn.Linear(f_dim, c_dim)
+        self.f_dim = f_dim
+        self.c_dim = c_dim
+        self.device = device
+
+    def sample_gumbel(self, shape, is_cuda=False, eps=1e-20):
+        U = torch.rand(shape)
+        if is_cuda:
+            U = U.to(self.device)
+        return -torch.log(-torch.log(U + eps) + eps)
+
+    def gumbel_softmax_sample(self, logits, temperature):
+        y = logits + self.sample_gumbel(logits.size(), logits.is_cuda)
+        return torch.nn.functional.softmax(y / temperature, dim=-1)
+
+    def gumbel_softmax(self, logits, temperature, hard=False):
+        """
+        ST-gumple-softmax
+        input: [*, n_class]
+        return: flatten --> [*, n_class] an one-hot vector
+        """
+        # categorical_dim = 10
+        y = self.gumbel_softmax_sample(logits, temperature)
+
+        if not hard:
+            return y
+
+        shape = y.size()
+        _, ind = y.max(dim=-1)
+        y_hard = torch.zeros_like(y).view(-1, shape[-1])
+        y_hard.scatter_(1, ind.view(-1, 1), 1)
+        y_hard = y_hard.view(*shape)
+        # Set gradients w.r.t. y_hard gradients w.r.t. y
+        y_hard = (y_hard - y).detach() + y
+        return y_hard
+
+    def forward(self, x, temperature=1.0, hard=False):
+        logits = self.logits(x).view(-1, self.c_dim)
+        prob = torch.nn.functional.softmax(logits, dim=-1)
+        y = self.gumbel_softmax(logits, temperature, hard)
+        return logits, prob, y
+
+
+# ========================================= END of util for SpeechTherapist =========================================

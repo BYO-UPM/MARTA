@@ -45,6 +45,16 @@ def log_normal(x, mu, var):
     )
 
 
+def KL_cat(qy, qy_logits, k):
+    # KL Divergence between an arbitrary categorical (q(y)) and a prior uniform distribution (U(0,1))
+    #  loss = (1/n) * Σ(qx * log(qx/px)), because we use a uniform prior px = 1/k
+    #  loss = (1/n) * Σ(qx * (log(qx) - log(1/k)))
+    log_q = torch.log_softmax(qy_logits, dim=-1)
+    log_p = torch.log(1 / torch.tensor(k))
+    cat_loss = torch.sum(qy * (log_q - log_p), dim=-1)
+    cat_loss = torch.sum(cat_loss)
+
+
 def plot_logopeda_alb_neuro(
     model,
     data_train,
