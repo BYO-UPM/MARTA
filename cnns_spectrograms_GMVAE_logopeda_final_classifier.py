@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 fold = 1  # Not used, just for compatibility with the other scripts #### this should be improved xD
@@ -26,6 +26,8 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model_classifier"
+            + "cnn_classifier_"
+            + str(hyperparams["cnn_classifier"])
         )
 
     else:
@@ -33,6 +35,8 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_only_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model_classifier"
+            + "cnn_classifier_"
+            + str(hyperparams["cnn_classifier"])
         )
 
     # Create the path if does not exist
@@ -52,7 +56,11 @@ def main(args, hyperparams):
 
     if hyperparams["wandb_flag"]:
         gname = (
-            "SPECTROGRAMS_GMVAE_" + hyperparams["material"] + "_final_model_classifier"
+            "SPECTROGRAMS_GMVAE_"
+            + hyperparams["material"]
+            + "_final_model_classifier"
+            + "cnn_classifier_"
+            + str(hyperparams["cnn_classifier"])
         )
         wandb.finish()
         wandb.init(
@@ -87,6 +95,7 @@ def main(args, hyperparams):
         weights=hyperparams["weights"],
         cnn=hyperparams["spectrogram"],
         device=device,
+        cnn_classifier=hyperparams["cnn_classifier"],
     )
 
     model = torch.compile(model)
@@ -128,7 +137,7 @@ def main(args, hyperparams):
         testloader=test_loader,
         test_data=test_data,
         audio_features=audio_features,
-        supervised=False,  # Not implemented yet
+        supervised=hyperparams["supervised"],  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
         path_to_plot=hyperparams["path_to_save"],
     )
@@ -165,6 +174,7 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         "supervised": True,
+        "cnn_classifier": False,  # if true, cnn classifier, if false mlp classifier
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,

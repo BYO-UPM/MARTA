@@ -1115,13 +1115,16 @@ def GMVAE_trainer(
 
     true_label_list = []
     pred_label_list = []
+    qy_list = []
 
     if supervised:
         # Freeze all the network
         for param in model.parameters():
             param.requires_grad = False
         # Unfreeze the classifier
-        for param in model.clf.parameters():
+        for param in model.clf_cnn.parameters():
+            param.requires_grad = True
+        for param in model.clf_mlp.parameters():
             param.requires_grad = True
 
     for e in range(epochs):
@@ -1150,6 +1153,7 @@ def GMVAE_trainer(
                 metric_loss_b,
                 x,
                 x_hat,
+                qy,
                 y_pred,
             ) = model.loss(data, labels, manner, e)
 
@@ -1166,8 +1170,9 @@ def GMVAE_trainer(
             metric_loss += metric_loss_b.item()
             usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-            true_label_list.append(manner.view(-1))
-            pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
+            true_label_list.append(labels)
+            pred_label_list.append(torch.round(y_pred.cpu().detach()))
+            qy_list.append(torch.argmax(qy.cpu().detach(), dim=1))
 
         # Scheduler step
         scheduler.step()
@@ -1178,12 +1183,24 @@ def GMVAE_trainer(
         # Check unsupervised cluster accuracy and NMI
         true_label = torch.tensor(np.concatenate(true_label_list))
         pred_label = torch.tensor(np.concatenate(pred_label_list))
+        qy = torch.tensor(np.concatenate(qy_list))
+        if model.supervised:
+            acc = accuracy_score(true_label, pred_label)
+            nmi_score = nmi(pred_label, true_label)
+        else:
+            # idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
+            # true_label = true_label[~idx6_7]
+            # qy = qy[~idx6_7]
+            # acc = cluster_acc(qy, true_label)
+            # nmi_score = nmi(qy, true_label)
+            acc = 0
+            nmi_score = 0
+
         # Remove affricates and silences from the acc and nmi calculations (label==6 and label==7)
-        idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
-        true_label = true_label[~idx6_7]
-        pred_label = pred_label[~idx6_7]
-        acc = cluster_acc(pred_label, true_label)
-        nmi_score = nmi(pred_label, true_label)
+        # idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
+        # true_label = true_label[~idx6_7]
+        # pred_label = pred_label[~idx6_7]
+        # acc = cluster_acc(pred_label, true_label)
 
         print(
             "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Clf Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
@@ -1209,7 +1226,7 @@ def GMVAE_trainer(
                     "train/Clf Loss": clf_loss / len(trainloader.dataset),
                     "train/Categorical usage": usage / len(trainloader.dataset),
                     "train/Metric Loss": metric_loss / len(trainloader.dataset),
-                    "train/UAcc": acc,
+                    "train/Acc": acc,
                     "train/NMI": nmi_score,
                 }
             )
@@ -1241,6 +1258,7 @@ def GMVAE_trainer(
                         metric_loss_v,
                         x,
                         x_hat,
+                        qy,
                         y_pred,
                     ) = model.loss(data, labels, manner, e)
 
@@ -1254,8 +1272,8 @@ def GMVAE_trainer(
                     val_metric_loss += metric_loss_v.item()
                     val_usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
 
-                    true_label_list.append(manner.view(-1))
-                    pred_label_list.append(torch.argmax(y_pred.cpu().detach(), dim=1))
+                    true_label_list.append(labels)
+                    pred_label_list.append(torch.round(y_pred.cpu().detach()))
 
                 # Check reconstruction of X
                 check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
@@ -1263,12 +1281,17 @@ def GMVAE_trainer(
                 # Check unsupervised cluster accuracy and NMI
                 true_label = torch.tensor(np.concatenate(true_label_list))
                 pred_label = torch.tensor(np.concatenate(pred_label_list))
-                # Remove affricates and silences from the acc and nmi calculations (label==6 and label==7)
-                idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
-                true_label = true_label[~idx6_7]
-                pred_label = pred_label[~idx6_7]
-                acc = cluster_acc(pred_label, true_label)
-                nmi_score = nmi(pred_label, true_label)
+                if model.supervised:
+                    acc = accuracy_score(true_label, pred_label)
+                    nmi_score = nmi(pred_label, true_label)
+                else:
+                    # idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
+                    # true_label = true_label[~idx6_7]
+                    # qy = qy[~idx6_7]
+                    # acc = cluster_acc(qy, true_label)
+                    # nmi_score = nmi(qy, true_label)
+                    acc = 0
+                    nmi_score = 0
 
             print(
                 "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Clf Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
@@ -1295,7 +1318,7 @@ def GMVAE_trainer(
                         "valid/Cat Loss": val_cat_loss / len(validloader.dataset),
                         "valid/Clf Loss": val_clf_loss / len(validloader.dataset),
                         "valid/Metric Loss": val_metric_loss / len(validloader.dataset),
-                        "valid/UAcc": acc,
+                        "valid/Acc": acc,
                         "valid/NMI": nmi_score,
                         "valid/Categorical usage": usage / len(trainloader.dataset),
                     }
@@ -1678,8 +1701,7 @@ def GMVAE_tester(
                 # Move data to device
                 x = x.to(model.device).to(torch.float32)
                 if supervised:
-                    y = y.to(model.device).to(torch.float32)
-                    m = m.to(model.device).to(torch.float32)
+                    m = m.to(model.device)
 
                 (
                     x_hat,
@@ -1708,12 +1730,16 @@ def GMVAE_tester(
                     y_hat_array = np.concatenate(
                         (y_hat_array, y_pred.cpu().detach().numpy())
                     )
+                    y_array = np.concatenate(
+                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
+                    )
 
                 # Concatenate predictions
                 x_hat_array = np.concatenate(
                     (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
                 )
                 x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
+
             print("Removing unused elements")
             # Remove all from GPU to release memory
             del (
@@ -1766,6 +1792,8 @@ def GMVAE_tester(
         if supervised:
             print("Results for all frames:")
             y_bin = np.round(y_hat_array)
+            # Print value counts of y_bin
+            print("Value counts of y_bin: ", np.unique(y_bin, return_counts=True))
             accuracy = accuracy_score(y_array, y_bin)
             balanced_accuracy = balanced_accuracy_score(y_array, y_bin)
             auc = roc_auc_score(y_array, y_hat_array)

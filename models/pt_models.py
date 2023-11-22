@@ -853,6 +853,7 @@ class GMVAE(torch.nn.Module):
         weights=[1, 3, 10, 10, 10],
         cnn=True,
         device=None,
+        cnn_classifier=False,
     ):
         super().__init__()
         self.device = device
@@ -866,6 +867,7 @@ class GMVAE(torch.nn.Module):
         self.supervised = supervised
         self.hidden_dims = hidden_dims
         self.cnn = cnn
+        self.cnn_classifier = cnn_classifier
         self.manner = n_manner
         self.usage = np.zeros(self.k)
 
@@ -882,7 +884,7 @@ class GMVAE(torch.nn.Module):
 
         # Classifier: initialize it always but only use it if supervised
         self.class_dims = class_dims
-        self.classifier(cnn=cnn)
+        self.classifier()
 
         self.w1, self.w2, self.w3, self.w4, self.w5 = weights
 
@@ -905,44 +907,47 @@ class GMVAE(torch.nn.Module):
         print("Device used for training: ", self.device)
         self.to(self.device)
 
-    def classifier(self, cnn=False):
-        self.hmc = torch.nn.Embedding(self.manner, self.z_dim, _freeze=True)
+    def classifier(self):
+        self.hmc = torch.nn.Embedding(self.manner, self.z_dim)
 
-        if cnn:
-            self.clf = torch.nn.Sequential(
-                # 2DConv with kernel_size = (32, 3), stride=2, padding=1
-                torch.nn.Conv2d(
-                    1,
-                    self.class_dims[0],
-                    kernel_size=[32, 3],
-                    stride=[1, 2],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.class_dims[0]),
-                torch.nn.Conv2d(
-                    self.class_dims[0],
-                    self.class_dims[1],
-                    kernel_size=[1, 3],
-                    stride=[1, 2],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.class_dims[1]),
-                # Flatten
-                ClassifierFlatten(),
-                # Linear
-                torch.nn.Linear(32 * 7, self.class_dims[2]),
-                torch.nn.ReLU(),
-                torch.nn.Linear(self.class_dims[2], 1),
-                torch.nn.Sigmoid(),
-            )
+        self.clf_cnn = torch.nn.Sequential(
+            # 2DConv with kernel_size = (32, 3), stride=2, padding=1
+            torch.nn.Conv2d(
+                1,
+                self.class_dims[0],
+                kernel_size=[3, 32],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.class_dims[0]),
+            torch.nn.Conv2d(
+                self.class_dims[0],
+                self.class_dims[1],
+                kernel_size=[3, 1],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.class_dims[1]),
+            # Flatten
+            ClassifierFlatten(),
+            # Linear
+            torch.nn.Linear(32 * 7, self.class_dims[2]),
+            torch.nn.ReLU(),
+            # Dropout
+            torch.nn.Dropout(p=0.5),
+            torch.nn.Linear(self.class_dims[2], 1),
+            torch.nn.Sigmoid(),
+        )
 
-        else:
-            self.clf = torch.nn.Sequential(
-                torch.nn.Linear(self.z_dim * self.x_hat_shape_before_flat[-1], 256),
-                torch.nn.ReLU(),
-                torch.nn.Linear(256, 1),
-                torch.nn.Sigmoid(),
-            )
+        self.clf_mlp = torch.nn.Sequential(
+            torch.nn.Linear(self.z_dim, 256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 32),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=0.5),
+            torch.nn.Linear(32, 1),
+            torch.nn.Sigmoid(),
+        )
 
     def inference_networks(self, cnn=False):
         # ===== Inference =====
@@ -1048,19 +1053,27 @@ class GMVAE(torch.nn.Module):
 
     def classifier_forward(self, z, manner, labels):
         manner = manner.to(self.device)
+        hmc = self.hmc_cnn(manner)
+        window_size = copy(hmc.shape[1])
         # Calculate torch embedding. Transform manner (shape: (batch, window)) to (batch, window, z_dim)
-        hmc = self.hmc(manner)
+        if not self.cnn_classifier:
+            # For MLP, swap window and z_dim: now is (batch, z_dim, window)
+            hmc = hmc.permute(0, 2, 1)
+            # Now flatten: now is (batch, z_dim*window)
+            hmc = hmc.reshape(hmc.shape[0], -1)
 
-        # Reorder hmc to be (batch, z_dim, window)
-        hmc = hmc.permute(0, 2, 1)
-
-        # Check Z shape, if it is of shape (batch*window, z_dim) reshape it to (batch, z_dim, window)
-        if z.shape[0] != hmc.shape[0]:
-            z = z.reshape(-1, self.z_dim, 1)
+        # Now z is (batch*window, z_dim), reshape to: (batch, window, z_dim)
+        z = z.reshape(hmc.shape[0], window_size, self.z_dim)
 
         # \tilde{z} = z + h(mc)
-        z = z.reshape(hmc.shape[0], self.z_dim, hmc.shape[-1])
-        z_hat = (z + hmc).unsqueeze(1)
+        if self.cnn_classifier:
+            # Directly sum them and add a dimension for the channel. From (batch, window, z_dim) to (batch, 1, window, z_dim)
+            z_hat = (z + hmc).unsqueeze(1)
+        else:
+            # For MLP, flatten both z and hmc from (batch, window, z_dim) to (batch, window*z_dim)
+            z = z.reshape(z.shape[0], -1)
+            hmc = hmc.reshape(hmc.shape[0], -1)
+            z_hat = z + hmc
 
         # Oversample z_hat and labels to have the same number of samples in each class
         # Oversample z_hat and labels to have the same number of samples in each class
@@ -1079,7 +1092,10 @@ class GMVAE(torch.nn.Module):
         labels = labels[idx_sampled]
         z_hat = z_hat[idx_sampled]
 
-        y_pred = self.clf(z_hat)
+        if self.cnn_classifier:
+            y_pred = self.clf_cnn(z_hat)
+        else:
+            y_pred = self.clf_mlp(z_hat)
 
         return y_pred, labels
 
@@ -1176,6 +1192,9 @@ class GMVAE(torch.nn.Module):
             # Reshape labels tensor and make it float
             labels = labels.view(-1, 1).float().to(self.device)
             clf_loss = self.cross_entropy_loss(y_pred, labels)
+        else:
+            y_pred = qy
+            clf_loss = 0
 
         # Metric embedding loss: lifted structured loss
 
@@ -1205,6 +1224,7 @@ class GMVAE(torch.nn.Module):
             x,
             x_rec,
             qy,
+            y_pred,
         )
 
 

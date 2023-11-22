@@ -17,7 +17,7 @@ import os
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
-fold = 0  # Not used, just for compatibility with the other scripts #### this should be improved xD
+fold = 3  # Not used, just for compatibility with the other scripts #### this should be improved xD
 
 
 def main(args, hyperparams):
@@ -85,6 +85,7 @@ def main(args, hyperparams):
         supervised=hyperparams["supervised"],
         weights=hyperparams["weights"],
         cnn=hyperparams["spectrogram"],
+        cnn_classifier=hyperparams["cnn_classifier"],
         device=device,
     )
 
@@ -178,7 +179,7 @@ if __name__ == "__main__":
         "epochs": 1000,
         "batch_size": 128,
         "lr": 1e-3,
-        "latent_dim": 32,
+        "latent_dim": 2,
         "hidden_dims_enc": [64, 1024, 64],
         "weights": [
             1,  # w1 is rec loss,
@@ -188,6 +189,7 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         "supervised": False,
+        "cnn_classifier": True,
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,
