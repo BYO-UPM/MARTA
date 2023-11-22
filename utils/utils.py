@@ -39,6 +39,12 @@ def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):
     return train_idx, test_idx
 
 
+def log_normal(x, mu, var):
+    return -0.5 * torch.sum(
+        np.log(2.0 * np.pi) + torch.log(var) + torch.pow(x - mu, 2) / var, dim=-1
+    )
+
+
 def plot_logopeda_alb_neuro(
     model,
     data_train,

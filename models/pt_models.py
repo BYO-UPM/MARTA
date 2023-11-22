@@ -3,6 +3,7 @@ import timm
 import numpy as np
 import copy
 import time
+from utils import log_normal
 from pytorch_metric_learning import miners, losses, reducers, samplers
 
 
@@ -316,350 +317,6 @@ def finetuning_model(embedding_input, freeze=True):
     return final_model(embedding_input, freeze=freeze)
 
 
-class VAE_images(torch.nn.Module):
-    def __init__(
-        self,
-        embedding_input,
-        latent_dim=2,
-        hidden_dims_enc=[20, 10],
-        hidden_dims_dec=[20],
-        supervised=False,
-        n_classes=5,
-    ):
-        super(VAE, self).__init__()
-        self.embedding_input = embedding_input[0]
-        self.latent_dim = copy.deepcopy(latent_dim)
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.n_classes = n_classes
-
-        encoder_layers = []
-        for i in range(len(hidden_dims_enc)):
-            # CNN layers
-            encoder_layers.append(
-                torch.nn.Conv2d(embedding_input, hidden_dims_enc[i], 3)
-            )
-            encoder_layers.append(torch.nn.ReLU())
-            encoder_layers.append(torch.nn.MaxPool2d(2))
-            embedding_input = hidden_dims_enc[i]
-        encoder_layers.append(torch.nn.Flatten())
-
-        self.enc = torch.nn.Sequential(*encoder_layers)
-        self.output_shape = self.enc(torch.zeros(1, *embedding_input)).shape
-
-        self.fc_mu = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
-        self.fc_logvar = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
-
-        decoder_layers = []
-        for i in range(len(hidden_dims_dec)):
-            # CNN layers
-            if i == 0:
-                decoder_layers.append(
-                    torch.nn.Linear(self.latent_dim, hidden_dims_dec[i])
-                )
-            decoder_layers.append(
-                torch.nn.ConvTranspose2d(hidden_dims_dec[i], hidden_dims_dec[i], 3)
-            )
-            decoder_layers.append(torch.nn.ReLU())
-            decoder_layers.append(torch.nn.Upsample(scale_factor=2))
-            latent_dim = hidden_dims_dec[i]
-        self.dec = torch.nn.Sequential(
-            *decoder_layers,
-            torch.nn.ConvTranspose2d(hidden_dims_dec[-1], self.embedding_input),
-            torch.nn.Upsample(scale_factor=2),
-            torch.nn.Sigmoid(),
-        )
-        self.supervised = supervised
-        if self.supervised:
-            if self.n_classes == 2:
-                self.dec_sup = torch.nn.Sequential(
-                    torch.nn.Linear(self.latent_dim, 5),
-                    torch.nn.ReLU(),
-                    torch.nn.Linear(5, 1),
-                    torch.nn.Sigmoid(),
-                )
-            else:
-                self.dec_sup = torch.nn.Sequential(
-                    torch.nn.Linear(self.latent_dim, 5),
-                    torch.nn.ReLU(),
-                    torch.nn.Linear(5, n_classes),
-                )
-
-        self.to(self.device)
-
-    def encoder(self, x):
-        h = self.enc(x)
-        mu = self.fc_mu(h)
-        logvar = self.fc_logvar(h) + 1e-6  # logvar > 0
-        return mu, logvar
-
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return eps.mul(std).add_(mu)
-
-    def decoder(self, z):
-        return self.dec(z)
-
-    def decoder_supervised(self, z, mu):
-        x_hat = self.dec(z)
-        y_hat = self.dec_sup(
-            z
-        )  # Works better with z than with mu, TODO: develop this by formula
-        return x_hat, y_hat
-
-    def forward(self, x):
-        mu, logvar = self.encoder(x)
-        z = self.reparameterize(mu, logvar)
-        if self.supervised:
-            x_hat, y_hat = self.decoder_supervised(z, mu)
-            return x_hat, y_hat, mu, logvar
-        else:
-            x_hat = self.decoder(z)
-            return x_hat, mu, logvar
-
-
-class VAE(torch.nn.Module):
-    def __init__(
-        self,
-        embedding_input,
-        latent_dim=2,
-        hidden_dims_enc=[20, 10],
-        hidden_dims_dec=[20],
-        supervised=False,
-        n_classes=5,
-    ):
-        super(VAE, self).__init__()
-        self.embedding_input = embedding_input
-        self.latent_dim = copy.deepcopy(latent_dim)
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.n_classes = n_classes
-
-        encoder_layers = []
-        for i in range(len(hidden_dims_enc)):
-            encoder_layers.append(torch.nn.Linear(embedding_input, hidden_dims_enc[i]))
-            encoder_layers.append(torch.nn.ReLU())
-            embedding_input = hidden_dims_enc[i]
-
-        self.enc = torch.nn.Sequential(*encoder_layers)
-
-        self.fc_mu = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
-        self.fc_logvar = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
-
-        decoder_layers = []
-        for i in range(len(hidden_dims_dec)):
-            decoder_layers.append(torch.nn.Linear(latent_dim, hidden_dims_dec[i]))
-            decoder_layers.append(torch.nn.ReLU())
-            latent_dim = hidden_dims_dec[i]
-        self.dec = torch.nn.Sequential(
-            *decoder_layers,
-            torch.nn.Linear(hidden_dims_dec[-1], self.embedding_input),
-        )
-        self.supervised = supervised
-        if self.supervised:
-            if self.n_classes == 2:
-                self.dec_sup = torch.nn.Sequential(
-                    torch.nn.Linear(self.latent_dim, 5),
-                    torch.nn.ReLU(),
-                    torch.nn.Linear(5, 1),
-                    torch.nn.Sigmoid(),
-                )
-            else:
-                self.dec_sup = torch.nn.Sequential(
-                    torch.nn.Linear(self.latent_dim, 5),
-                    torch.nn.ReLU(),
-                    torch.nn.Linear(5, n_classes),
-                )
-
-        self.to(self.device)
-
-    def encoder(self, x):
-        h = self.enc(x)
-        mu = self.fc_mu(h)
-        logvar = self.fc_logvar(h) + 1e-6  # logvar > 0
-        return mu, logvar
-
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return eps.mul(std).add_(mu)
-
-    def decoder(self, z):
-        return self.dec(z)
-
-    def decoder_supervised(self, z, mu):
-        x_hat = self.dec(z)
-        y_hat = self.dec_sup(
-            z
-        )  # Works better with z than with mu, TODO: develop this by formula
-        return x_hat, y_hat
-
-    def forward(self, x):
-        mu, logvar = self.encoder(x)
-        z = self.reparameterize(mu, logvar)
-        if self.supervised:
-            x_hat, y_hat = self.decoder_supervised(z, mu)
-            return x_hat, y_hat, mu, logvar
-        else:
-            x_hat = self.decoder(z)
-            return x_hat, mu, logvar
-
-
-class VectorQuantizer(torch.nn.Module):
-    def __init__(
-        self,
-        num_embeddings: int,
-        embedding_dim: int,
-        commitment_cost: float,
-        usage_threshold: float,
-    ):
-        super(VectorQuantizer, self).__init__()
-        self.K = num_embeddings
-        self.D = embedding_dim
-        self.commitment_cost = commitment_cost
-        self.usage_threshold = usage_threshold
-
-        self.embedding = torch.nn.Embedding(self.K, self.D)
-        self.embedding.weight.data.uniform_(-1 / self.K, 1 / self.K)
-
-        self.register_buffer("cluster_size", torch.zeros(self.K))
-        self.register_buffer("embed_avg", torch.zeros(self.K, self.D))
-        self.register_buffer("usage", torch.ones(self.K), persistent=False)
-
-    def random_restart(self):
-        # Get dead embeddings
-        dead_embeddings = torch.where(self.embed_usage < self.usage_threshold)[0]
-        # Reset dead embeddings
-        rand_codes = torch.randperm(self.K)[: len(dead_embeddings)]
-        with torch.no_grad():
-            self.embedding.weight[dead_embeddings] = self.embedding.weight[rand_codes]
-            self.embed_usage[dead_embeddings] = self.embed_usage[rand_codes]
-            self.cluster_size[dead_embeddings] = self.cluster_size[rand_codes]
-            self.embed_avg[dead_embeddings] = self.embed_avg[rand_codes]
-
-    def reset_usage(self):
-        self.embed_usage = torch.zeros(self.K)
-        self.usage.zero_()  #  reset usage between epochs
-
-    def update_usage(self, min_enc):
-        self.usage[min_enc] = self.usage[min_enc] + 1  # if code is used add 1 to usage
-
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
-        latents_shape = z.shape
-        # Flatten batch inputs
-        flat_latents = z.view(-1, self.D)
-
-        # Calclate L2 distance between latents and embedding weights
-        dist = torch.cdist(flat_latents, self.embedding.weight)
-
-        # Get the index of the closest embedding
-        enc_idx = torch.argmin(dist, dim=1)
-
-        # Convert to one-hot encodings
-        encoding_ohe = torch.nn.functional.one_hot(enc_idx, self.K).type_as(
-            flat_latents
-        )
-
-        # Quantize the latents
-        z_q = torch.matmul(encoding_ohe, self.embedding.weight).view(latents_shape)
-
-        # Update usage
-        self.update_usage(enc_idx)
-
-        # Compute VQ loss
-        e_loss = torch.nn.functional.mse_loss(z_q.detach(), z, reduction="sum")
-        q_loss = torch.nn.functional.mse_loss(z_q, z.detach(), reduction="sum")
-
-        # Loss
-        vq_loss = q_loss + self.commitment_cost * e_loss
-
-        # Straight-through estimator
-        z_q = z + (z_q - z).detach()
-
-        # Calculate avg
-        avg_probs = torch.mean(encoding_ohe, dim=0)
-        perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
-
-        return z_q, vq_loss, enc_idx
-
-
-class VQVAE(torch.nn.Module):
-    def __init__(
-        self,
-        input_dim,
-        latent_dim,
-        K=128,
-        hidden_dims_enc=[20, 10],
-        hidden_dims_dec=[20],
-        commitment_cost=0.25,
-        supervised=False,
-    ):
-        super().__init__()
-        self.latent_dim = copy.deepcopy(latent_dim)
-        self.K = copy.deepcopy(K)
-        self.input_dim = copy.deepcopy(input_dim)
-        self.commitment_cost = commitment_cost
-        self.supervised = supervised
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.usage = torch.ones(self.K).to(self.device)
-
-        encoder_layers = []
-        for i in range(len(hidden_dims_enc)):
-            encoder_layers.append(torch.nn.Linear(input_dim, hidden_dims_enc[i]))
-            encoder_layers.append(torch.nn.ReLU())
-            input_dim = hidden_dims_enc[i]
-
-        self.enc = torch.nn.Sequential(*encoder_layers)
-        self.fc_mu = torch.nn.Linear(hidden_dims_enc[-1], self.latent_dim)
-
-        self.vq = VectorQuantizer(
-            self.K, self.latent_dim, self.commitment_cost, usage_threshold=1e-3
-        )
-
-        latent_dim = self.latent_dim
-        decoder_layers = []
-        for i in range(len(hidden_dims_dec)):
-            decoder_layers.append(torch.nn.Linear(latent_dim, hidden_dims_dec[i]))
-            decoder_layers.append(torch.nn.ReLU())
-            latent_dim = hidden_dims_dec[i]
-        self.dec = torch.nn.Sequential(
-            *decoder_layers,
-            torch.nn.Linear(hidden_dims_dec[-1], self.input_dim),
-        )
-
-        if self.supervised:
-            self.clf = torch.nn.Sequential(
-                torch.nn.Linear(self.latent_dim, 5),
-                torch.nn.ReLU(),
-                torch.nn.Linear(5, 1),
-                torch.nn.Sigmoid(),
-            )
-
-        self.to(self.device)
-
-    def encoder(self, x: torch.Tensor) -> torch.Tensor:
-        z = self.enc(x)
-        mu = self.fc_mu(z)
-        return mu
-
-    def reset_usage(self):
-        self.vq.reset_usage()
-
-    def decoder(self, z_q: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
-        x = self.dec(z_q)  # Decode with quantized latents
-        if self.supervised:
-            y = self.clf(z)  # Predict class from quantized latents
-        else:
-            y = None
-        return x, y
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z = self.encoder(x)
-        z_q, vq_loss, enc_idx = self.vq(z)
-        x_hat, y_hat = self.decoder(z_q, z)
-        self.usage = self.vq.usage
-        return x_hat, y_hat, vq_loss, z, z_q, enc_idx
-
-
 class Spectrogram_networks_vowels(torch.nn.Module):
     def __init__(self, x_dim, hidden_dims, cnn=False):
         super().__init__()
@@ -715,128 +372,295 @@ class Spectrogram_networks_vowels(torch.nn.Module):
             raise NotImplementedError
 
 
-class Spectrogram_networks_manner(torch.nn.Module):
-    def __init__(self, x_dim, hidden_dims, cnn=False):
-        super().__init__()
+# ======================================= Speech Therapist =======================================
 
+
+class SpeechTherapist(torch.nn.Module):
+    """SpeechTherapist class. The purpose is to train with healthy patients to learn the latent space representation of each phoneme clusterized by manner class. Then, when we test with parkinsonian patients, we will use the latent space representation
+    to measure the distance between the latent space representation of each phoneme and the clusters learned by the SpeechTherapist. If the distance is too high, then the patient is parkinsonian. If the distance is low, then the patient is healthy. We are learning how the pronunciation of each manner class
+    differ between healthy and parkinsonian patients.
+    This class will be wrapper composed by three main components:
+    1. SpecEncoder: this network will encode the spectrograms of N, 1, 65, 33 into a feature representation of N*33, Channels*Height.
+    2- GMVAE: a Gaussian Mixture VAE. Its input will be a flatten version of the output of the SpecEncoder, i.e., N*33, (to determine). So, it will provide a latent space representation of each window of the spectrogram.
+        2.1 This GMVAE will use metric learning to learn the latent space representation of each window of the spectrogram to match clusters with the manner class of each phoneme. Each window represents a phoneme, therefore, each window will be assigned to a manner class and the GMVAE
+        will be trained to match the clusters of the latent space with the manner class of each phoneme.
+        2.2 The GMVAE will reconstruct the N*33, (to determine) input, i.e., the flatten version of the output of the SpecEncoder.
+    3. AudioDecoder: this network will decode the output of the GMVAE, i.e., N*33, (to determine), into a spectrogram of N, 1, 65, 33.
+
+    The loss terms will be:
+    1. Reconstruction term of the GMVAE: MSE between both spectrograms, input and output of SpecEncoder and AudioDecoder, respectively.
+    2. GaussianLoss of the GMVAE: KL divergence between the latent space representation of each window of the spectrogram andthe Gaussian Mixture.
+    3. CategoricalLoss of the GMVAE: KL divergence between the Gaussian components of the latent space representation of each window of the spectrogram and a Uniform of K components determining the number of Gaussian of the Gaussian Mixture.
+    3. Metric learning loss of the GMVAE: the metric learning loss will be the triplet loss. The anchor will be the latent space representation of each window of the spectrogram, the positive will be the latent space representation of the same manner class of the anchor and the negative will be the latent space representation of the other manner classes.
+    """
+
+    def __init__(self, x_dim, hidden_dims_spectrogram, hidden_dims_gmvae):
         self.x_dim = x_dim
-        self.hidden_dims = hidden_dims
-        self.cnn = cnn
+        self.hidden_dims_spectrogram = hidden_dims_spectrogram
+        self.hidden_dims_gmvae = hidden_dims_gmvae
 
-        # ===== Inference =====
-        # Deterministic x_hat = g(x)
-        if cnn:
-            print(self.x_dim)
-            self.inference_gx = torch.nn.Sequential(
-                torch.nn.Conv2d(
-                    self.x_dim,
-                    self.hidden_dims[0],
-                    kernel_size=[3, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[0]),
-                torch.nn.Conv2d(
-                    self.hidden_dims[0],
-                    self.hidden_dims[1],
-                    kernel_size=[3, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[1]),
-                torch.nn.Conv2d(
-                    self.hidden_dims[1],
-                    self.hidden_dims[2],
-                    kernel_size=[3, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[2]),
-            )
-            self.flatten = Flatten()
-            self.x_hat_shape_before_flatten = self.inference_gx(
-                torch.zeros(1, 1, 65, 33)
-            ).shape
-            self.x_hat_shape_after_flatten = self.flatten(
-                self.inference_gx(torch.zeros(1, 1, 65, 33))
-            ).shape
-        else:
-            raise NotImplementedError
+        # ============ Instantiate the networks ============
+        # From Spectrogram (x) to encoded spectrogram (e_s)
+        self.SpecEncoder()
+        # From encoded spectrogram (e_s) to latent space representation (z)
+        self.inference()
+        # From latent space representation (z) to encoded spectrogram (e_s)
+        self.generative()
+        # From encoded spectrogram (e_s) to spectrogram (x)
+        self.SpecDecoder()
 
-        # ===== Generative =====
-        # Deterministic x = f(x_hat)
-        if cnn:
-            self.unflatten = UnFlatten()
-            self.generative_fxhat = torch.nn.Sequential(
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(
-                    self.hidden_dims[0],
-                    self.hidden_dims[1],
-                    kernel_size=[5, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[1]),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(
-                    self.hidden_dims[1],
-                    self.hidden_dims[2],
-                    kernel_size=[5, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[2]),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(
-                    self.hidden_dims[2],
-                    self.x_dim,
-                    stride=[2, 1],
-                    kernel_size=[3, 3],
-                    padding=[5, 1],
-                ),
-            )
-        else:
-            raise NotImplementedError
+        sumreducer = reducers.SumReducer()
+        self.miner = miners.MultiSimilarityMiner(epsilon=0.1)
+        self.metric_loss_func = losses.GeneralizedLiftedStructureLoss(
+            reducer=sumreducer
+        ).to(self.device)
 
+    def SpecEncoder(self):
+        """This network will encode the spectrograms of N, 1, 65, 33 into a feature representation of N*33, Channels*Height."""
+        self.spec_enc = torch.nn.Sequential(
+            torch.nn.Conv2d(
+                self.x_dim,
+                self.hidden_dims_spectrogram[0],
+                kernel_size=[3, 3],
+                padding=[0, 1],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.hidden_dims[0]),
+            torch.nn.Conv2d(
+                self.hidden_dims_spectrogram[0],
+                self.hidden_dims_spectrogram[1],
+                kernel_size=[3, 3],
+                padding=[0, 1],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.hidden_dims_spectrogram[1]),
+            torch.nn.Conv2d(
+                self.hidden_dims_spectrogram[1],
+                self.hidden_dims_spectrogram[2],
+                kernel_size=[3, 3],
+                padding=[0, 1],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.hidden_dims_spectrogram[2]),
+            Flatten(),
+        )
 
-class Flatten(torch.nn.Module):
+        self.x_hat_shape_before_flatten = self.inference_gx(
+            torch.zeros(1, 1, 65, 33)
+        ).shape
+        self.x_hat_shape_after_flatten = self.flatten(
+            self.inference_gx(torch.zeros(1, 1, 65, 33))
+        ).shape
+
+        return self.spec_enc
+
+    def SpecDecoder(self):
+        """This network will decode the output of the GMVAE, i.e., N*33, Channels*Height, into a spectrogram of N, 1, 65, 33."""
+        self.spec_dec = torch.nn.Sequential(
+            UnFlatten(),
+            # ConvTranspose
+            torch.nn.ConvTranspose2d(
+                self.hidden_dims_spectrogram[2],
+                self.hidden_dims_spectrogram[1],
+                kernel_size=[5, 3],
+                padding=[0, 1],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.hidden_dims_spectrogram[1]),
+            # ConvTranspose
+            torch.nn.ConvTranspose2d(
+                self.hidden_dims_spectrogram[1],
+                self.hidden_dims_spectrogram[0],
+                kernel_size=[5, 3],
+                padding=[0, 1],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.hidden_dims_spectrogram[0]),
+            # ConvTranspose
+            torch.nn.ConvTranspose2d(
+                self.hidden_dims_spectrogram[0],
+                self.x_dim,
+                stride=[2, 1],
+                kernel_size=[3, 3],
+                padding=[5, 1],
+            ),
+        )
+        return self.spec_dec
+
+    def inference(self):
+        # p(y | e_s): the probability of each gaussian component givben the encoded spectrogram (e_s)
+        # This networks get the e_s (N*33, Channels*Height), reduces dimensionality to N*33, h_dim, and then applies GumbelSoftmax to N*33, K components.
+        self.py_es = torch.nn.Sequential(
+            torch.nn.Linear(self.x_hat_shape_after_flat[1], self.hidden_dims_gmvae[1]),
+            torch.nn.ReLU(),  # Check if makes sense to have a ReLU here
+            GumbelSoftmax(self.hidden_dims[1], self.k, device=self.device),
+        ).to(self.device)
+
+        # y_hat = h(y): the output of the GumbelSoftmax is the probability of each gaussian component given the encoded spectrogram (e_s).
+        # This network will upsample the K components to match the dimensionality of the encoded spectrogram (e_s), i.e., N*33, Channels*Height.
+        self.hy = torch.nn.Linear(self.k, self.x_hat_shape_after_flat[1]).to(
+            self.device
+        )
+
+        # q(z | e_s, y): the GaussianMixture network will get the encoded spectrogram (e_s) and the GumbelSoftmax output (y) and will output the parameters of the GaussianMixture, i.e., mu and logvar.
+        self.qz_es_y = torch.nn.Sequential(
+            torch.nn.Linear(
+                self.x_hat_shape_after_flat[1], self.z_dim * 2
+            ),  # Check if its enough only with one layer
+        ).to(self.device)
+
+        # p(z | y): the GaussianMixture prior will get the GumbelSoftmax output (y) and will output the parameters of the GaussianMixture, i.e., mu and logvar.
+        self.pz_y = torch.nn.Sequential(
+            torch.nn.Linear(
+                self.k, self.z_dim * 2
+            ),  # Check if its enough only with one layer
+        ).to(self.device)
+
+    def generative(self):
+        # This network will get the latent space representation of each window of the spectrogram (z) and will output the feature representation of
+        # p(e_s | z): the output of the GMVAE will be the reconstruction of the input, i.e., the encoded spectrogram (N*33, Channels*Height).
+        self.pes_z = torch.nn.Sequential(
+            torch.nn.Linear(
+                self.z_dim, self.x_hat_shape_after_flat[1]
+            ),  # Maybe we can use more layers here
+        ).to(self.device)
+
+    def spec_encoder_forward(self, x):
+        """Forward function of the spectrogram encoder network. It receives the spectrogram (x) and outputs the encoded spectrogram (e_s)."""
+        e_s = self.spec_enc(x)
+        return e_s
+
+    def infere_forward(self, e_s):
+        """Forward function of the inference network. It receives the encoded spectrogram (e_s) and outputs the parameters of the GaussianMixture, i.e., mu and logvar."""
+        # p(y | e_s): the probability of each gaussian component givben the encoded spectrogram (e_s). Returns the logits, the softmax probability and the gumbel softmax output, respectively.
+        y_logits, prob, y = self.py_es(e_s)
+
+        # y_hat = h(y): now we upsample the K components to match the dimensionality of the encoded spectrogram (e_s), i.e., N*33, Channels*Height.
+        y_hat = self.hy(y)
+
+        # We combine both the e_s and y_hat to create the input to the q(z | e_s, y) network.
+        es_y = e_s + y_hat
+
+        # q(z | e_s, y): the GaussianMixture network will get the encoded spectrogram (e_s) and the GumbelSoftmax output upsampled (y_hat) and will output the parameters of the GaussianMixture, i.e., mu and logvar.
+        qz_mu, qz_logvar = self.qz_es_y(es_y).chunk(2, dim=1)
+
+        # p(z | y): the GaussianMixture prior will get the GumbelSoftmax output (y) and will output the parameters of the GaussianMixture, i.e., mu and logvar.
+        pz_mu, pz_logvar = self.pz_y(y).chunk(2, dim=1)
+        pz_var = torch.exp(pz_logvar)
+
+        # reparemeterization trick
+        qz_var = torch.exp(qz_logvar)
+        std = torch.exp(0.5 * qz_logvar)
+        eps = torch.randn_like(std)
+        z = eps.mul(std).add_(qz_mu)
+
+        return (z, y_logits, y, qz_mu, qz_var, pz_mu, pz_var)
+
+    def generative_forward(self, z_sample):
+        """Forward function of the generative network. It receives the samples of the latent space (z_sample) and outputs the feature representation of the spectrogram reconstruction (e_hat_s)."""
+        # p(e_hat_s | z): the output of the GMVAE will be the reconstruction of the input, i.e., the encoded spectrogram (N*33, Channels*Height).
+        e_hat_s = self.pes_z(z_sample)
+        return e_hat_s
+
+    def spec_dec_forward(self, e_hat_s):
+        """Forward function of the spectrogram decoder network. It receives the encoded spectrogram reconstruction (e_hat_s) and outputs the spectrogram reconstruction (x_hat)."""
+        x_hat = self.pes_z(e_hat_s)
+        return x_hat
+
     def forward(self, x):
-        # x_hat is shaped as (B, C, H, W), lets conver it to (B, W, C, H)
-        x = x.permute(0, 3, 1, 2)
+        """Forward function of the SpeechTherapist. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""
+        e_s = self.spec_encoder_forward(x)
+        z_sample, y_logits, y, qz_mu, qz_logvar, pz_mu, pz_var = self.inference_forward(
+            e_s
+        )
+        e_hat_s = self.generative_forward(z_sample)
+        x_hat = self.spec_dec_forward(e_hat_s)
+        return (
+            x_hat,
+            pz_mu,
+            pz_var,
+            y_logits,
+            y,
+            qz_mu,
+            qz_logvar,
+            z_sample,
+            e_s,
+            e_hat_s,
+        )
 
-        # Flatten the two first dimensions so now is (B*W, C, H)
-        x = x.reshape(-1, *x.shape[2:])
+    def metric_loss(self, z_mu, manner_classes):
+        """This function computes the metric loss of the GMVAE. It receives the latent space representation of each window of the spectrogram (z_mu) and the manner class of each phoneme (manner_classes).
+        Currently we are ignoring the silences and affricates as they are minor in the datase, but we should find a way to include them in the metric loss.
+        """
 
-        # Flatten now the last two dimension so is (B*W, C*H)
-        x = x.reshape(-1, x.shape[1] * x.shape[2])
+        # Silences and affricates should be not used to compute the metric loss
+        manner_classes = manner_classes.reshape(-1)
+        idx = np.where((manner_classes != 6) & (manner_classes != 7))[
+            0
+        ]  # 6: affricates, 7: silences
+        z_mu = z_mu[idx]
+        manner_classes = manner_classes[idx]
 
-        return x
+        # Oversample labels and x_hat to have the same number of samples
+        unique_labels, count_labels = np.unique(manner_classes, return_counts=True)
+        max_count = np.max(count_labels)
 
+        # Generate indices for oversampling
+        idx_sampled = np.concatenate(
+            [
+                np.random.choice(np.where(manner_classes == label)[0], max_count)
+                for label in unique_labels
+            ]
+        )
 
-class ClassifierFlatten(torch.nn.Module):
-    def forward(self, x):
-        x = x.reshape(x.shape[0], -1)
+        # Apply oversampling
+        manner_classes = manner_classes[idx_sampled]
+        z_mu = z_mu[idx_sampled]
 
-        return x
+        # Miner
+        hard_pairs = self.miner(z_mu, manner_classes)
 
+        # Loss
+        loss = self.metric_loss_func(z_mu, manner_classes, hard_pairs)
 
-class UnFlatten(torch.nn.Module):
-    def forward(self, x):
-        # x_hat is shaped as (B*W, C*H), lets conver it to (B*W, C, H)
-        x = x.reshape(-1, 64, 7)
+        return loss
 
-        # x is now shaped (B*W, C, H), lets conver it to (B, W, C, H)
-        x = x.reshape(-1, 33, 64, 7)
+    def loss(self, x, manner_classes):
+        """This function computes the loss of the SpeechTherapist. It receives the spectrogram (x) and the manner class of each phoneme (manner_classes)."""
+        (
+            x_hat,
+            pz_mu,
+            pz_var,
+            y_logits,
+            y,
+            qz_mu,
+            qz_var,
+            z_sample,
+            e_s,
+            e_hat_s,
+        ) = self.forward(x)
 
-        # x is now shaped (B, W, C, H), lets conver it to (B, C, H, W)
-        x = x.permute(0, 2, 3, 1)
+        # Reconstruction loss
+        recon_loss = self.mse_loss(x_hat, x)
 
-        return x
+        # Gaussian loss
+        gaussian_loss = torch.sum(
+            self.log_normal(z_sample, qz_mu, qz_var)  # q_phi(z|x,y)
+            - self.log_normal(z_sample, pz_mu, pz_var)  # p_theta(z|y)
+        )
+
+        # Categorical loss
+        categorical_loss = self.categorical_loss(y_logits, y)
+
+        # Metric loss
+        metric_loss = self.metric_loss(z_sample, manner_classes)
+
+        return recon_loss, gaussian_loss, categorical_loss, metric_loss
 
 
 class GMVAE(torch.nn.Module):
@@ -1273,3 +1097,127 @@ class GumbelSoftmax(torch.nn.Module):
         prob = torch.nn.functional.softmax(logits, dim=-1)
         y = self.gumbel_softmax(logits, temperature, hard)
         return logits, prob, y
+
+
+class Spectrogram_networks_manner(torch.nn.Module):
+    def __init__(self, x_dim, hidden_dims, cnn=False):
+        super().__init__()
+
+        self.x_dim = x_dim
+        self.hidden_dims = hidden_dims
+        self.cnn = cnn
+
+        # ===== Inference =====
+        # Deterministic x_hat = g(x)
+        if cnn:
+            print(self.x_dim)
+            self.inference_gx = torch.nn.Sequential(
+                torch.nn.Conv2d(
+                    self.x_dim,
+                    self.hidden_dims[0],
+                    kernel_size=[3, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
+                torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[0]),
+                torch.nn.Conv2d(
+                    self.hidden_dims[0],
+                    self.hidden_dims[1],
+                    kernel_size=[3, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
+                torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[1]),
+                torch.nn.Conv2d(
+                    self.hidden_dims[1],
+                    self.hidden_dims[2],
+                    kernel_size=[3, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
+                torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[2]),
+            )
+            self.flatten = Flatten()
+            self.x_hat_shape_before_flatten = self.inference_gx(
+                torch.zeros(1, 1, 65, 33)
+            ).shape
+            self.x_hat_shape_after_flatten = self.flatten(
+                self.inference_gx(torch.zeros(1, 1, 65, 33))
+            ).shape
+        else:
+            raise NotImplementedError
+
+        # ===== Generative =====
+        # Deterministic x = f(x_hat)
+        if cnn:
+            self.unflatten = UnFlatten()
+            self.generative_fxhat = torch.nn.Sequential(
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(
+                    self.hidden_dims[0],
+                    self.hidden_dims[1],
+                    kernel_size=[5, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
+                torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[1]),
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(
+                    self.hidden_dims[1],
+                    self.hidden_dims[2],
+                    kernel_size=[5, 3],
+                    padding=[0, 1],
+                    stride=[2, 1],
+                ),
+                torch.nn.ReLU(),
+                torch.nn.BatchNorm2d(self.hidden_dims[2]),
+                # ConvTranspose
+                torch.nn.ConvTranspose2d(
+                    self.hidden_dims[2],
+                    self.x_dim,
+                    stride=[2, 1],
+                    kernel_size=[3, 3],
+                    padding=[5, 1],
+                ),
+            )
+        else:
+            raise NotImplementedError
+
+
+class Flatten(torch.nn.Module):
+    def forward(self, x):
+        # x_hat is shaped as (B, C, H, W), lets conver it to (B, W, C, H)
+        x = x.permute(0, 3, 1, 2)
+
+        # Flatten the two first dimensions so now is (B*W, C, H)
+        x = x.reshape(x.shape[0] * x.shape[1], x.shape[2], x.shape[3])
+
+        # Flatten now the last two dimension so is (B*W, C*H)
+        x = x.reshape(x.shape[0], x.shape[1] * x.shape[2])
+
+        return x
+
+
+class ClassifierFlatten(torch.nn.Module):
+    def forward(self, x):
+        x = x.reshape(x.shape[0], -1)
+
+        return x
+
+
+class UnFlatten(torch.nn.Module):
+    def forward(self, x):
+        # x_hat is shaped as (B*W, C*H), lets conver it to (B*W, C, H)
+        x = x.reshape(-1, 64, 7)
+
+        # x is now shaped (B*W, C, H), lets conver it to (B, W, C, H)
+        x = x.reshape(-1, 33, 64, 7)
+
+        # x is now shaped (B, W, C, H), lets conver it to (B, C, H, W)
+        x = x.permute(0, 2, 3, 1)
+
+        return x
