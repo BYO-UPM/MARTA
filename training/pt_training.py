@@ -858,247 +858,253 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
     )
 
 
-def VAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb_flag):
-    # Optimizer
-    opt = torch.optim.Adam(model.parameters(), lr)
-    loss = torch.nn.MSELoss(reduction="sum")
-    if supervised:
-        if model.n_classes == 2:
-            loss_class = torch.nn.BCELoss(reduction="sum")
-        else:
-            loss_class = torch.nn.CrossEntropyLoss(reduction="sum")
+def SpeechTherapist_trainer(
+    model, trainloader, validloader, epochs, lr, wandb_flag, path_to_save
+):
+    # ============================= LR scheduler =============================
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    T_max = 50  # Maximum number of iterations or epochs
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=T_max, eta_min=0.0001
+    )
 
-    elbo_training = []
-    kl_div_training = []
-    rec_loss_training = []
-    if supervised:  # if supervised we also have BCE loss
-        bce_loss_training = []
-    elbo_validation = []
-    kl_div_validation = []
-    rec_loss_validation = []
-    if supervised:  # if supervised we also have BCE loss
-        bce_loss_validation = []
+    # ============================= Storage variables =============================
+    valid_loss_store = []
 
-    model.train()
-    print("Training the VAE model")
     for e in range(epochs):
-        train_loss = 0
-        kl_div = 0
-        rec_loss = 0
-        if supervised:
-            bce_loss = 0
         model.train()
+        usage = np.zeros(model.k)
 
-        # beta_sc = get_beta(e)
-        # print("Beta: ", beta_sc)
-        beta_sc = 0.1
-        beta_bce = 50
-        beta_rec = 0.5
+        true_manner_list = []
+        gaussian_component = []
 
-        with tqdm(trainloader, unit="batch") as tepoch:
-            for x, y, z in tepoch:
-                tepoch.set_description(f"Epoch {e}")
-                # Move data to device
-                x = x.to(model.device).to(torch.float32)
-                if model.n_classes == 2:
-                    y = y.to(model.device).to(torch.float32)
-                else:
-                    z = z.type(torch.LongTensor).to(model.device)
+        train_loss, rec_loss, gauss_loss, cat_loss, clf_loss, metric_loss = (
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
 
-                # Gradient to zero
-                opt.zero_grad()
-                # Forward pass
-                if supervised:
-                    x_hat, y_hat, mu, logvar = model(x)
-                else:
-                    x_hat, mu, logvar = model(x)
-                # Compute variational lower bound
-                reconstruction_loss = loss(x_hat, x)
-                kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-                if supervised:
-                    if model.n_classes == 2:
-                        bce = loss_class(y_hat, y.view(-1, 1))
-                    else:
-                        bce = loss_class(y_hat, z)
-                    variational_lower_bound = (
-                        beta_rec * reconstruction_loss
-                        + beta_sc * kl_divergence
-                        + beta_bce * bce
-                    )
-                else:
-                    variational_lower_bound = (
-                        beta_rec * reconstruction_loss + beta_sc * kl_divergence
-                    )
-                # Backward pass
-                variational_lower_bound.backward()
-                # Update parameters
-                opt.step()
+        for batch_idx, (data, labels, manner) in enumerate(tqdm(trainloader)):
+            # Make sure dtype is Tensor float
+            data = data.to(model.device).float()
 
-                # Update losses storing
-                train_loss += variational_lower_bound.item()
-                kl_div += kl_divergence.item()
-                rec_loss += reconstruction_loss.item()
-                if supervised:
-                    bce_loss += bce.item()
+            # ==== Forward pass ====
+            (
+                x,
+                x_hat,
+                pz_mu,
+                pz_var,
+                y_logits,
+                y,
+                qz_mu,
+                qz_var,
+                z_sample,
+                e_s,
+                e_hat_s,
+            ) = model(data)
 
-            # Store losses
-            elbo_training.append(train_loss / len(trainloader))
-            kl_div_training.append(kl_div / len(trainloader))
-            rec_loss_training.append(rec_loss / len(trainloader))
-            if supervised:
-                bce_loss_training.append(bce_loss / len(trainloader))
-
-            # Print Losses at current epoch
-            print(
-                f"Epoch {e}: Train ELBO: {elbo_training[-1]:.2f}, Train KL divergence: {kl_div_training[-1]:.2f}, Train reconstruction loss: {rec_loss_training[-1]:.2f}"
+            # ==== Loss ====
+            (
+                complete_loss,
+                recon_loss,
+                gaussian_loss,
+                categorical_loss,
+                metric_loss,
+            ) = model.loss(
+                data,
+                manner,
+                x_hat,
+                z_sample,
+                qz_mu,
+                qz_var,
+                pz_mu,
+                pz_var,
+                y,
+                y_logits,
             )
-            if supervised:
-                print(f"Train CrossEntropy loss: {bce_loss_training[-1]:.2f}")
+            # ==== Backward pass ====
+            optimizer.zero_grad()
+            complete_loss.backward()
+            optimizer.step()
 
-            # Plot reconstruction
-            check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+            # ==== Update metrics ====
+            train_loss += complete_loss.item()
+            rec_loss += recon_loss.item()
+            gauss_loss += gaussian_loss.item()
+            cat_loss += categorical_loss.item()
+            metric_loss += metric_loss.item()
+            usage += torch.sum(y, dim=0).cpu().detach().numpy()
 
-            # Log to wandb
+            gaussian_component.append(y.cpu().detach().numpy())
+            true_manner_list.append(manner)
+
+        # Scheduler step
+        scheduler.step()
+
+        # Check reconstruction of X
+        check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+
+        # Check unsupervised cluster accuracy and NMI
+        true_manner = torch.tensor(np.concatenate(true_manner_list))
+        gaussian_component = torch.tensor(np.concatenate(gaussian_component))
+        acc = cluster_acc(gaussian_component, true_manner)
+        nmi_score = nmi(gaussian_component, true_manner)
+
+        print(
+            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                e,
+                train_loss / len(trainloader.dataset),
+                rec_loss / len(trainloader.dataset),
+                gauss_loss / len(trainloader.dataset),
+                cat_loss / len(trainloader.dataset),
+                metric_loss / len(trainloader.dataset),
+                acc,
+                nmi_score,
+            )
+        )
+        if wandb_flag:
+            wandb.log(
+                {
+                    "train/Epoch": e,
+                    "train/Loss": train_loss / len(trainloader.dataset),
+                    "train/Rec Loss": rec_loss / len(trainloader.dataset),
+                    "train/Gaussian Loss": gauss_loss / len(trainloader.dataset),
+                    "train/Categorical usage": usage / len(trainloader.dataset),
+                    "train/Metric Loss": metric_loss / len(trainloader.dataset),
+                    "train/Acc": acc,
+                    "train/NMI": nmi_score,
+                    "train/usage": usage / len(trainloader.dataset),
+                }
+            )
+
+        if validloader is not None:
+            model.eval()
+            with torch.no_grad():
+                usage = np.zeros(model.k)
+                valid_loss, rec_loss, gauss_loss, cat_loss, clf_loss, metric_loss = (
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+                true_manner_list = []
+                gaussian_component = []
+
+                for batch_idx, (data, labels, manner) in enumerate(tqdm(validloader)):
+                    # Make sure dtype is Tensor float
+                    data = data.to(model.device).float()
+
+                    # ==== Forward pass ====
+                    (
+                        x,
+                        x_hat,
+                        pz_mu,
+                        pz_var,
+                        y_logits,
+                        y,
+                        qz_mu,
+                        qz_var,
+                        z_sample,
+                        e_s,
+                        e_hat_s,
+                    ) = model(data)
+
+                    # ==== Loss ====
+                    (
+                        complete_loss,
+                        recon_loss,
+                        gaussian_loss,
+                        categorical_loss,
+                        metric_loss,
+                    ) = model.loss(
+                        data,
+                        manner,
+                        x_hat,
+                        z_sample,
+                        qz_mu,
+                        qz_var,
+                        pz_mu,
+                        pz_var,
+                        y,
+                        y_logits,
+                    )
+
+                    valid_loss += complete_loss.item()
+
+                    rec_loss += recon_loss.item()
+                    gauss_loss += gaussian_loss.item()
+                    cat_loss += categorical_loss.item()
+                    metric_loss += metric_loss.item()
+                    usage += torch.sum(y, dim=0).cpu().detach().numpy()
+
+                    true_manner_list.append(manner)
+                    gaussian_component.append(y.cpu().detach().numpy())
+
+                # Check reconstruction of X
+                check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+
+                # Check unsupervised cluster accuracy and NMI
+                true_manner = torch.tensor(np.concatenate(true_manner_list))
+                gaussian_component = torch.tensor(np.concatenate(gaussian_component))
+                acc = cluster_acc(gaussian_component, true_manner)
+                nmi_score = nmi(gaussian_component, true_manner)
+
+            print(
+                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                    e,
+                    valid_loss / len(validloader.dataset),
+                    rec_loss / len(validloader.dataset),
+                    gauss_loss / len(validloader.dataset),
+                    cat_loss / len(validloader.dataset),
+                    metric_loss / len(validloader.dataset),
+                    acc,
+                    nmi_score,
+                )
+            )
+            valid_loss_store.append(valid_loss / len(validloader.dataset))
             if wandb_flag:
                 wandb.log(
                     {
-                        "train/ELBO": -elbo_training[-1],
-                        "train/KL_div": kl_div_training[-1],
-                        "train/rec_loss": rec_loss_training[-1],
+                        "valid/Epoch": e,
+                        "valid/Loss": valid_loss / len(validloader.dataset),
+                        "valid/Rec Loss": rec_loss / len(validloader.dataset),
+                        "valid/Gaussian Loss": gauss_loss / len(validloader.dataset),
+                        "valid/Cat Loss": cat_loss / len(validloader.dataset),
+                        "valid/Metric Loss": metric_loss / len(validloader.dataset),
+                        "valid/Acc": acc,
+                        "valid/NMI": nmi_score,
+                        "valid/Categorical usage": usage / len(trainloader.dataset),
                     }
                 )
-                if supervised:  # if supervised we also have BCE loss
-                    wandb.log(
-                        {
-                            "train/BCE_loss": bce_loss_training[-1],
-                        }
-                    )
+        # Store best model
+        # If the validation loss is the best, save the model
+        if valid_loss_store[-1] <= min(valid_loss_store):
+            print("Storing the best model at epoch ", e)
+            name = path_to_save
+            # check if the folder exists if not create it
+            if not os.path.exists(name):
+                os.makedirs(name)
+            name += "/GMVAE_cnn_best_model_2d.pt"
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                },
+                name,
+            )
 
-            # Validate model
+        check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
 
-            model.eval()
-            print("Validating the VAE model")
-            with torch.no_grad():
-                valid_loss = 0
-                kl_div = 0
-                rec_loss = 0
-                if supervised:
-                    bce_loss = 0
-                with tqdm(validloader, unit="batch") as tepoch:
-                    for x, y, z in tepoch:
-                        # Move data to device
-                        x = x.to(model.device).to(torch.float32)
-                        if model.n_classes == 2:
-                            y = y.to(model.device).to(torch.float32)
-                        else:
-                            z = z.type(torch.LongTensor).to(model.device)
-
-                        # Forward pass
-                        if supervised:
-                            x_hat, y_hat, mu, logvar = model(x)
-                        else:
-                            x_hat, mu, logvar = model(x)
-                        # Compute variational lower bound
-                        reconstruction_loss = loss(x_hat, x)
-                        kl_divergence = -0.5 * torch.sum(
-                            1 + logvar - mu.pow(2) - logvar.exp()
-                        )
-                        if supervised:
-                            if model.n_classes == 2:
-                                bce = loss_class(y_hat, y.view(-1, 1))
-                            else:
-                                bce = loss_class(y_hat, z)
-                            variational_lower_bound = (
-                                beta_rec * reconstruction_loss
-                                + beta_sc * kl_divergence
-                                + beta_bce * bce
-                            )
-                        else:
-                            variational_lower_bound = (
-                                beta_rec * reconstruction_loss + beta_sc * kl_divergence
-                            )
-
-                        # Update losses storing
-                        valid_loss += variational_lower_bound.item()
-                        kl_div += kl_divergence.item()
-                        rec_loss += reconstruction_loss.item()
-                        if supervised:
-                            bce_loss += bce.item()
-
-                    # Store losses
-                    elbo_validation.append(valid_loss / len(validloader))
-                    kl_div_validation.append(kl_div / len(validloader))
-                    rec_loss_validation.append(rec_loss / len(validloader))
-                    if supervised:
-                        bce_loss_validation.append(bce_loss / len(validloader))
-
-                    # Print Losses at current epoch
-                    print(
-                        f"Epoch {e}: Valid ELBO: {elbo_validation[-1]:.2f}, Valid KL divergence: {kl_div_validation[-1]:.2f}, Valid reconstruction loss: {rec_loss_validation[-1]:.2f}"
-                    )
-                    if supervised:
-                        print(f"Valid CrossEntropy loss: {bce_loss_validation[-1]:.2f}")
-
-                    # Plot reconstruction
-                    check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
-
-                    # Log to wandb
-                    if wandb_flag:
-                        wandb.log(
-                            {
-                                "valid/ELBO": -elbo_validation[-1],
-                                "valid/KL_div": kl_div_validation[-1],
-                                "valid/rec_loss": rec_loss_validation[-1],
-                            }
-                        )
-                        if supervised:  # if supervised we also have BCE loss
-                            wandb.log(
-                                {
-                                    "valid/BCE_loss": bce_loss_validation[-1],
-                                }
-                            )
-
-                    # If the validation loss is the best, save the model
-                    if elbo_validation[-1] <= min(elbo_validation):
-                        print("Storing the best model at epoch ", e)
-                        name = "local_results/plps/"
-                        if supervised:
-                            name += "vae_supervised/"
-                        else:
-                            name += "vae_unsupervised/"
-                        # check if the folder exists if not create it
-                        if not os.path.exists(name):
-                            os.makedirs(name)
-                        name += "VAE_best_model.pt"
-                        torch.save(
-                            {
-                                "model_state_dict": model.state_dict(),
-                                "optimizer_state_dict": opt.state_dict(),
-                            },
-                            name,
-                        )
-
-                    if wandb_flag:
-                        wandb.log(
-                            {
-                                "Epoch": e,
-                            }
-                        )
-
-                    # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
-                    if e > 50:
-                        if elbo_validation[-1] > max(elbo_validation[-20:-1]):
-                            print("Early stopping")
-                            break
-
-    return (
-        elbo_training,
-        kl_div_training,
-        rec_loss_training,
-        elbo_validation,
-        kl_div_validation,
-        rec_loss_validation,
-    )
+        # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
+        if e > 50:
+            if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
+                print("Early stopping")
+                break
 
 
 def GMVAE_trainer(
@@ -1387,285 +1393,6 @@ def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):
     plt.close(fig)
 
 
-def VAE_tester(
-    model,
-    testloader,
-    test_data,
-    audio_features="plps",
-    supervised=False,
-    wandb_flag=False,
-):
-    # Set model in evaluation mode
-    model.eval()
-    print("Evaluating the VAE model")
-
-    with torch.no_grad():
-        # Get batch size from testloader
-        batch_size = testloader.batch_size
-        y_hat_array = np.zeros((batch_size, 1))
-        z_array = np.zeros((batch_size, 1))
-        y_array = np.zeros((batch_size, 1))
-        # Create x_array of shape Batch x Output shape
-        x_array = np.zeros(
-            (batch_size, test_data[audio_features].iloc[0].shape[0])
-        )  # 32 is the batch size
-        x_hat_array = np.zeros(x_array.shape)
-        with tqdm(testloader, unit="batch") as tepoch:
-            for x, y in tepoch:
-                # Move data to device
-                x = x.to(model.device).to(torch.float32)
-                if model.n_classes == 2:
-                    y = y.to(model.device).to(torch.float32)
-                else:
-                    z = z.type(torch.LongTensor).to(model.device)
-
-                # Forward pass
-                if supervised:
-                    x_hat, y_hat, mu, logvar = model(x)
-                    # Concatenate true values
-                    y_array = np.concatenate(
-                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
-                    )
-                    # Concatenate true values (vowels)
-                    z_array = np.concatenate(
-                        (z_array, z.cpu().detach().numpy().reshape(-1, 1))
-                    )
-
-                    # Concatenate predictions (labels)
-                    if model.n_classes == 2:
-                        y_hat_array = np.concatenate(
-                            (y_hat_array, y_hat.cpu().detach().numpy())
-                        )
-                    # Concatenate predictions (vowels)
-                    else:
-                        y_hat_array = np.concatenate(
-                            (
-                                y_hat_array,
-                                np.argmax(y_hat.cpu().detach().numpy(), axis=1).reshape(
-                                    -1, 1
-                                ),
-                            )
-                        )
-                else:
-                    x_hat, mu, logvar = model(x)
-
-                # Concatenate predictions
-                x_hat_array = np.concatenate(
-                    (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
-                )
-                x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
-
-        # Remove the first batch_size elements
-        x_array = x_array[batch_size:]
-        x_hat_array = x_hat_array[batch_size:]
-        if supervised:
-            y_array = y_array[batch_size:]
-            y_hat_array = y_hat_array[batch_size:]
-
-        # Calculate mse between x and x_hat
-        mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
-        # Results for all frames
-        print(f"Reconstruction loss: {mse}")
-
-        # Results per patient
-        rec_loss_per_patient = []
-        for i in test_data["id_patient"].unique():
-            idx = test_data["id_patient"] == i
-            rec_loss_per_patient.append(((x_array[idx] - x_hat_array[idx]) ** 2).mean())
-
-        print("Results per patient in mean and std:")
-        print(
-            f"Reconstruction loss: {np.mean(rec_loss_per_patient)} +- {np.std(rec_loss_per_patient)}"
-        )
-        # Calculate results in total
-        if supervised:
-            print("Results for all frames:")
-            y_bin = np.round(y_hat_array)
-            accuracy = accuracy_score(y_array, y_bin)
-            balanced_accuracy = balanced_accuracy_score(y_array, y_bin)
-            auc = roc_auc_score(y_array, y_hat_array)
-            print("Results for all frames:")
-            print(
-                f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
-            )
-
-            # Calculate results per patient
-            accuracy_per_patient = []
-            balanced_accuracy_per_patient = []
-            for i in test_data["id_patient"].unique():
-                # Get the predictions for the patient
-                y_patient = y_array[test_data.id_patient == i]
-                y_hat_patient = y_hat_array[test_data.id_patient == i]
-
-                # Calculate the metrics
-                accuracy_patient = accuracy_score(y_patient, np.round(y_hat_patient))
-                balanced_accuracy_patient = balanced_accuracy_score(
-                    y_patient, np.round(y_hat_patient)
-                )
-
-                # Store the results
-                accuracy_per_patient.append(accuracy_patient)
-                balanced_accuracy_per_patient.append(balanced_accuracy_patient)
-
-            # Print the results
-            print("Results per patient in mean and std:")
-            print(
-                f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
-            )
-            if wandb_flag:
-                wandb.log(
-                    {
-                        "test/accuracy": accuracy,
-                        "test/balanced_accuracy": balanced_accuracy,
-                        "test/auc": auc,
-                        "test/accuracy_per_patient": np.mean(accuracy_per_patient),
-                        "test/balanced_accuracy_per_patient": np.mean(
-                            balanced_accuracy_per_patient
-                        ),
-                    }
-                )
-
-
-def VQVAE_tester(
-    model,
-    testloader,
-    test_data,
-    audio_features="plps",
-    supervised=False,
-    wandb_flag=False,
-):
-    # Set model in evaluation mode
-    model.eval()
-    print("Evaluating the VQ-VAE model")
-    with torch.no_grad():
-        # Get batch size from testloader
-        batch_size = testloader.batch_size
-        y_hat_array = np.zeros((batch_size, 1))
-        y_array = np.zeros((batch_size, 1))
-        # Create x_array of shape Batch x Output shape
-        x_array = np.zeros(
-            (batch_size, test_data[audio_features].iloc[0].shape[0])
-        )  # 32 is the batch size
-        x_hat_array = np.zeros(x_array.shape)
-        z_array = np.zeros((batch_size, model.latent_dim))
-        z_q_array = np.zeros((batch_size, model.latent_dim))
-        enc_idx_array = np.zeros((batch_size, 1))
-        vowel_array = np.zeros((batch_size, 1))
-
-        with tqdm(testloader, unit="batch") as tepoch:
-            for x, y, v in tepoch:
-                # Move data to device
-                x = x.to(model.device).to(torch.float32)
-                y = y.to(model.device).to(torch.float32)
-                v = v.to(model.device).to(torch.float32)
-
-                # Forward pass
-                if supervised:
-                    x_hat, y_hat, vq_loss, z, z_q, enc_idx = model(x)
-                    # Concatenate predictions
-                    y_array = np.concatenate(
-                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
-                    )
-
-                    y_hat_array = np.concatenate(
-                        (y_hat_array, y_hat.cpu().detach().numpy())
-                    )
-                else:
-                    x_hat, y_hat, vq_loss, z, z_q, enc_idx = model(x)
-
-                # Concatenate predictions
-                x_hat_array = np.concatenate(
-                    (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
-                )
-                x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
-                # Concatenate latent variables
-                z_array = np.concatenate((z_array, z.cpu().detach().numpy()), axis=0)
-                z_q_array = np.concatenate(
-                    (z_q_array, z_q.cpu().detach().numpy()), axis=0
-                )
-
-                enc_idx_array = np.concatenate(
-                    (enc_idx_array, enc_idx.cpu().detach().numpy().reshape(-1, 1)),
-                    axis=0,
-                )
-                vowel_array = np.concatenate(
-                    (vowel_array, v.cpu().detach().numpy().reshape(-1, 1)), axis=0
-                )
-
-        # Remove the first batch_size elements
-        x_array = x_array[batch_size:]
-        x_hat_array = x_hat_array[batch_size:]
-        if supervised:
-            y_array = y_array[batch_size:]
-            y_hat_array = y_hat_array[batch_size:]
-
-        # Calculate mse between x and x_hat
-        mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
-        # Results for all frames
-        print(f"Reconstruction loss: {mse}")
-
-        # Results per patient
-        rec_loss_per_patient = []
-        for i in test_data["id_patient"].unique():
-            idx = test_data["id_patient"] == i
-            rec_loss_per_patient.append(((x_array[idx] - x_hat_array[idx]) ** 2).mean())
-
-        print("Results per patient in mean and std:")
-        print(
-            f"Reconstruction loss: {np.mean(rec_loss_per_patient)} +- {np.std(rec_loss_per_patient)}"
-        )
-        # Calculate results in total
-        if supervised:
-            y_bin = np.round(y_hat_array)
-            accuracy = accuracy_score(y_array, y_bin)
-            balanced_accuracy = balanced_accuracy_score(y_array, y_bin)
-            auc = roc_auc_score(y_array, y_hat_array)
-            print("Results for all frames:")
-            print(
-                f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
-            )
-
-            # Calculate results per patient
-            accuracy_per_patient = []
-            balanced_accuracy_per_patient = []
-            for i in test_data["id_patient"].unique():
-                # Get the predictions for the patient
-                y_patient = y_array[test_data.id_patient == i]
-                y_hat_patient = y_hat_array[test_data.id_patient == i]
-
-                # Calculate the metrics
-                accuracy_patient = accuracy_score(y_patient, np.round(y_hat_patient))
-                balanced_accuracy_patient = balanced_accuracy_score(
-                    y_patient, np.round(y_hat_patient)
-                )
-
-                # Store the results
-                accuracy_per_patient.append(accuracy_patient)
-                balanced_accuracy_per_patient.append(balanced_accuracy_patient)
-
-            # Print the results
-            print("Results per patient in mean and std:")
-            print(
-                f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
-            )
-
-            if wandb_flag:
-                wandb.log(
-                    {
-                        "test/mse": mse,
-                        "test/accuracy_per_patient": np.mean(accuracy_per_patient),
-                        "test/balanced_accuracy_per_patient": np.mean(
-                            balanced_accuracy_per_patient
-                        ),
-                        "test/auc": auc,
-                        "test/accuracy": accuracy,
-                        "test/balanced_accuracy": balanced_accuracy,
-                    }
-                )
-
-    return x_array, x_hat_array, z_array, z_q_array, enc_idx_array, vowel_array
-
-
 def GMVAE_tester(
     model,
     testloader,
@@ -1715,6 +1442,177 @@ def GMVAE_tester(
                     _,
                     _,
                 ) = model.forward(x)
+                if supervised:
+                    # Calculate torch embedding. Transform manner (shape: (batch, window)) to (batch, window, z_dim)
+                    hmc = model.hmc(m)
+                    # Reorder hmc to be (batch, z_dim, window)
+                    hmc = hmc.permute(0, 2, 1)
+                    # Check Z shape, if it is of shape (batch*window, z_dim) reshape it to (batch, z_dim, window)
+                    if z.shape[0] != hmc.shape[0]:
+                        z = z.reshape(-1, model.z_dim, 1)
+                    # \tilde{z} = z + h(mc)
+                    z = z.reshape(hmc.shape[0], model.z_dim, hmc.shape[-1])
+                    z_hat = (z + hmc).unsqueeze(1)
+                    y_pred = model.clf(z_hat)
+                    y_hat_array = np.concatenate(
+                        (y_hat_array, y_pred.cpu().detach().numpy())
+                    )
+                    y_array = np.concatenate(
+                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
+                    )
+
+                # Concatenate predictions
+                x_hat_array = np.concatenate(
+                    (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
+                )
+                x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
+
+            print("Removing unused elements")
+            # Remove all from GPU to release memory
+            del (
+                x,
+                y,
+                m,
+                x_hat,
+                _,
+            )
+
+        print("Calculating MSE")
+        # Remove the first batch_size elements
+        x_array = x_array[batch_size:]
+        x_hat_array = x_hat_array[batch_size:]
+        if supervised:
+            y_array = y_array[batch_size:]
+            y_hat_array = y_hat_array[batch_size:]
+
+        # Calculate mse between x and x_hat
+        mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
+        # Results for all frames
+        print(f"Reconstruction loss: {mse}")
+
+        # Plot randomly a test sample and its reconstruction
+        idx = np.random.randint(0, x_array.shape[0])
+        x_sample = x_array[idx].squeeze()
+        x_hat_sample = x_hat_array[idx].squeeze()
+        # plot using imshow
+        fig, axs = plt.subplots(2, 1, figsize=(20, 20))
+        cmap = cm.get_cmap("viridis")
+        axs[0].set_title("Original")
+        axs[0].imshow(x_sample, cmap=cmap)
+        axs[1].set_title("Reconstruction")
+        axs[1].imshow(x_hat_sample, cmap=cmap)
+        plt.savefig(path_to_plot + "/rec_img.png")
+        if wandb_flag:
+            wandb.log({"test/rec_img": fig})
+
+        # Results per patient
+        rec_loss_per_patient = []
+        for i in test_data["id_patient"].unique():
+            idx = test_data["id_patient"] == i
+            rec_loss_per_patient.append(((x_array[idx] - x_hat_array[idx]) ** 2).mean())
+
+        print("Results per patient in mean and std:")
+        print(
+            f"Reconstruction loss: {np.mean(rec_loss_per_patient)} +- {np.std(rec_loss_per_patient)}"
+        )
+        # Calculate results in total
+        if supervised:
+            print("Results for all frames:")
+            y_bin = np.round(y_hat_array)
+            # Print value counts of y_bin
+            print("Value counts of y_bin: ", np.unique(y_bin, return_counts=True))
+            accuracy = accuracy_score(y_array, y_bin)
+            balanced_accuracy = balanced_accuracy_score(y_array, y_bin)
+            auc = roc_auc_score(y_array, y_hat_array)
+            print("Results for all frames:")
+            print(
+                f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
+            )
+
+            # Calculate results per patient
+            accuracy_per_patient = []
+            balanced_accuracy_per_patient = []
+            for i in test_data["id_patient"].unique():
+                # Get the predictions for the patient
+                y_patient = y_array[test_data.id_patient == i]
+                y_hat_patient = y_hat_array[test_data.id_patient == i]
+
+                # Calculate the metrics
+                accuracy_patient = accuracy_score(y_patient, np.round(y_hat_patient))
+                balanced_accuracy_patient = balanced_accuracy_score(
+                    y_patient, np.round(y_hat_patient)
+                )
+
+                # Store the results
+                accuracy_per_patient.append(accuracy_patient)
+                balanced_accuracy_per_patient.append(balanced_accuracy_patient)
+
+            # Print the results
+            print("Results per patient in mean and std:")
+            print(
+                f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
+            )
+
+            if wandb_flag:
+                wandb.log(
+                    {
+                        "test/accuracy": accuracy,
+                        "test/balanced_accuracy": balanced_accuracy,
+                        "test/auc": auc,
+                        "test/accuracy_per_patient": np.mean(accuracy_per_patient),
+                        "test/balanced_accuracy_per_patient": np.mean(
+                            balanced_accuracy_per_patient
+                        ),
+                    }
+                )
+
+
+def SpeechTherapist_tester(
+    model,
+    testloader,
+    test_data,
+    supervised=False,
+    wandb_flag=False,
+    path_to_plot=None,
+):
+    # Warning for the precision of the matrix multiplication
+    torch.set_float32_matmul_precision("high")
+    # Set model in evaluation mode
+    model.eval()
+    print("Evaluating the VAE model")
+
+    with torch.no_grad():
+        # Get batch size from testloader
+        batch_size = testloader.batch_size
+        y_hat_array = np.zeros((batch_size, 1))
+        z_array = np.zeros((batch_size, 1))
+        y_array = np.zeros((batch_size, 1))
+
+        # Create x_array of shape Batch x Output shape
+        x_array = np.zeros((batch_size, 1, 65, 33))
+
+        x_hat_array = np.zeros(x_array.shape)
+        with tqdm(testloader, unit="batch") as tepoch:
+            print("Evaluating the VAE model")
+            for x, y, m in tepoch:
+                # Move data to device
+                x = x.to(model.device).to(torch.float32)
+
+                # ==== Forward pass ====
+                (
+                    x,
+                    x_hat,
+                    _,  # pz_mu,
+                    _,  # pz_var,
+                    _,  # y_logits,
+                    y,
+                    _,  # qz_mu,
+                    _,  # qz_var,
+                    _,  # z_sample,
+                    _,  # e_s,
+                    _,  # e_hat_s,
+                ) = model(x)
+
                 if supervised:
                     # Calculate torch embedding. Transform manner (shape: (batch, window)) to (batch, window, z_dim)
                     hmc = model.hmc(m)

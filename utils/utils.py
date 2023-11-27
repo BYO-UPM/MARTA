@@ -53,6 +53,7 @@ def KL_cat(qy, qy_logits, k):
     log_p = torch.log(1 / torch.tensor(k))
     cat_loss = torch.sum(qy * (log_q - log_p), dim=-1)
     cat_loss = torch.sum(cat_loss)
+    return cat_loss
 
 
 def plot_logopeda_alb_neuro(
@@ -76,6 +77,9 @@ def plot_logopeda_alb_neuro(
         latent_mu_train_original_space = []
         print("Calculating latent space for train samples")
         for i in range(0, len(data_input), batch_size):
+            e_s = model.spec_encoder_forward(
+                data_input[i : i + batch_size].to(model.device).unsqueeze(1)
+            )
             (
                 _,
                 _,
@@ -84,9 +88,7 @@ def plot_logopeda_alb_neuro(
                 _,
                 _,
                 _,
-            ) = model.infere(
-                data_input[i : i + batch_size].to(model.device).unsqueeze(1)
-            )
+            ) = model.inference_forward(e_s)
             latent_mu_train_original_space.append(
                 latent_mu_train_original_space_batch.cpu().detach().numpy()
             )
@@ -98,6 +100,9 @@ def plot_logopeda_alb_neuro(
         latent_mu_test_original_space = []
         # do model_infere by batches
         for i in range(0, len(data_input), batch_size):
+            e_s = model.spec_encoder_forward(
+                data_input[i : i + batch_size].to(model.device).unsqueeze(1)
+            )
             (
                 _,
                 _,
@@ -106,9 +111,7 @@ def plot_logopeda_alb_neuro(
                 _,
                 _,
                 _,
-            ) = model.infere(
-                data_input[i : i + batch_size].to(model.device).unsqueeze(1)
-            )
+            ) = model.inference_forward(e_s)
             latent_mu_test_original_space.append(
                 latent_mu_test_original_space_batch.cpu().detach().numpy()
             )
@@ -1377,17 +1380,28 @@ def calculate_distances_manner(
     healthy_diag = np.diag(distances_healthy)
     parkinson_diag = np.diag(distances_healthy_parkinson)
 
-    print("Albayzin vs Albayzin")
+    print("Diagonal distances in train vs train:")
+    print("Diagonal: " + str(alb_diag))
     print("Mean: " + str(np.mean(alb_diag)))
     print("Std: " + str(np.std(alb_diag)))
 
-    print("Albayzin Healthy vs Neurovoz Healthy")
+    print("Diagonal distance in train vs healthy test")
+    print("Diagonal: " + str(healthy_diag))
     print("Mean: " + str(np.mean(healthy_diag)))
     print("Std: " + str(np.std(healthy_diag)))
 
-    print("Albayzin Healthy vs Neurovoz Parkinson")
+    print("Diagonal distance in train vs parkinson test")
+    print("Diagonal: " + str(parkinson_diag))
     print("Mean: " + str(np.mean(parkinson_diag)))
     print("Std: " + str(np.std(parkinson_diag)))
+
+    print("Difference between train vs parkinson and train vs healthy")
+    print("Diagonal: " + str(parkinson_diag - healthy_diag))
+    print("Mean: " + str(np.mean(parkinson_diag - healthy_diag)))
+    print("Std: " + str(np.std(parkinson_diag - healthy_diag)))
+    # Calculate MAPE of the difference
+    mape = np.mean(np.abs((healthy_diag - parkinson_diag) / healthy_diag)) * 100
+    print("MAPE: " + str(mape))
 
     # Plot the distances as a heatmap using seaborn
     print("Plotting distances...")
@@ -1882,7 +1896,12 @@ def cluster_acc(Y_pred, Y):
     from scipy.optimize import linear_sum_assignment
 
     Y_pred, Y = np.array(Y_pred).astype(np.int64), np.array(Y).astype(np.int64)
-    assert Y_pred.size == Y.size
+    # try to assert, if fail convert ohe to labels
+    if not Y_pred.size == Y.size:
+        Y_pred = np.argmax(Y_pred, axis=1)  # convert to ohe
+    if len(Y.shape) == 2:
+        # flatten Y
+        Y = Y.reshape(-1)
     D = max(Y_pred.max(), Y.max()) + 1
     w = np.zeros((D, D), dtype=np.int64)
     for i in range(Y_pred.size):
@@ -1895,7 +1914,12 @@ def nmi(Y_pred, Y):
     from sklearn.metrics.cluster import normalized_mutual_info_score
 
     Y_pred, Y = np.array(Y_pred), np.array(Y)
-    assert Y_pred.size == Y.size
+    # try to assert, if fail convert ohe to labels
+    if not Y_pred.size == Y.size:
+        Y_pred = np.argmax(Y_pred, axis=1)  # convert to ohe
+    if len(Y.shape) == 2:
+        # flatten Y
+        Y = Y.reshape(-1)
     return normalized_mutual_info_score(Y_pred, Y, average_method="arithmetic")
 
 

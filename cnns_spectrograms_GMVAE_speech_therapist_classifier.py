@@ -1,5 +1,5 @@
-from models.pt_models import GMVAE
-from training.pt_training import GMVAE_trainer, GMVAE_tester
+from models.pt_models import SpeechTherapist
+from training.pt_training import SpeechTherapist_trainer, SpeechTherapist_tester
 from utils.utils import (
     plot_logopeda,
     calculate_distances_manner,
@@ -17,22 +17,23 @@ import os
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
-fold = 3  # Not used, just for compatibility with the other scripts #### this should be improved xD
-
 
 def main(args, hyperparams):
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
-            + "final_model_unsupervised"
+            + str(hyperparams["latent_dim"])
+            + "final_model_classifier"
+            + "code_cleaning"
         )
 
     else:
         hyperparams["path_to_save"] = (
             "local_results/spectrograms/manner_gmvae_only_neurovoz_"
             + str(hyperparams["latent_dim"])
-            + "final_model_unsupervised"
+            + "final_model_classifier"
+            + "code_cleaning"
         )
 
     # Create the path if does not exist
@@ -61,46 +62,54 @@ def main(args, hyperparams):
             project="parkinson",
             config=hyperparams,
             group=gname,
-            name="fold_" + str(fold),
         )
-    print("Training a VAE for fold: ", fold)
 
     (
         train_loader,
         val_loader,
         test_loader,
-        train_data,
-        val_data,
+        _,  # train_data, not used
+        _,  # val_data, not used
         test_data,
-    ) = dataset.get_dataloaders(train_albayzin=hyperparams["train_albayzin"])
+    ) = dataset.get_dataloaders(
+        train_albayzin=hyperparams["train_albayzin"],
+        supervised=hyperparams["supervised"],
+    )
 
     print("Defining models...")
     # Create the model
-    model = GMVAE(
-        x_dim=train_loader.dataset[0][0].shape[0],
-        n_gaussians=hyperparams["n_gaussians"],
+    model = SpeechTherapist(
+        x_dim=train_loader.dataset[0][0].shape,
         z_dim=hyperparams["latent_dim"],
-        hidden_dims=hyperparams["hidden_dims_enc"],
-        ss=hyperparams["semisupervised"],
-        supervised=hyperparams["supervised"],
+        n_gaussians=hyperparams["n_gaussians"],
+        hidden_dims_spectrogram=hyperparams["hidden_dims_enc"],
+        hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
         weights=hyperparams["weights"],
-        cnn=hyperparams["spectrogram"],
-        cnn_classifier=hyperparams["cnn_classifier"],
         device=device,
     )
 
-    model = torch.compile(model)
+    # model = torch.compile(model)
 
     if hyperparams["train"]:
+        # Load the best unsupervised model to supervise it
+        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_2code_cleaning/GMVAE_cnn_best_model_2d.pt"
+        tmp = torch.load(name)
+        model.load_state_dict(tmp["model_state_dict"])
+
+        # Freeze all the network
+        for param in model.parameters():
+            param.requires_grad = False
+
+        # Add a classifier to the model
+
         print("Training GMVAE...")
         # Train the model
-        GMVAE_trainer(
+        SpeechTherapist_trainer(
             model=model,
             trainloader=train_loader,
             validloader=val_loader,
             epochs=hyperparams["epochs"],
             lr=hyperparams["lr"],
-            supervised=hyperparams["supervised"],
             wandb_flag=hyperparams["wandb_flag"],
             path_to_save=hyperparams["path_to_save"],
         )
@@ -118,11 +127,10 @@ def main(args, hyperparams):
     print("Testing GMVAE...")
 
     # Test the model
-    GMVAE_tester(
+    SpeechTherapist_tester(
         model=model,
         testloader=test_loader,
         test_data=test_data,
-        audio_features=audio_features,
         supervised=False,  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
         path_to_plot=hyperparams["path_to_save"],
@@ -144,18 +152,17 @@ def main(args, hyperparams):
     df_test["label"] = [t[1] for t in test_loader.dataset]
     df_test["manner"] = [t[2] for t in test_loader.dataset]
 
-    if hyperparams["material"] == "MANNER":
-        print("Starting to calculate distances...")
-        plot_logopeda_alb_neuro(
-            model,
-            df_train,
-            df_test,
-            hyperparams["wandb_flag"],
-            name="test",
-            supervised=hyperparams["supervised"],
-            samples=5000,
-            path_to_plot=hyperparams["path_to_save"],
-        )
+    print("Starting to calculate distances...")
+    plot_logopeda_alb_neuro(
+        model,
+        df_train,
+        df_test,
+        hyperparams["wandb_flag"],
+        name="test",
+        supervised=hyperparams["supervised"],
+        samples=5000,
+        path_to_plot=hyperparams["path_to_save"],
+    )
 
     if hyperparams["wandb_flag"]:
         wandb.finish()
@@ -176,16 +183,16 @@ if __name__ == "__main__":
         "hop_size_percent": 0.5,
         "spectrogram": True,
         "wandb_flag": False,
-        "epochs": 1000,
+        "epochs": 1,
         "batch_size": 128,
         "lr": 1e-3,
         "latent_dim": 2,
         "hidden_dims_enc": [64, 1024, 64],
+        "hidden_dims_gmvae": [256],
         "weights": [
             1,  # w1 is rec loss,
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
-            1,  # w4 is supervised loss, # not implemented for n_gaussians != 2,5
             10,  # w5 is metric loss
         ],
         "supervised": False,

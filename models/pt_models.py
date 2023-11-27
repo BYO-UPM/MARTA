@@ -3,7 +3,7 @@ import timm
 import numpy as np
 import copy
 import time
-from utils import log_normal, KL_cat
+from utils.utils import log_normal, KL_cat
 from pytorch_metric_learning import miners, losses, reducers, samplers
 
 
@@ -397,12 +397,25 @@ class SpeechTherapist(torch.nn.Module):
     def __init__(
         self,
         x_dim,
-        hidden_dims_spectrogram,
-        hidden_dims_gmvae,
-        k=10,
+        z_dim=32,
+        hidden_dims_spectrogram=[64, 1024, 64],
+        hidden_dims_gmvae=[256],
+        n_gaussians=10,
         weights=[1, 1, 1, 10],
+        classifier="mlp",
+        device="cpu",
     ):
-        self.x_dim = x_dim
+        super().__init__()
+        # ============ Device ============
+        self.device = device
+        # ============ GMVAE parameters ============
+        self.k = n_gaussians
+        self.w = weights
+        self.z_dim = z_dim
+        self.x_dim = x_dim[0]
+        self.window_size = x_dim[-1]
+        self.mel_bins = x_dim[-2]
+        self.classifier_type = classifier
         self.hidden_dims_spectrogram = hidden_dims_spectrogram
         self.hidden_dims_gmvae = hidden_dims_gmvae
 
@@ -417,16 +430,33 @@ class SpeechTherapist(torch.nn.Module):
         self.SpecDecoder()
 
         # ============ Losses ============
+        # Metric loss
         sumreducer = reducers.SumReducer()
         self.miner = miners.MultiSimilarityMiner(epsilon=0.1)
         self.metric_loss_func = losses.GeneralizedLiftedStructureLoss(
             reducer=sumreducer
         ).to(self.device)
+        # Reconstruction loss
         self.mse_loss = torch.nn.MSELoss(reduction="sum")
 
-        # ============ GMVAE parameters ============
-        self.k = k
-        self.w = weights
+        # ============ Initialize the networks ============
+        self.init_weights()
+
+        # ============ Move the networks to the device ============
+        self.to(self.device)
+
+    def init_weights(self):
+        """Initialize the weights of the networks."""
+        # Initialize the weights of the networks
+        for m in self.modules():
+            if (
+                type(m) == torch.nn.Linear
+                or type(m) == torch.nn.Conv2d
+                or type(m) == torch.nn.ConvTranspose2d
+            ):
+                torch.nn.init.xavier_normal_(m.weight)
+                if m.bias.data is not None:
+                    torch.nn.init.constant_(m.bias, 0)
 
     def SpecEncoder(self):
         """This network will encode the spectrograms of N, 1, 65, 33 into a feature representation of N*33, Channels*Height."""
@@ -439,7 +469,7 @@ class SpeechTherapist(torch.nn.Module):
                 stride=[2, 1],
             ),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(self.hidden_dims[0]),
+            torch.nn.BatchNorm2d(self.hidden_dims_spectrogram[0]),
             torch.nn.Conv2d(
                 self.hidden_dims_spectrogram[0],
                 self.hidden_dims_spectrogram[1],
@@ -461,11 +491,8 @@ class SpeechTherapist(torch.nn.Module):
             Flatten(),
         )
 
-        self.x_hat_shape_before_flatten = self.inference_gx(
-            torch.zeros(1, 1, 65, 33)
-        ).shape
-        self.x_hat_shape_after_flatten = self.flatten(
-            self.inference_gx(torch.zeros(1, 1, 65, 33))
+        self.x_hat_shape_after_flat = self.spec_enc(
+            torch.zeros(1, 1, self.mel_bins, self.window_size)
         ).shape
 
         return self.spec_enc
@@ -509,9 +536,9 @@ class SpeechTherapist(torch.nn.Module):
         # p(y | e_s): the probability of each gaussian component givben the encoded spectrogram (e_s)
         # This networks get the e_s (N*33, Channels*Height), reduces dimensionality to N*33, h_dim, and then applies GumbelSoftmax to N*33, K components.
         self.py_es = torch.nn.Sequential(
-            torch.nn.Linear(self.x_hat_shape_after_flat[1], self.hidden_dims_gmvae[1]),
+            torch.nn.Linear(self.x_hat_shape_after_flat[1], self.hidden_dims_gmvae[0]),
             torch.nn.ReLU(),  # Check if makes sense to have a ReLU here
-            GumbelSoftmax(self.hidden_dims[1], self.k, device=self.device),
+            GumbelSoftmax(self.hidden_dims_gmvae[0], self.k, device=self.device),
         ).to(self.device)
 
         # y_hat = h(y): the output of the GumbelSoftmax is the probability of each gaussian component given the encoded spectrogram (e_s).
@@ -522,8 +549,10 @@ class SpeechTherapist(torch.nn.Module):
 
         # q(z | e_s, y): the GaussianMixture network will get the encoded spectrogram (e_s) and the GumbelSoftmax output (y) and will output the parameters of the GaussianMixture, i.e., mu and logvar.
         self.qz_es_y = torch.nn.Sequential(
+            torch.nn.Linear(self.x_hat_shape_after_flat[1], self.hidden_dims_gmvae[0]),
+            torch.nn.ReLU(),  # Check if makes sense to have a ReLU here
             torch.nn.Linear(
-                self.x_hat_shape_after_flat[1], self.z_dim * 2
+                self.hidden_dims_gmvae[0], self.z_dim * 2
             ),  # Check if its enough only with one layer
         ).to(self.device)
 
@@ -543,12 +572,60 @@ class SpeechTherapist(torch.nn.Module):
             ),  # Maybe we can use more layers here
         ).to(self.device)
 
+    def classifier(self):
+        """This function adds a classifier to the network.
+        First, the manner_class (N x 33 x 1) are embedded to a z_dim vector (N x win_size x z_dim).
+        Then, two options are possible:
+        1. Use a CNN classifier whose input is: z + h(manner_class) (N x win_size x z_dim)
+        2. Use a MLP classifier whose input is: z + h(manner_class) flattened (N x (win_size*z_dim))
+        """
+        self.hmc = torch.nn.Embedding(self.manner, self.z_dim)
+
+        self.clf_cnn = torch.nn.Sequential(
+            # 2DConv with kernel_size = (3, 32), stride=2, padding=1
+            torch.nn.Conv2d(
+                1,
+                self.class_dims[0],
+                kernel_size=[3, 32],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.class_dims[0]),
+            torch.nn.Conv2d(
+                self.class_dims[0],
+                self.class_dims[1],
+                kernel_size=[3, 1],
+                stride=[2, 1],
+            ),
+            torch.nn.ReLU(),
+            torch.nn.BatchNorm2d(self.class_dims[1]),
+            # Flatten
+            ClassifierFlatten(),
+            # Linear
+            torch.nn.Linear(32 * 7, self.class_dims[2]),
+            torch.nn.ReLU(),
+            # Dropout
+            torch.nn.Dropout(p=0.5),
+            torch.nn.Linear(self.class_dims[2], 1),
+            torch.nn.Sigmoid(),
+        )
+
+        self.clf_mlp = torch.nn.Sequential(
+            torch.nn.Linear(self.z_dim * self.window_size, 256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 32),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=0.5),
+            torch.nn.Linear(32, 1),
+            torch.nn.Sigmoid(),
+        )
+
     def spec_encoder_forward(self, x):
         """Forward function of the spectrogram encoder network. It receives the spectrogram (x) and outputs the encoded spectrogram (e_s)."""
         e_s = self.spec_enc(x)
         return e_s
 
-    def infere_forward(self, e_s):
+    def inference_forward(self, e_s):
         """Forward function of the inference network. It receives the encoded spectrogram (e_s) and outputs the parameters of the GaussianMixture, i.e., mu and logvar."""
         # p(y | e_s): the probability of each gaussian component givben the encoded spectrogram (e_s). Returns the logits, the softmax probability and the gumbel softmax output, respectively.
         y_logits, prob, y = self.py_es(e_s)
@@ -582,25 +659,73 @@ class SpeechTherapist(torch.nn.Module):
 
     def spec_dec_forward(self, e_hat_s):
         """Forward function of the spectrogram decoder network. It receives the encoded spectrogram reconstruction (e_hat_s) and outputs the spectrogram reconstruction (x_hat)."""
-        x_hat = self.pes_z(e_hat_s)
+        x_hat = self.spec_dec(e_hat_s)
         return x_hat
+
+    def classifier_forward(self, z, manner, labels):
+        # Move manner to cpu
+        manner = manner.to(self.device)
+
+        # Embed manner class from (batch, win_size) to (batch, win_size, z_dim)
+        hmc = self.hmc_cnn(manner)
+
+        # Now z is (batch*window, z_dim), reshape to: (batch, window_size, z_dim)
+        z = z.reshape(hmc.shape[0], self.window_size, self.z_dim)
+
+        if self.classifier_type == "mlp":
+            # For the MLP classifier, flatten both z and hmc from (batch, window, z_dim) to (batch, window*z_dim)
+            hmc = hmc.reshape(hmc.shape[0], -1)
+            z = z.reshape(z.shape[0], -1)
+
+        # \tilde{z} = z + h(mc)
+        if self.classifier_type == "cnn":
+            # Sum them and reshape to (batch, 1, window_size, z_dim) for the CNN
+            z_hat = (z + hmc).unsqueeze(1)
+        else:
+            # Sum them, now the shape is (batch, window_size*z_dim)
+            z_hat = z + hmc
+
+        # Oversample z_hat and labels to have the same number of samples in each class
+        # Oversample z_hat and labels to have the same number of samples in each class
+        unique_labels, count_labels = np.unique(labels, return_counts=True)
+        max_count = np.max(count_labels)
+
+        # Generate indices for oversampling
+        idx_sampled = np.concatenate(
+            [
+                np.random.choice(np.where(labels == label)[0], max_count)
+                for label in unique_labels
+            ]
+        )
+
+        # Apply oversampling
+        labels = labels[idx_sampled]
+        z_hat = z_hat[idx_sampled]
+
+        if self.cnn_classifier:
+            y_pred = self.clf_cnn(z_hat)
+        else:
+            y_pred = self.clf_mlp(z_hat)
+
+        return y_pred, labels
 
     def forward(self, x):
         """Forward function of the SpeechTherapist. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""
         e_s = self.spec_encoder_forward(x)
-        z_sample, y_logits, y, qz_mu, qz_logvar, pz_mu, pz_var = self.inference_forward(
+        z_sample, y_logits, y, qz_mu, qz_var, pz_mu, pz_var = self.inference_forward(
             e_s
         )
         e_hat_s = self.generative_forward(z_sample)
         x_hat = self.spec_dec_forward(e_hat_s)
         return (
+            x,
             x_hat,
             pz_mu,
             pz_var,
             y_logits,
             y,
             qz_mu,
-            qz_logvar,
+            qz_var,
             z_sample,
             e_s,
             e_hat_s,
@@ -643,21 +768,19 @@ class SpeechTherapist(torch.nn.Module):
 
         return loss
 
-    def loss(self, x, manner_classes):
-        """This function computes the loss of the SpeechTherapist. It receives the spectrogram (x) and the manner class of each phoneme (manner_classes)."""
-        (
-            x_hat,
-            pz_mu,
-            pz_var,
-            y_logits,
-            y,
-            qz_mu,
-            qz_var,
-            z_sample,
-            e_s,
-            e_hat_s,
-        ) = self.forward(x)
-
+    def loss(
+        self,
+        x,
+        manner_classes,
+        x_hat,
+        z_sample,
+        qz_mu,
+        qz_var,
+        pz_mu,
+        pz_var,
+        y,
+        y_logits,
+    ):
         # Reconstruction loss
         recon_loss = self.mse_loss(x_hat, x)
 
@@ -897,54 +1020,6 @@ class GMVAE(torch.nn.Module):
 
         return x_rec, z_mu, z_var
 
-    def classifier_forward(self, z, manner, labels):
-        manner = manner.to(self.device)
-        hmc = self.hmc_cnn(manner)
-        window_size = copy(hmc.shape[1])
-        # Calculate torch embedding. Transform manner (shape: (batch, window)) to (batch, window, z_dim)
-        if not self.cnn_classifier:
-            # For MLP, swap window and z_dim: now is (batch, z_dim, window)
-            hmc = hmc.permute(0, 2, 1)
-            # Now flatten: now is (batch, z_dim*window)
-            hmc = hmc.reshape(hmc.shape[0], -1)
-
-        # Now z is (batch*window, z_dim), reshape to: (batch, window, z_dim)
-        z = z.reshape(hmc.shape[0], window_size, self.z_dim)
-
-        # \tilde{z} = z + h(mc)
-        if self.cnn_classifier:
-            # Directly sum them and add a dimension for the channel. From (batch, window, z_dim) to (batch, 1, window, z_dim)
-            z_hat = (z + hmc).unsqueeze(1)
-        else:
-            # For MLP, flatten both z and hmc from (batch, window, z_dim) to (batch, window*z_dim)
-            z = z.reshape(z.shape[0], -1)
-            hmc = hmc.reshape(hmc.shape[0], -1)
-            z_hat = z + hmc
-
-        # Oversample z_hat and labels to have the same number of samples in each class
-        # Oversample z_hat and labels to have the same number of samples in each class
-        unique_labels, count_labels = np.unique(labels, return_counts=True)
-        max_count = np.max(count_labels)
-
-        # Generate indices for oversampling
-        idx_sampled = np.concatenate(
-            [
-                np.random.choice(np.where(labels == label)[0], max_count)
-                for label in unique_labels
-            ]
-        )
-
-        # Apply oversampling
-        labels = labels[idx_sampled]
-        z_hat = z_hat[idx_sampled]
-
-        if self.cnn_classifier:
-            y_pred = self.clf_cnn(z_hat)
-        else:
-            y_pred = self.clf_mlp(z_hat)
-
-        return y_pred, labels
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z, qy_logits, qy, qz_mu, qz_logvar, x_hat, x_hat_unflatten = self.infere(x)
         x_rec, z_mu, z_var = self.generate(z, qy)
@@ -1074,103 +1149,12 @@ class GMVAE(torch.nn.Module):
         )
 
 
-class Spectrogram_networks_manner(torch.nn.Module):
-    def __init__(self, x_dim, hidden_dims, cnn=False):
-        super().__init__()
-
-        self.x_dim = x_dim
-        self.hidden_dims = hidden_dims
-        self.cnn = cnn
-
-        # ===== Inference =====
-        # Deterministic x_hat = g(x)
-        if cnn:
-            print(self.x_dim)
-            self.inference_gx = torch.nn.Sequential(
-                torch.nn.Conv2d(
-                    self.x_dim,
-                    self.hidden_dims[0],
-                    kernel_size=[3, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[0]),
-                torch.nn.Conv2d(
-                    self.hidden_dims[0],
-                    self.hidden_dims[1],
-                    kernel_size=[3, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[1]),
-                torch.nn.Conv2d(
-                    self.hidden_dims[1],
-                    self.hidden_dims[2],
-                    kernel_size=[3, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[2]),
-            )
-            self.flatten = Flatten()
-            self.x_hat_shape_before_flatten = self.inference_gx(
-                torch.zeros(1, 1, 65, 33)
-            ).shape
-            self.x_hat_shape_after_flatten = self.flatten(
-                self.inference_gx(torch.zeros(1, 1, 65, 33))
-            ).shape
-        else:
-            raise NotImplementedError
-
-        # ===== Generative =====
-        # Deterministic x = f(x_hat)
-        if cnn:
-            self.unflatten = UnFlatten()
-            self.generative_fxhat = torch.nn.Sequential(
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(
-                    self.hidden_dims[0],
-                    self.hidden_dims[1],
-                    kernel_size=[5, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[1]),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(
-                    self.hidden_dims[1],
-                    self.hidden_dims[2],
-                    kernel_size=[5, 3],
-                    padding=[0, 1],
-                    stride=[2, 1],
-                ),
-                torch.nn.ReLU(),
-                torch.nn.BatchNorm2d(self.hidden_dims[2]),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(
-                    self.hidden_dims[2],
-                    self.x_dim,
-                    stride=[2, 1],
-                    kernel_size=[3, 3],
-                    padding=[5, 1],
-                ),
-            )
-        else:
-            raise NotImplementedError
-
-
+# ========================================= START of utils for SpeechTherapist =========================================
 class ClassifierFlatten(torch.nn.Module):
     def forward(self, x):
         x = x.reshape(x.shape[0], -1)
 
         return x
-
-
-# ========================================= START of utils for SpeechTherapist =========================================
 
 
 class UnFlatten(torch.nn.Module):
