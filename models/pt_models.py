@@ -401,6 +401,7 @@ class SpeechTherapist(torch.nn.Module):
         hidden_dims_spectrogram=[64, 1024, 64],
         hidden_dims_gmvae=[256],
         n_gaussians=10,
+        n_manner=8,
         weights=[1, 1, 1, 10],
         classifier="mlp",
         device="cpu",
@@ -411,10 +412,12 @@ class SpeechTherapist(torch.nn.Module):
         # ============ GMVAE parameters ============
         self.k = n_gaussians
         self.w = weights
+        self.manner = n_manner
         self.z_dim = z_dim
         self.x_dim = x_dim[0]
         self.window_size = x_dim[-1]
         self.mel_bins = x_dim[-2]
+        self.class_dims = [64, 32, 16]
         self.classifier_type = classifier
         self.hidden_dims_spectrogram = hidden_dims_spectrogram
         self.hidden_dims_gmvae = hidden_dims_gmvae
@@ -438,6 +441,8 @@ class SpeechTherapist(torch.nn.Module):
         ).to(self.device)
         # Reconstruction loss
         self.mse_loss = torch.nn.MSELoss(reduction="sum")
+        # BCE loss
+        self.bce_loss = torch.nn.BCELoss(reduction="sum")
 
         # ============ Initialize the networks ============
         self.init_weights()
@@ -662,12 +667,18 @@ class SpeechTherapist(torch.nn.Module):
         x_hat = self.spec_dec(e_hat_s)
         return x_hat
 
-    def classifier_forward(self, z, manner, labels):
-        # Move manner to cpu
-        manner = manner.to(self.device)
+    def classifier_forward(self, x, manner):
+        """Forward function of the classifier network. It receives the spectrogram (x), the manner class of each phoneme (manner) and the labels (labels).
+        It outputs the predictions (y_pred) and the labels (labels)."""
+        # Extract the features of the spectrogram
+        e_s = self.spec_encoder_forward(x)
+        # Get the latent space representation of each window of the spectrogram
+        _, _, _, qz_mu, _, _, _ = self.inference_forward(e_s)
+        # Let us use the mean of the latent space representation as the samples
+        z = qz_mu
 
         # Embed manner class from (batch, win_size) to (batch, win_size, z_dim)
-        hmc = self.hmc_cnn(manner)
+        hmc = self.hmc(manner)
 
         # Now z is (batch*window, z_dim), reshape to: (batch, window_size, z_dim)
         z = z.reshape(hmc.shape[0], self.window_size, self.z_dim)
@@ -685,29 +696,12 @@ class SpeechTherapist(torch.nn.Module):
             # Sum them, now the shape is (batch, window_size*z_dim)
             z_hat = z + hmc
 
-        # Oversample z_hat and labels to have the same number of samples in each class
-        # Oversample z_hat and labels to have the same number of samples in each class
-        unique_labels, count_labels = np.unique(labels, return_counts=True)
-        max_count = np.max(count_labels)
-
-        # Generate indices for oversampling
-        idx_sampled = np.concatenate(
-            [
-                np.random.choice(np.where(labels == label)[0], max_count)
-                for label in unique_labels
-            ]
-        )
-
-        # Apply oversampling
-        labels = labels[idx_sampled]
-        z_hat = z_hat[idx_sampled]
-
-        if self.cnn_classifier:
+        if self.classifier_type == "cnn":
             y_pred = self.clf_cnn(z_hat)
         else:
             y_pred = self.clf_mlp(z_hat)
 
-        return y_pred, labels
+        return y_pred
 
     def forward(self, x):
         """Forward function of the SpeechTherapist. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""
@@ -805,6 +799,17 @@ class SpeechTherapist(torch.nn.Module):
         )
 
         return complete_loss, recon_loss, gaussian_loss, categorical_loss, metric_loss
+
+    def classifier_loss(self, y_pred, labels):
+        """This function computes the loss of the classifier. It receives the predictions (y_pred) and the labels (labels)."""
+        # Convert both to N, 1 shape if they are not
+        if len(y_pred.shape) == 1:
+            y_pred = y_pred.unsqueeze(1)
+        if len(labels.shape) == 1:
+            labels = labels.unsqueeze(1)
+        # BCE loss
+        loss = self.bce_loss(y_pred, labels)
+        return loss, 0, 0, 0, 0
 
 
 # ======================================= Remove this after checking the new code is working =======================================

@@ -859,7 +859,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
 
 def SpeechTherapist_trainer(
-    model, trainloader, validloader, epochs, lr, wandb_flag, path_to_save
+    model, trainloader, validloader, epochs, lr, wandb_flag, path_to_save, supervised
 ):
     # ============================= LR scheduler =============================
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -877,6 +877,8 @@ def SpeechTherapist_trainer(
 
         true_manner_list = []
         gaussian_component = []
+        y_pred_list = []
+        label_list = []
 
         train_loss, rec_loss, gauss_loss, cat_loss, clf_loss, metric_loss = (
             0,
@@ -892,39 +894,55 @@ def SpeechTherapist_trainer(
             data = data.to(model.device).float()
 
             # ==== Forward pass ====
-            (
-                x,
-                x_hat,
-                pz_mu,
-                pz_var,
-                y_logits,
-                y,
-                qz_mu,
-                qz_var,
-                z_sample,
-                e_s,
-                e_hat_s,
-            ) = model(data)
 
-            # ==== Loss ====
-            (
-                complete_loss,
-                recon_loss,
-                gaussian_loss,
-                categorical_loss,
-                metric_loss,
-            ) = model.loss(
-                data,
-                manner,
-                x_hat,
-                z_sample,
-                qz_mu,
-                qz_var,
-                pz_mu,
-                pz_var,
-                y,
-                y_logits,
-            )
+            if supervised:
+                manner = manner.to(model.device).int()
+                labels = labels.to(model.device).float()
+                y_pred = model.classifier_forward(data, manner)
+                (
+                    complete_loss,
+                    recon_loss,
+                    gaussian_loss,
+                    categorical_loss,
+                    metric_loss,
+                ) = model.classifier_loss(y_pred, labels)
+                y_pred_list = np.concatenate(
+                    (y_pred_list, y_pred.cpu().detach().numpy().squeeze())
+                )
+                label_list = np.concatenate((label_list, labels.cpu().detach().numpy()))
+            else:
+                (
+                    x,
+                    x_hat,
+                    pz_mu,
+                    pz_var,
+                    y_logits,
+                    y,
+                    qz_mu,
+                    qz_var,
+                    z_sample,
+                    e_s,
+                    e_hat_s,
+                ) = model(data)
+                # ==== Loss ====
+                (
+                    complete_loss,
+                    recon_loss,
+                    gaussian_loss,
+                    categorical_loss,
+                    metric_loss,
+                ) = model.loss(
+                    data,
+                    manner,
+                    x_hat,
+                    z_sample,
+                    qz_mu,
+                    qz_var,
+                    pz_mu,
+                    pz_var,
+                    y,
+                    y_logits,
+                )
             # ==== Backward pass ====
             optimizer.zero_grad()
             complete_loss.backward()
@@ -932,53 +950,71 @@ def SpeechTherapist_trainer(
 
             # ==== Update metrics ====
             train_loss += complete_loss.item()
-            rec_loss += recon_loss.item()
-            gauss_loss += gaussian_loss.item()
-            cat_loss += categorical_loss.item()
-            metric_loss += metric_loss.item()
-            usage += torch.sum(y, dim=0).cpu().detach().numpy()
-
-            gaussian_component.append(y.cpu().detach().numpy())
-            true_manner_list.append(manner)
+            if not supervised:
+                rec_loss += recon_loss.item()
+                gauss_loss += gaussian_loss.item()
+                cat_loss += categorical_loss.item()
+                metric_loss += metric_loss.item()
+                usage += torch.sum(y, dim=0).cpu().detach().numpy()
+                gaussian_component.append(y.cpu().detach().numpy())
+                true_manner_list.append(manner)
 
         # Scheduler step
         scheduler.step()
 
         # Check reconstruction of X
-        check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
-
-        # Check unsupervised cluster accuracy and NMI
-        true_manner = torch.tensor(np.concatenate(true_manner_list))
-        gaussian_component = torch.tensor(np.concatenate(gaussian_component))
-        acc = cluster_acc(gaussian_component, true_manner)
-        nmi_score = nmi(gaussian_component, true_manner)
-
-        print(
-            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
-                e,
-                train_loss / len(trainloader.dataset),
-                rec_loss / len(trainloader.dataset),
-                gauss_loss / len(trainloader.dataset),
-                cat_loss / len(trainloader.dataset),
-                metric_loss / len(trainloader.dataset),
-                acc,
-                nmi_score,
+        if not supervised:
+            check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+            # Check unsupervised cluster accuracy and NMI
+            true_manner = torch.tensor(np.concatenate(true_manner_list))
+            gaussian_component = torch.tensor(np.concatenate(gaussian_component))
+            acc = cluster_acc(gaussian_component, true_manner)
+            nmi_score = nmi(gaussian_component, true_manner)
+            print(
+                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                    e,
+                    train_loss / len(trainloader.dataset),
+                    rec_loss / len(trainloader.dataset),
+                    gauss_loss / len(trainloader.dataset),
+                    cat_loss / len(trainloader.dataset),
+                    metric_loss / len(trainloader.dataset),
+                    acc,
+                    nmi_score,
+                )
             )
-        )
+        else:
+            y_pred = np.round(y_pred_list)
+            acc_super = accuracy_score(label_list, y_pred)
+            balanced_acc = balanced_accuracy_score(label_list, y_pred)
+            print(
+                "Epoch: {} Train Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f}".format(
+                    e, train_loss, acc_super, balanced_acc
+                )
+            )
+
         if wandb_flag:
-            wandb.log(
-                {
-                    "train/Epoch": e,
-                    "train/Loss": train_loss / len(trainloader.dataset),
-                    "train/Rec Loss": rec_loss / len(trainloader.dataset),
-                    "train/Gaussian Loss": gauss_loss / len(trainloader.dataset),
-                    "train/Categorical usage": usage / len(trainloader.dataset),
-                    "train/Metric Loss": metric_loss / len(trainloader.dataset),
-                    "train/Acc": acc,
-                    "train/NMI": nmi_score,
-                    "train/usage": usage / len(trainloader.dataset),
-                }
-            )
+            if supervised:
+                wandb.log(
+                    {
+                        "train/Epoch": e,
+                        "train/Loss": train_loss,
+                        "train/Acc": acc_super,
+                    }
+                )
+            else:
+                wandb.log(
+                    {
+                        "train/Epoch": e,
+                        "train/Loss": train_loss,
+                        "train/Rec Loss": rec_loss,
+                        "train/Gaussian Loss": gauss_loss,
+                        "train/Categorical usage": usage,
+                        "train/Metric Loss": metric_loss,
+                        "train/Acc": acc,
+                        "train/NMI": nmi_score,
+                        "train/usage": usage / len(trainloader.dataset),
+                    }
+                )
 
         if validloader is not None:
             model.eval()
@@ -994,93 +1030,143 @@ def SpeechTherapist_trainer(
                 )
                 true_manner_list = []
                 gaussian_component = []
+                label_list = []
+                y_pred_list = []
 
                 for batch_idx, (data, labels, manner) in enumerate(tqdm(validloader)):
                     # Make sure dtype is Tensor float
                     data = data.to(model.device).float()
 
-                    # ==== Forward pass ====
-                    (
-                        x,
-                        x_hat,
-                        pz_mu,
-                        pz_var,
-                        y_logits,
-                        y,
-                        qz_mu,
-                        qz_var,
-                        z_sample,
-                        e_s,
-                        e_hat_s,
-                    ) = model(data)
+                    if supervised:
+                        manner = manner.to(model.device).int()
+                        labels = labels.to(model.device).float()
+                        y_pred = model.classifier_forward(data, manner)
+                        (
+                            complete_loss,
+                            recon_loss,
+                            gaussian_loss,
+                            categorical_loss,
+                            metric_loss,
+                        ) = model.classifier_loss(y_pred, labels)
+                        y_pred_list = np.concatenate(
+                            (
+                                y_pred_list,
+                                y_pred.cpu().detach().numpy().squeeze().reshape(-1),
+                            )
+                        )
+                        label_list = np.concatenate(
+                            (label_list, labels.cpu().detach().numpy())
+                        )
+                    else:
+                        # ==== Forward pass ====
+                        (
+                            x,
+                            x_hat,
+                            pz_mu,
+                            pz_var,
+                            y_logits,
+                            y,
+                            qz_mu,
+                            qz_var,
+                            z_sample,
+                            e_s,
+                            e_hat_s,
+                        ) = model(data)
 
-                    # ==== Loss ====
-                    (
-                        complete_loss,
-                        recon_loss,
-                        gaussian_loss,
-                        categorical_loss,
-                        metric_loss,
-                    ) = model.loss(
-                        data,
-                        manner,
-                        x_hat,
-                        z_sample,
-                        qz_mu,
-                        qz_var,
-                        pz_mu,
-                        pz_var,
-                        y,
-                        y_logits,
-                    )
+                        # ==== Loss ====
+                        (
+                            complete_loss,
+                            recon_loss,
+                            gaussian_loss,
+                            categorical_loss,
+                            metric_loss,
+                        ) = model.loss(
+                            data,
+                            manner,
+                            x_hat,
+                            z_sample,
+                            qz_mu,
+                            qz_var,
+                            pz_mu,
+                            pz_var,
+                            y,
+                            y_logits,
+                        )
 
                     valid_loss += complete_loss.item()
 
-                    rec_loss += recon_loss.item()
-                    gauss_loss += gaussian_loss.item()
-                    cat_loss += categorical_loss.item()
-                    metric_loss += metric_loss.item()
-                    usage += torch.sum(y, dim=0).cpu().detach().numpy()
+                    if not supervised:
+                        rec_loss += recon_loss.item()
+                        gauss_loss += gaussian_loss.item()
+                        cat_loss += categorical_loss.item()
+                        metric_loss += metric_loss.item()
+                        usage += torch.sum(y, dim=0).cpu().detach().numpy()
 
-                    true_manner_list.append(manner)
-                    gaussian_component.append(y.cpu().detach().numpy())
+                        true_manner_list.append(manner)
+                        gaussian_component.append(y.cpu().detach().numpy())
 
                 # Check reconstruction of X
-                check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+                if not supervised:
+                    check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+                    # Check unsupervised cluster accuracy and NMI
+                    true_manner = torch.tensor(np.concatenate(true_manner_list))
+                    gaussian_component = torch.tensor(
+                        np.concatenate(gaussian_component)
+                    )
+                    acc = cluster_acc(gaussian_component, true_manner)
+                    nmi_score = nmi(gaussian_component, true_manner)
+                else:
+                    y_pred = np.round(y_pred_list)
+                    acc_super = accuracy_score(label_list, y_pred)
+                    bacc = balanced_accuracy_score(label_list, y_pred)
+                    print(
+                        "Epoch: {} Valid Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f}".format(
+                            e, train_loss, acc_super, bacc
+                        )
+                    )
 
-                # Check unsupervised cluster accuracy and NMI
-                true_manner = torch.tensor(np.concatenate(true_manner_list))
-                gaussian_component = torch.tensor(np.concatenate(gaussian_component))
-                acc = cluster_acc(gaussian_component, true_manner)
-                nmi_score = nmi(gaussian_component, true_manner)
-
-            print(
-                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
-                    e,
-                    valid_loss / len(validloader.dataset),
-                    rec_loss / len(validloader.dataset),
-                    gauss_loss / len(validloader.dataset),
-                    cat_loss / len(validloader.dataset),
-                    metric_loss / len(validloader.dataset),
-                    acc,
-                    nmi_score,
+            if not supervised:
+                print(
+                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                        e,
+                        valid_loss / len(validloader.dataset),
+                        rec_loss / len(validloader.dataset),
+                        gauss_loss / len(validloader.dataset),
+                        cat_loss / len(validloader.dataset),
+                        metric_loss / len(validloader.dataset),
+                        acc,
+                        nmi_score,
+                    )
                 )
-            )
-            valid_loss_store.append(valid_loss / len(validloader.dataset))
+                valid_loss_store.append(valid_loss / len(validloader.dataset))
+            else:
+                # If supervised, use the balanced accuracy to store the best model. The greater the better
+                valid_loss_store.append(-bacc)
+
             if wandb_flag:
-                wandb.log(
-                    {
-                        "valid/Epoch": e,
-                        "valid/Loss": valid_loss / len(validloader.dataset),
-                        "valid/Rec Loss": rec_loss / len(validloader.dataset),
-                        "valid/Gaussian Loss": gauss_loss / len(validloader.dataset),
-                        "valid/Cat Loss": cat_loss / len(validloader.dataset),
-                        "valid/Metric Loss": metric_loss / len(validloader.dataset),
-                        "valid/Acc": acc,
-                        "valid/NMI": nmi_score,
-                        "valid/Categorical usage": usage / len(trainloader.dataset),
-                    }
-                )
+                if supervised:
+                    wandb.log(
+                        {
+                            "valid/Epoch": e,
+                            "valid/Loss": valid_loss,
+                            "valid/Acc": acc_super,
+                        }
+                    )
+                else:
+                    wandb.log(
+                        {
+                            "valid/Epoch": e,
+                            "valid/Loss": valid_loss / len(validloader.dataset),
+                            "valid/Rec Loss": rec_loss / len(validloader.dataset),
+                            "valid/Gaussian Loss": gauss_loss
+                            / len(validloader.dataset),
+                            "valid/Cat Loss": cat_loss / len(validloader.dataset),
+                            "valid/Metric Loss": metric_loss / len(validloader.dataset),
+                            "valid/Acc": acc,
+                            "valid/NMI": nmi_score,
+                            "valid/Categorical usage": usage / len(trainloader.dataset),
+                        }
+                    )
         # Store best model
         # If the validation loss is the best, save the model
         if valid_loss_store[-1] <= min(valid_loss_store):
@@ -1098,7 +1184,8 @@ def SpeechTherapist_trainer(
                 name,
             )
 
-        check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
+        if not supervised:
+            check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
 
         # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
         if e > 50:
@@ -1575,8 +1662,6 @@ def SpeechTherapist_tester(
     wandb_flag=False,
     path_to_plot=None,
 ):
-    # Warning for the precision of the matrix multiplication
-    torch.set_float32_matmul_precision("high")
     # Set model in evaluation mode
     model.eval()
     print("Evaluating the VAE model")
@@ -1584,28 +1669,37 @@ def SpeechTherapist_tester(
     with torch.no_grad():
         # Get batch size from testloader
         batch_size = testloader.batch_size
-        y_hat_array = np.zeros((batch_size, 1))
-        z_array = np.zeros((batch_size, 1))
-        y_array = np.zeros((batch_size, 1))
+        y_hat_array = []
+        y_array = []
 
         # Create x_array of shape Batch x Output shape
         x_array = np.zeros((batch_size, 1, 65, 33))
 
         x_hat_array = np.zeros(x_array.shape)
-        with tqdm(testloader, unit="batch") as tepoch:
-            print("Evaluating the VAE model")
-            for x, y, m in tepoch:
-                # Move data to device
-                x = x.to(model.device).to(torch.float32)
+        for batch_idx, (x, labels, manner) in enumerate(tqdm(testloader)):
+            # Move data to device
+            x = x.to(model.device).float()
 
+            if supervised:
                 # ==== Forward pass ====
+                manner = manner.to(model.device).int()
+                labels = labels.to(model.device).float()
+                y_pred = model.classifier_forward(x, manner)
+                y_hat_array = np.concatenate(
+                    (
+                        y_hat_array,
+                        y_pred.cpu().detach().numpy().squeeze().reshape(-1),
+                    )
+                )
+
+                y_array = np.concatenate((y_array, labels.cpu().detach().numpy()))
                 (
                     x,
                     x_hat,
                     _,  # pz_mu,
                     _,  # pz_var,
                     _,  # y_logits,
-                    y,
+                    _,  # y
                     _,  # qz_mu,
                     _,  # qz_var,
                     _,  # z_sample,
@@ -1613,48 +1707,42 @@ def SpeechTherapist_tester(
                     _,  # e_hat_s,
                 ) = model(x)
 
-                if supervised:
-                    # Calculate torch embedding. Transform manner (shape: (batch, window)) to (batch, window, z_dim)
-                    hmc = model.hmc(m)
-                    # Reorder hmc to be (batch, z_dim, window)
-                    hmc = hmc.permute(0, 2, 1)
-                    # Check Z shape, if it is of shape (batch*window, z_dim) reshape it to (batch, z_dim, window)
-                    if z.shape[0] != hmc.shape[0]:
-                        z = z.reshape(-1, model.z_dim, 1)
-                    # \tilde{z} = z + h(mc)
-                    z = z.reshape(hmc.shape[0], model.z_dim, hmc.shape[-1])
-                    z_hat = (z + hmc).unsqueeze(1)
-                    y_pred = model.clf(z_hat)
-                    y_hat_array = np.concatenate(
-                        (y_hat_array, y_pred.cpu().detach().numpy())
-                    )
-                    y_array = np.concatenate(
-                        (y_array, y.cpu().detach().numpy().reshape(-1, 1))
-                    )
+            else:
+                # ==== Forward pass ====
+                (
+                    x,
+                    x_hat,
+                    _,  # pz_mu,
+                    _,  # pz_var,
+                    _,  # y_logits,
+                    _,
+                    _,  # qz_mu,
+                    _,  # qz_var,
+                    _,  # z_sample,
+                    _,  # e_s,
+                    _,  # e_hat_s,
+                ) = model(x)
 
-                # Concatenate predictions
-                x_hat_array = np.concatenate(
-                    (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
-                )
-                x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
-
-            print("Removing unused elements")
-            # Remove all from GPU to release memory
-            del (
-                x,
-                y,
-                m,
-                x_hat,
-                _,
+            # Concatenate predictions
+            x_hat_array = np.concatenate(
+                (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
             )
+            x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
+
+        print("Removing unused elements")
+        # Remove all from GPU to release memory
+        del (
+            x,
+            manner,
+            labels,
+            x_hat,
+            _,
+        )
 
         print("Calculating MSE")
         # Remove the first batch_size elements
         x_array = x_array[batch_size:]
         x_hat_array = x_hat_array[batch_size:]
-        if supervised:
-            y_array = y_array[batch_size:]
-            y_hat_array = y_hat_array[batch_size:]
 
         # Calculate mse between x and x_hat
         mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
@@ -1689,11 +1777,11 @@ def SpeechTherapist_tester(
         # Calculate results in total
         if supervised:
             print("Results for all frames:")
-            y_bin = np.round(y_hat_array)
+            y_pred = np.round(y_hat_array)
             # Print value counts of y_bin
-            print("Value counts of y_bin: ", np.unique(y_bin, return_counts=True))
-            accuracy = accuracy_score(y_array, y_bin)
-            balanced_accuracy = balanced_accuracy_score(y_array, y_bin)
+            print("Value counts of y_bin: ", np.unique(y_pred, return_counts=True))
+            accuracy = accuracy_score(y_array, y_pred)
+            balanced_accuracy = balanced_accuracy_score(y_array, y_pred)
             auc = roc_auc_score(y_array, y_hat_array)
             print("Results for all frames:")
             print(

@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -22,7 +22,6 @@ def main(args, hyperparams):
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
-            + str(hyperparams["latent_dim"])
             + str(hyperparams["latent_dim"])
             + "final_model_classifier"
             + "code_cleaning"
@@ -82,8 +81,10 @@ def main(args, hyperparams):
         x_dim=train_loader.dataset[0][0].shape,
         z_dim=hyperparams["latent_dim"],
         n_gaussians=hyperparams["n_gaussians"],
+        n_manner=8,
         hidden_dims_spectrogram=hyperparams["hidden_dims_enc"],
         hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
+        classifier=hyperparams["classifier"],
         weights=hyperparams["weights"],
         device=device,
     )
@@ -92,15 +93,27 @@ def main(args, hyperparams):
 
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
-        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_2code_cleaning/GMVAE_cnn_best_model_2d.pt"
+        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_32final_model/GMVAE_cnn_best_model_2d.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
         # Freeze all the network
         for param in model.parameters():
             param.requires_grad = False
-
         # Add a classifier to the model
+        model.class_dims = [64, 32, 16]
+        model.classifier()
+        # Unfreeze the classifier
+        for param in model.hmc.parameters():
+            # Unfreezing the manner class embeddings
+            param.requires_grad = True
+        for param in model.clf_cnn.parameters():
+            # Unfreezing the cnn classifier
+            param.requires_grad = True
+        for param in model.clf_mlp.parameters():
+            # Unfreezing the mlp classifier
+            param.requires_grad = True
+        model.to(device)
 
         print("Training GMVAE...")
         # Train the model
@@ -112,6 +125,7 @@ def main(args, hyperparams):
             lr=hyperparams["lr"],
             wandb_flag=hyperparams["wandb_flag"],
             path_to_save=hyperparams["path_to_save"],
+            supervised=hyperparams["supervised"],
         )
 
         print("Training finished!")
@@ -131,38 +145,38 @@ def main(args, hyperparams):
         model=model,
         testloader=test_loader,
         test_data=test_data,
-        supervised=False,  # Not implemented yet
+        supervised=True,  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
         path_to_plot=hyperparams["path_to_save"],
     )
     print("Testing finished!")
 
     # Create an empty pd dataframe with three columns: data, label and manner
-    df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    df_train[audio_features] = [t[0] for t in train_loader.dataset]
-    df_train["label"] = [t[1] for t in train_loader.dataset]
-    df_train["manner"] = [t[2] for t in train_loader.dataset]
+    # df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
+    # df_train[audio_features] = [t[0] for t in train_loader.dataset]
+    # df_train["label"] = [t[1] for t in train_loader.dataset]
+    # df_train["manner"] = [t[2] for t in train_loader.dataset]
 
-    # Select randomly 1000 samples of dftrain
-    # df_train = df_train.sample(n=1000)
+    # # Select randomly 1000 samples of dftrain
+    # # df_train = df_train.sample(n=1000)
 
-    # Create an empty pd dataframe with three columns: data, label and manner
-    df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    df_test[audio_features] = [t[0] for t in test_loader.dataset]
-    df_test["label"] = [t[1] for t in test_loader.dataset]
-    df_test["manner"] = [t[2] for t in test_loader.dataset]
+    # # Create an empty pd dataframe with three columns: data, label and manner
+    # df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
+    # df_test[audio_features] = [t[0] for t in test_loader.dataset]
+    # df_test["label"] = [t[1] for t in test_loader.dataset]
+    # df_test["manner"] = [t[2] for t in test_loader.dataset]
 
-    print("Starting to calculate distances...")
-    plot_logopeda_alb_neuro(
-        model,
-        df_train,
-        df_test,
-        hyperparams["wandb_flag"],
-        name="test",
-        supervised=hyperparams["supervised"],
-        samples=5000,
-        path_to_plot=hyperparams["path_to_save"],
-    )
+    # print("Starting to calculate distances...")
+    # plot_logopeda_alb_neuro(
+    #     model,
+    #     df_train,
+    #     df_test,
+    #     hyperparams["wandb_flag"],
+    #     name="test",
+    #     supervised=hyperparams["supervised"],
+    #     samples=5000,
+    #     path_to_plot=hyperparams["path_to_save"],
+    # )
 
     if hyperparams["wandb_flag"]:
         wandb.finish()
@@ -183,10 +197,10 @@ if __name__ == "__main__":
         "hop_size_percent": 0.5,
         "spectrogram": True,
         "wandb_flag": False,
-        "epochs": 1,
+        "epochs": 100,
         "batch_size": 128,
         "lr": 1e-3,
-        "latent_dim": 2,
+        "latent_dim": 32,
         "hidden_dims_enc": [64, 1024, 64],
         "hidden_dims_gmvae": [256],
         "weights": [
@@ -195,8 +209,8 @@ if __name__ == "__main__":
             1,  # w3 is categorical kl loss,
             10,  # w5 is metric loss
         ],
-        "supervised": False,
-        "cnn_classifier": True,
+        "supervised": True,
+        "classifier": "mlp",  # "cnn" or "mlp"
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,

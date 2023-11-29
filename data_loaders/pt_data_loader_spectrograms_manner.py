@@ -389,46 +389,94 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         if (
             train_albayzin
         ):  # If we want to train with albayzin + 0.5 of neurovoz healthy patients
+            # =============== TRAIN DATA ===============
             train_data = self.data[self.data["dataset"] == "albayzin"]
             # Add 0.5 of neurovoz healthy patients to the train data
+            # To do so, get unique "id_patient" where label is 0
+            healthy_patients_neurovoz = self.data[
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
+            ]["id_patient"].unique()
+            # Randomly get 50% of the healthy patients
+            half_1_hp_neurovoz = np.random.choice(
+                healthy_patients_neurovoz, int(len(healthy_patients_neurovoz) / 2)
+            )
+            # Get the other 50%
+            half_2_hp_neurovoz = np.array(
+                [x for x in healthy_patients_neurovoz if x not in half_1_hp_neurovoz]
+            )
+
+            # Train data is albayzin + half_1_hp_neurovoz
             train_data = pd.concat(
                 [
                     train_data,
                     self.data[
-                        (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-                    ].sample(frac=0.5, random_state=42),
+                        (self.data["dataset"] == "neurovoz")
+                        & (self.data["id_patient"].isin(half_1_hp_neurovoz))
+                    ],
                 ]
             )
-            # Get the rest healhty patients not used for training
-            # Remove the train data from the neurovoz healthy patients
-            rest_data = self.data[
-                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-            ]
-            # Drop only if the index exists
-            for index in train_data.index:
-                if index in rest_data.index:
-                    rest_data = rest_data.drop(index)
+
+            # =============== TEST DATA ===============
+            # For test data, we want to use the other half of neurovoz healthy patients and all parkinson patients
+            # Get the other half of neurovoz healthy patients
             test_data = self.data[
-                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["id_patient"].isin(half_2_hp_neurovoz))
             ]
-            # Concatenate the rest of healthy patients with the test data
-            test_data = pd.concat([test_data, rest_data])
+            # Add all parkinson patients
+            test_data = pd.concat(
+                [
+                    test_data,
+                    self.data[
+                        (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+                    ],
+                ]
+            )
+
+            # Check if any "id_patient" is in both train and test data
+            train_patients = train_data["id_patient"].unique()
+            test_patients = test_data["id_patient"].unique()
+
+            # Get the intersection
+            intersection = np.intersect1d(train_patients, test_patients)
+            assert (
+                len(intersection) == 0
+            ), "There are patients in both train and test data!"
 
             if supervised:
-                # Get half of the parkinson patients from neurovoz and add them to train, remove them from test
+                # Get the id of the patients with parkinson
+                parkinson_patients = self.data[
+                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+                ]["id_patient"].unique()
+
+                # Add to the train set half of the parkinson patients
+                half_1_pk_neurovoz = np.random.choice(
+                    parkinson_patients, int(len(parkinson_patients) / 2)
+                )
+
+                # Add half_1_pk_neurovoz to the train data
                 train_data = pd.concat(
                     [
                         train_data,
                         self.data[
                             (self.data["dataset"] == "neurovoz")
-                            & (self.data["label"] == 1)
-                        ].sample(frac=0.5, random_state=42),
+                            & (self.data["id_patient"].isin(half_1_pk_neurovoz))
+                        ],
                     ]
                 )
-                # Remove from test_data any patient that is in train_data
-                for index in train_data.index:
-                    if index in test_data.index:
-                        test_data = test_data.drop(index)
+
+                # Remove half1_pk_neurovoz from the test data
+                test_data = test_data[~test_data["id_patient"].isin(half_1_pk_neurovoz)]
+
+                # Check if any "id_patient" is in both train and test data
+                train_patients = train_data["id_patient"].unique()
+                test_patients = test_data["id_patient"].unique()
+
+                # Get the intersection
+                intersection = np.intersect1d(train_patients, test_patients)
+                assert (
+                    len(intersection) == 0
+                ), "There are patients in both train and test data!"
 
         else:  # If we want to train with only neurovoz healthy patients and not use albayzin for enriching the training data
             # Train data will be 0.8 of neurovoz healthy patients
@@ -445,113 +493,63 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             # Concatenate the rest of healthy patients with the test data
             test_data = pd.concat([test_data, rest_data])
 
-        # Split the train data into train and validation sets
-        train_data, val_data = train_test_split(
-            train_data, test_size=0.2, random_state=42, stratify=train_data["text"]
+        # Split the train data into train and validation sets based on id_patient
+        id_patients = train_data["id_patient"].unique()
+        train_patients, val_patients = train_test_split(
+            id_patients, test_size=0.4, random_state=42
         )
+        val_data = train_data[train_data["id_patient"].isin(val_patients)]
+        train_data = train_data[train_data["id_patient"].isin(train_patients)]
+
+        if supervised:
+            # only testing: lets remove all albayzin patients from train and val data
+            train_data = train_data[train_data["dataset"] == "neurovoz"]
+            val_data = val_data[val_data["dataset"] == "neurovoz"]
+
+        train_patients = train_data["id_patient"].unique()
+        val_patients = val_data["id_patient"].unique()
+
+        # Get the intersection
+        intersection = np.intersect1d(train_patients, val_patients)
+        assert len(intersection) == 0, "There are patients in both train and val data!"
 
         if verbose:
-            print("================ Train data information ================")
-            print("Total audios in train data: ", len(train_data))
+            # Print the number of patients in each set
+            print("Number of patients in train set: ", len(train_patients))
+            print("Number of patients in val set: ", len(val_patients))
             print(
-                "Total healthy audios in train data: ",
-                len(train_data[train_data["label"] == 0]),
-            )
-            print(
-                "Total parkinson audios in train data: ",
-                len(train_data[train_data["label"] == 1]),
-            )
-            print(
-                "Total patients in train data: ", len(train_data["id_patient"].unique())
-            )
-            print(
-                "Total patients healthy in train data: ",
-                len(train_data[train_data["label"] == 0]["id_patient"].unique()),
-            )
-            print(
-                "Total patients parkinson in train data: ",
-                len(train_data[train_data["label"] == 1]["id_patient"].unique()),
-            )
-            print(
-                "Manner class shape in train data: ",
-                np.stack(train_data["manner_class"].values).shape,
-            )
-            print(
-                "Total manner labels in train data: ",
-                np.stack(train_data["manner_class"].values).flatten().shape[0],
+                "Number of patients in test set: ",
+                len(test_data["id_patient"].unique()),
             )
 
-            # VAL data information
-            print("================ Val data information ================")
-            print("Total audios in val data: ", len(val_data))
-            print(
-                "Total healthy audios in val data: ",
-                len(val_data[val_data["label"] == 0]),
+            # Get nº of patients of dataset per set
+            albayzin_train = len(
+                train_data[train_data["dataset"] == "albayzin"]["id_patient"].unique()
             )
-            print(
-                "Total parkinson audios in val data: ",
-                len(val_data[val_data["label"] == 1]),
+            albayzin_val = len(
+                val_data[val_data["dataset"] == "albayzin"]["id_patient"].unique()
             )
-            print("Total patients in val data: ", len(val_data["id_patient"].unique()))
-            print(
-                "Total patients healthy in val data: ",
-                len(val_data[val_data["label"] == 0]["id_patient"].unique()),
-            )
-            print(
-                "Total patients parkinson in val data: ",
-                len(val_data[val_data["label"] == 1]["id_patient"].unique()),
-            )
-            print(
-                "Manner class shape in val data: ",
-                np.stack(val_data["manner_class"].values).shape,
-            )
-            print(
-                "Total manner labels in val data: ",
-                np.stack(val_data["manner_class"].values).flatten().shape[0],
+            albayzin_test = len(
+                test_data[test_data["dataset"] == "albayzin"]["id_patient"].unique()
             )
 
-            # TEST data information
-            print("================ Test data information ================")
-            print("Total audios in test data: ", len(test_data))
-            print(
-                "Total healthy audios in test data: ",
-                len(test_data[test_data["label"] == 0]),
+            print("Number of patients in train set from albayzin: ", albayzin_train)
+            print("Number of patients in val set from albayzin: ", albayzin_val)
+            print("Number of patients in test set from albayzin: ", albayzin_test)
+
+            neurovoz_train = len(
+                train_data[train_data["dataset"] == "neurovoz"]["id_patient"].unique()
             )
-            print(
-                "Total parkinson audios in test data: ",
-                len(test_data[test_data["label"] == 1]),
+            neurovoz_val = len(
+                val_data[val_data["dataset"] == "neurovoz"]["id_patient"].unique()
             )
-            print(
-                "Total patients in test data: ", len(test_data["id_patient"].unique())
+            neurovoz_test = len(
+                test_data[test_data["dataset"] == "neurovoz"]["id_patient"].unique()
             )
-            print(
-                "Total patients healthy in test data: ",
-                len(test_data[test_data["label"] == 0]["id_patient"].unique()),
-            )
-            print(
-                "Total patients parkinson in test data: ",
-                len(test_data[test_data["label"] == 1]["id_patient"].unique()),
-            )
-            print(
-                "Manner class shape in test data: ",
-                np.stack(test_data["manner_class"].values).shape,
-            )
-            print(
-                "Total manner labels in test data: ",
-                np.stack(test_data["manner_class"].values).flatten().shape[0],
-            )
-            print(
-                "Total manner labels parkinsonian in test data: ",
-                np.stack(test_data[test_data["label"] == 1]["manner_class"].values)
-                .flatten()
-                .shape[0],
-            )
-            print(
-                "Total manner class healthy in test data: ",
-                np.stack(test_data[test_data["label"] == 0]["manner_class"].values)
-                .flatten()
-                .shape[0],
-            )
+
+            print("Number of patients in train set from neurovoz: ", neurovoz_train)
+            print("Number of patients in val set from neurovoz: ", neurovoz_val)
+            print("Number of patients in test set from neurovoz: ", neurovoz_test)
 
         # Create the dataloaders
         if self.plps:
@@ -606,6 +604,36 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         x_test = np.stack(
             [std.transform(x.reshape(-1, x.shape[1])).reshape(x.shape) for x in x_test]
         )
+
+        # When supervised, we should oversample the minority class
+        if supervised:
+            # Oversample x_train, y_train and p_train based on y_train
+            # Get the minority class
+            unique_labels, count_labels = np.unique(y_train, return_counts=True)
+            max_count = np.max(count_labels)
+
+            # generate indices for oversamping
+            idx_sampled = np.concatenate(
+                [
+                    np.random.choice(np.where(y_train == label)[0], max_count)
+                    for label in unique_labels
+                ]
+            )
+            # Prit shapes before oversampling
+            print("Shapes before oversampling...")
+            print("x_train shape: ", x_train.shape)
+            print("y_train shape: ", y_train.shape)
+            print("p_train shape: ", p_train.shape)
+
+            # Oversample
+            x_train = x_train[idx_sampled]
+            y_train = y_train[idx_sampled]
+            p_train = p_train[idx_sampled]
+
+            # Print shapes after oversampling
+            print("Shapes after oversampling...")
+            print("x_train shape: ", x_train.shape)
+            print("y_train shape: ", y_train.shape)
 
         # Min max scaler between -1 and 1
         # scaler = MinMaxScaler(feature_range=(-1, 1))

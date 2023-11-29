@@ -95,6 +95,7 @@ def main(args, hyperparams):
             lr=hyperparams["lr"],
             wandb_flag=hyperparams["wandb_flag"],
             path_to_save=hyperparams["path_to_save"],
+            supervised=False,
         )
 
         print("Training finished!")
@@ -169,14 +170,14 @@ if __name__ == "__main__":
         "epochs": 1000,
         "batch_size": 128,
         "lr": 1e-3,
-        "latent_dim": 2,
+        "latent_dim": 32,
         "hidden_dims_enc": [64, 1024, 64],
         "hidden_dims_gmvae": [256],
         "weights": [
             1,  # w1 is rec loss,
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
-            10,  # w5 is metric loss
+            100,  # w5 is metric loss
         ],
         "supervised": False,
         "cnn_classifier": True,
