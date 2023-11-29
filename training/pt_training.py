@@ -1121,7 +1121,7 @@ def SpeechTherapist_trainer(
                     bacc = balanced_accuracy_score(label_list, y_pred)
                     print(
                         "Epoch: {} Valid Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f}".format(
-                            e, train_loss, acc_super, bacc
+                            e, valid_loss, acc_super, bacc
                         )
                     )
 
@@ -1141,7 +1141,7 @@ def SpeechTherapist_trainer(
                 valid_loss_store.append(valid_loss / len(validloader.dataset))
             else:
                 # If supervised, use the balanced accuracy to store the best model. The greater the better
-                valid_loss_store.append(-bacc)
+                valid_loss_store.append(valid_loss / len(validloader.dataset))
 
             if wandb_flag:
                 if supervised:
@@ -1189,257 +1189,21 @@ def SpeechTherapist_trainer(
 
         # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
         if e > 50:
-            if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
-                print("Early stopping")
-                break
-
-
-def GMVAE_trainer(
-    model, trainloader, validloader, epochs, lr, supervised, wandb_flag, path_to_save
-):
-    # Define lr scheduler
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    T_max = 50  # Maximum number of iterations or epochs
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=T_max, eta_min=0.0001
-    )  # Adjust parameters as needed
-
-    valid_loss_store = []
-
-    true_label_list = []
-    pred_label_list = []
-    qy_list = []
-
-    if supervised:
-        # Freeze all the network
-        for param in model.parameters():
-            param.requires_grad = False
-        # Unfreeze the classifier
-        for param in model.clf_cnn.parameters():
-            param.requires_grad = True
-        for param in model.clf_mlp.parameters():
-            param.requires_grad = True
-
-    for e in range(epochs):
-        model.train()
-        train_loss = 0
-        rec_loss = 0
-        gaussian_loss = 0
-        cat_loss = 0
-        clf_loss = 0
-        metric_loss = 0
-        usage = np.zeros(model.k)
-
-        # Use tqdm for progress bar
-        for batch_idx, (data, labels, manner) in enumerate(tqdm(trainloader)):
-            # Make sure dtype is Tensor float
-            data = data.to(model.device).float()
-
-            optimizer.zero_grad()
-
-            (
-                loss,
-                rec_loss_b,
-                gaussian_loss_b,
-                cat_loss_b,
-                clf_loss_b,
-                metric_loss_b,
-                x,
-                x_hat,
-                qy,
-                y_pred,
-            ) = model.loss(data, labels, manner, e)
-
-            loss.backward()
-
-            optimizer.step()
-
-            train_loss += loss.item()
-            rec_loss += rec_loss_b.item()
-            gaussian_loss += gaussian_loss_b.item()
+            if not supervised:
+                if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
+                    print("Early stopping")
+                    break
             if supervised:
-                clf_loss += clf_loss_b.item()
-            cat_loss += cat_loss_b.item()
-            metric_loss += metric_loss_b.item()
-            usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
-
-            true_label_list.append(labels)
-            pred_label_list.append(torch.round(y_pred.cpu().detach()))
-            qy_list.append(torch.argmax(qy.cpu().detach(), dim=1))
-
-        # Scheduler step
-        scheduler.step()
-
-        # Check reconstruction of X
-        check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
-
-        # Check unsupervised cluster accuracy and NMI
-        true_label = torch.tensor(np.concatenate(true_label_list))
-        pred_label = torch.tensor(np.concatenate(pred_label_list))
-        qy = torch.tensor(np.concatenate(qy_list))
-        if model.supervised:
-            acc = accuracy_score(true_label, pred_label)
-            nmi_score = nmi(pred_label, true_label)
-        else:
-            # idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
-            # true_label = true_label[~idx6_7]
-            # qy = qy[~idx6_7]
-            # acc = cluster_acc(qy, true_label)
-            # nmi_score = nmi(qy, true_label)
-            acc = 0
-            nmi_score = 0
-
-        # Remove affricates and silences from the acc and nmi calculations (label==6 and label==7)
-        # idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
-        # true_label = true_label[~idx6_7]
-        # pred_label = pred_label[~idx6_7]
-        # acc = cluster_acc(pred_label, true_label)
-
-        print(
-            "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Clf Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
-                e,
-                train_loss / len(trainloader.dataset),
-                rec_loss / len(trainloader.dataset),
-                gaussian_loss / len(trainloader.dataset),
-                cat_loss / len(trainloader.dataset),
-                clf_loss / len(trainloader.dataset),
-                metric_loss / len(trainloader.dataset),
-                acc,
-                nmi_score,
-            )
-        )
-        if wandb_flag:
-            wandb.log(
-                {
-                    "train/Epoch": e,
-                    "train/Loss": train_loss / len(trainloader.dataset),
-                    "train/Rec Loss": rec_loss / len(trainloader.dataset),
-                    "train/Gaussian Loss": gaussian_loss / len(trainloader.dataset),
-                    "train/Cat Loss": cat_loss / len(trainloader.dataset),
-                    "train/Clf Loss": clf_loss / len(trainloader.dataset),
-                    "train/Categorical usage": usage / len(trainloader.dataset),
-                    "train/Metric Loss": metric_loss / len(trainloader.dataset),
-                    "train/Acc": acc,
-                    "train/NMI": nmi_score,
-                }
-            )
-
-        if validloader is not None:
-            model.eval()
-            with torch.no_grad():
-                valid_loss = 0
-                val_rec_loss = 0
-                val_gaussian_loss = 0
-                val_clf_loss = 0
-                val_cat_loss = 0
-                val_metric_loss = 0
-                val_usage = 0
-
-                true_label_list = []
-                pred_label_list = []
-
-                for batch_idx, (data, labels, manner) in enumerate(tqdm(validloader)):
-                    # Make sure dtype is Tensor float
-                    data = data.to(model.device).float()
-
-                    (
-                        loss,
-                        rec_loss_v,
-                        gaussian_loss_v,
-                        cat_loss_v,
-                        clf_loss_v,
-                        metric_loss_v,
-                        x,
-                        x_hat,
-                        qy,
-                        y_pred,
-                    ) = model.loss(data, labels, manner, e)
-
-                    valid_loss += loss.item()
-
-                    val_rec_loss += rec_loss_v.item()
-                    val_gaussian_loss += gaussian_loss_v.item()
-                    if supervised:
-                        val_clf_loss += clf_loss_v.item()
-                    val_cat_loss += cat_loss_v.item()
-                    val_metric_loss += metric_loss_v.item()
-                    val_usage += torch.sum(y_pred, dim=0).cpu().detach().numpy()
-
-                    true_label_list.append(labels)
-                    pred_label_list.append(torch.round(y_pred.cpu().detach()))
-
-                # Check reconstruction of X
-                check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
-
-                # Check unsupervised cluster accuracy and NMI
-                true_label = torch.tensor(np.concatenate(true_label_list))
-                pred_label = torch.tensor(np.concatenate(pred_label_list))
-                if model.supervised:
-                    acc = accuracy_score(true_label, pred_label)
-                    nmi_score = nmi(pred_label, true_label)
-                else:
-                    # idx6_7 = torch.logical_or(true_label == 6, true_label == 7)
-                    # true_label = true_label[~idx6_7]
-                    # qy = qy[~idx6_7]
-                    # acc = cluster_acc(qy, true_label)
-                    # nmi_score = nmi(qy, true_label)
-                    acc = 0
-                    nmi_score = 0
-
-            print(
-                "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Clf Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
-                    e,
-                    valid_loss / len(validloader.dataset),
-                    val_rec_loss / len(validloader.dataset),
-                    val_gaussian_loss / len(validloader.dataset),
-                    val_cat_loss / len(validloader.dataset),
-                    val_clf_loss / len(validloader.dataset),
-                    val_metric_loss / len(validloader.dataset),
-                    acc,
-                    nmi_score,
-                )
-            )
-            valid_loss_store.append(valid_loss / len(validloader.dataset))
-            if wandb_flag:
-                wandb.log(
-                    {
-                        "valid/Epoch": e,
-                        "valid/Loss": valid_loss / len(validloader.dataset),
-                        "valid/Rec Loss": val_rec_loss / len(validloader.dataset),
-                        "valid/Gaussian Loss": val_gaussian_loss
-                        / len(validloader.dataset),
-                        "valid/Cat Loss": val_cat_loss / len(validloader.dataset),
-                        "valid/Clf Loss": val_clf_loss / len(validloader.dataset),
-                        "valid/Metric Loss": val_metric_loss / len(validloader.dataset),
-                        "valid/Acc": acc,
-                        "valid/NMI": nmi_score,
-                        "valid/Categorical usage": usage / len(trainloader.dataset),
-                    }
-                )
-        # Store best model
-        # If the validation loss is the best, save the model
-        if valid_loss_store[-1] <= min(valid_loss_store):
-            print("Storing the best model at epoch ", e)
-            name = path_to_save
-            # check if the folder exists if not create it
-            if not os.path.exists(name):
-                os.makedirs(name)
-            name += "/GMVAE_cnn_best_model_2d.pt"
-            torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                },
-                name,
-            )
-
-        check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
-
-        # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
-        if e > 50:
-            if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
-                print("Early stopping")
-                break
+                if valid_loss_store[-1] > max(valid_loss_store[-50:-1]):
+                    print("Early stopping")
+                    print("Reloading best model")
+                    # Restore best model:
+                    name = path_to_save
+                    name += "/GMVAE_cnn_best_model_2d.pt"
+                    checkpoint = torch.load(name)
+                    model.load_state_dict(checkpoint["model_state_dict"])
+                    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+                    break
 
 
 def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):

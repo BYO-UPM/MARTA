@@ -9,6 +9,7 @@ import torchaudio
 from torchaudio import transforms
 import textgrids as tg
 import time
+from torch.utils.data import Dataset, DataLoader, sampler
 
 
 # Function to collapse the matrix into a 33x1 vector with the most repeated string
@@ -496,7 +497,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # Split the train data into train and validation sets based on id_patient
         id_patients = train_data["id_patient"].unique()
         train_patients, val_patients = train_test_split(
-            id_patients, test_size=0.4, random_state=42
+            id_patients, test_size=0.4,
         )
         val_data = train_data[train_data["id_patient"].isin(val_patients)]
         train_data = train_data[train_data["id_patient"].isin(train_patients)]
@@ -635,6 +636,24 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             print("x_train shape: ", x_train.shape)
             print("y_train shape: ", y_train.shape)
 
+            # Do the same for the validation set
+            # Get the minority class
+            unique_labels, count_labels = np.unique(y_val, return_counts=True)
+            max_count = np.max(count_labels)
+            
+            # generate indices for oversamping
+            idx_sampled = np.concatenate(
+                [
+                    np.random.choice(np.where(y_val == label)[0], max_count)
+                    for label in unique_labels
+                ]
+            )
+
+            # Oversample
+            x_val = x_val[idx_sampled]
+            y_val = y_val[idx_sampled]
+            p_val = p_val[idx_sampled]
+
         # Min max scaler between -1 and 1
         # scaler = MinMaxScaler(feature_range=(-1, 1))
         # x_train = scaler.fit_transform(x_train)
@@ -664,7 +683,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             ),
             drop_last=False,
             batch_size=self.hyperparams["batch_size"],
-            shuffle=False,
+            shuffle=True,
         )
         test_loader = torch.utils.data.DataLoader(
             dataset=list(

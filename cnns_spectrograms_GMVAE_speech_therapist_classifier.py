@@ -197,7 +197,7 @@ if __name__ == "__main__":
         "hop_size_percent": 0.5,
         "spectrogram": True,
         "wandb_flag": False,
-        "epochs": 100,
+        "epochs": 1000,
         "batch_size": 128,
         "lr": 1e-3,
         "latent_dim": 32,
