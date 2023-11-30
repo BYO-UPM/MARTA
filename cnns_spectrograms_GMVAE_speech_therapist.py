@@ -24,6 +24,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model"
+            + "repetition_to_test_randomness"
         )
 
     else:
@@ -31,6 +32,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_only_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model"
+            + "repetition_to_test_randomness"
         )
 
     # Create the path if does not exist
@@ -170,7 +172,7 @@ if __name__ == "__main__":
         "epochs": 1000,
         "batch_size": 128,
         "lr": 1e-3,
-        "latent_dim": 32,
+        "latent_dim": 2,
         "hidden_dims_enc": [64, 1024, 64],
         "hidden_dims_gmvae": [256],
         "weights": [
