@@ -405,6 +405,7 @@ class SpeechTherapist(torch.nn.Module):
         weights=[1, 1, 1, 10],
         classifier="mlp",
         device="cpu",
+        reducer="mean",
     ):
         super().__init__()
         # ============ Device ============
@@ -433,16 +434,11 @@ class SpeechTherapist(torch.nn.Module):
         self.SpecDecoder()
 
         # ============ Losses ============
-        # Metric loss
-        sumreducer = reducers.SumReducer()
-        self.miner = miners.MultiSimilarityMiner(epsilon=0.1)
-        self.metric_loss_func = losses.GeneralizedLiftedStructureLoss(
-            reducer=sumreducer
-        ).to(self.device)
+        self.reducer = reducer
         # Reconstruction loss
-        self.mse_loss = torch.nn.MSELoss(reduction="sum")
+        self.mse_loss = torch.nn.MSELoss(reduction=self.reducer)
         # BCE loss
-        self.bce_loss = torch.nn.BCELoss(reduction="sum")
+        self.bce_loss = torch.nn.BCELoss(reduction=self.reducer)
 
         # ============ Initialize the networks ============
         self.init_weights()
@@ -730,30 +726,39 @@ class SpeechTherapist(torch.nn.Module):
         """This function computes the metric loss of the GMVAE. It receives the latent space representation of each window of the spectrogram (z_mu) and the manner class of each phoneme (manner_classes).
         Currently we are ignoring the silences and affricates as they are minor in the datase, but we should find a way to include them in the metric loss.
         """
+        if self.reducer == "mean":
+            reducer = reducers.MeanReducer()
+        else:
+            reducer = reducers.SumReducer()
+
+        self.miner = miners.MultiSimilarityMiner(epsilon=0.1)
+        self.metric_loss_func = losses.GeneralizedLiftedStructureLoss(
+            reducer=reducer
+        ).to(self.device)
 
         # Silences and affricates should be not used to compute the metric loss
         manner_classes = manner_classes.reshape(-1)
-        idx = np.where((manner_classes != 6) & (manner_classes != 7))[
-            0
-        ]  # 6: affricates, 7: silences
-        z_mu = z_mu[idx]
-        manner_classes = manner_classes[idx]
+        # idx = np.where((manner_classes != 6) & (manner_classes != 7))[
+        #     0
+        # ]  # 6: affricates, 7: silences
+        # z_mu = z_mu[idx]
+        # manner_classes = manner_classes[idx]
 
         # Oversample labels and x_hat to have the same number of samples
-        unique_labels, count_labels = np.unique(manner_classes, return_counts=True)
-        max_count = np.max(count_labels)
+        # unique_labels, count_labels = np.unique(manner_classes, return_counts=True)
+        # max_count = np.max(count_labels)
 
-        # Generate indices for oversampling
-        idx_sampled = np.concatenate(
-            [
-                np.random.choice(np.where(manner_classes == label)[0], max_count)
-                for label in unique_labels
-            ]
-        )
+        # # Generate indices for oversampling
+        # idx_sampled = np.concatenate(
+        #     [
+        #         np.random.choice(np.where(manner_classes == label)[0], max_count)
+        #         for label in unique_labels
+        #     ]
+        # )
 
-        # Apply oversampling
-        manner_classes = manner_classes[idx_sampled]
-        z_mu = z_mu[idx_sampled]
+        # # Apply oversampling
+        # manner_classes = manner_classes[idx_sampled]
+        # z_mu = z_mu[idx_sampled]
 
         # Miner
         hard_pairs = self.miner(z_mu, manner_classes)
@@ -780,16 +785,21 @@ class SpeechTherapist(torch.nn.Module):
         recon_loss = self.mse_loss(x_hat, x)
 
         # Gaussian loss
-        gaussian_loss = torch.sum(
-            log_normal(z_sample, qz_mu, qz_var)  # q(z | e_s, y):
-            - log_normal(z_sample, pz_mu, pz_var)  # p(z | y)
-        )
+        gaussian_loss = log_normal(
+            z_sample, qz_mu, qz_var
+        ) - log_normal(  # q(z | e_s, y):
+            z_sample, pz_mu, pz_var
+        )  # p(z | y)
+        if self.reducer == "mean":
+            gaussian_loss = torch.mean(gaussian_loss)
+        else:
+            gaussian_loss = torch.sum(gaussian_loss)
 
         # Categorical loss
-        categorical_loss = KL_cat(y, y_logits, self.k)
+        categorical_loss = KL_cat(y, y_logits, self.k, self.reducer)
 
         # Metric loss
-        metric_loss = self.metric_loss(z_sample, manner_classes)
+        metric_loss = self.metric_loss(qz_mu, manner_classes)
 
         # Total loss is the weighted sum of the four losses
         complete_loss = (

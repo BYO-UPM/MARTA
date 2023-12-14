@@ -24,15 +24,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model"
-            + "repetition_to_test_randomness"
-        )
-
-    else:
-        hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_only_neurovoz_"
-            + str(hyperparams["latent_dim"])
-            + "final_model"
-            + "repetition_to_test_randomness"
+            + "testingsupervised"
         )
 
     # Create the path if does not exist
@@ -82,6 +74,7 @@ def main(args, hyperparams):
         hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
         weights=hyperparams["weights"],
         device=device,
+        reducer="sum",
     )
 
     # model = torch.compile(model)
@@ -129,6 +122,12 @@ def main(args, hyperparams):
     df_train["label"] = [t[1] for t in train_loader.dataset]
     df_train["manner"] = [t[2] for t in train_loader.dataset]
 
+    ## ALERT: REMOVE THIS LINE AFTER TESTING!!!!
+    # Substract 8 to manner if their corresponidng label is 1
+    df_train["manner"] = df_train.apply(
+        lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
+    )
+
     # Select randomly 1000 samples of dftrain
     # df_train = df_train.sample(n=1000)
 
@@ -137,6 +136,12 @@ def main(args, hyperparams):
     df_test[audio_features] = [t[0] for t in test_loader.dataset]
     df_test["label"] = [t[1] for t in test_loader.dataset]
     df_test["manner"] = [t[2] for t in test_loader.dataset]
+
+    ## ALERT: REMOVE THIS LINE AFTER TESTING!!!!
+    # Substract 8 to manner if their corresponidng label is 1
+    df_test["manner"] = df_test.apply(
+        lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
+    )
 
     print("Starting to calculate distances...")
     plot_logopeda_alb_neuro(
@@ -172,20 +177,20 @@ if __name__ == "__main__":
         "epochs": 1000,
         "batch_size": 128,
         "lr": 1e-3,
-        "latent_dim": 2,
+        "latent_dim": 32,
         "hidden_dims_enc": [64, 1024, 64],
         "hidden_dims_gmvae": [256],
         "weights": [
             1,  # w1 is rec loss,
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
-            100,  # w5 is metric loss
+            10,  # w5 is metric loss
         ],
         "supervised": False,
         "cnn_classifier": True,
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
-        "train": True,
+        "train": False,
         "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
     }
 

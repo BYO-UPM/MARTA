@@ -385,6 +385,15 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # Current data has 3 ["label"] values: 0, 1, 2. However, 0 and 1 are both Healthy and 2 is Parkinson. We need to map that: 0 and 1 to 0 and 2 to 1
         self.data["label"] = self.data["label"].apply(lambda x: 0 if x < 2 else 1)
 
+        # Modify the manner class: sum to each manner class the label multiplied by the number of manner classes (8)
+        # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
+        self.data["manner_class"] = self.data.apply(
+            lambda x: [x["label"] * 8 + y for y in x["manner_class"]], axis=1
+        )
+
+        # Print unique values in manner_class
+        print("Unique values in manner_class: ", np.unique(self.data["manner_class"]))
+
         print("Splitting in train, test and validation sets...")
         # Split the data into train and test.
         if (
@@ -424,6 +433,32 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 (self.data["dataset"] == "neurovoz")
                 & (self.data["id_patient"].isin(half_2_hp_neurovoz))
             ]
+
+            # # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
+            # Split the parkinsonian in two halfs
+            # Get the id of the patients with parkinson
+            parkinson_patients = self.data[
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+            ]["id_patient"].unique()
+
+            # Add to the train set half of the parkinson patients
+            half_1_pk_neurovoz = np.random.choice(
+                parkinson_patients, int(len(parkinson_patients) / 2)
+            )
+
+            # Add half_1_pk_neurovoz to the train data
+            train_data = pd.concat(
+                [
+                    train_data,
+                    self.data[
+                        (self.data["dataset"] == "neurovoz")
+                        & (self.data["id_patient"].isin(half_1_pk_neurovoz))
+                    ],
+                ]
+            )
+
+            # # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
+
             # Add all parkinson patients
             test_data = pd.concat(
                 [
@@ -433,6 +468,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     ],
                 ]
             )
+
+            # # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
+            # Remove half1_pk_neurovoz from the test data
+            test_data = test_data[~test_data["id_patient"].isin(half_1_pk_neurovoz)]
 
             # Check if any "id_patient" is in both train and test data
             train_patients = train_data["id_patient"].unique()
@@ -497,7 +536,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # Split the train data into train and validation sets based on id_patient
         id_patients = train_data["id_patient"].unique()
         train_patients, val_patients = train_test_split(
-            id_patients, test_size=0.4,
+            id_patients,
+            test_size=0.4,
         )
         val_data = train_data[train_data["id_patient"].isin(val_patients)]
         train_data = train_data[train_data["id_patient"].isin(train_patients)]
@@ -640,7 +680,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             # Get the minority class
             unique_labels, count_labels = np.unique(y_val, return_counts=True)
             max_count = np.max(count_labels)
-            
+
             # generate indices for oversamping
             idx_sampled = np.concatenate(
                 [

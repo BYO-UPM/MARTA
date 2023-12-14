@@ -880,8 +880,7 @@ def SpeechTherapist_trainer(
         y_pred_list = []
         label_list = []
 
-        train_loss, rec_loss, gauss_loss, cat_loss, clf_loss, metric_loss = (
-            0,
+        tr_running_loss, tr_rec_loss, tr_gauss_loss, tr_cat_loss, tr_metric_loss = (
             0,
             0,
             0,
@@ -949,12 +948,12 @@ def SpeechTherapist_trainer(
             optimizer.step()
 
             # ==== Update metrics ====
-            train_loss += complete_loss.item()
+            tr_running_loss += complete_loss.item()
             if not supervised:
-                rec_loss += recon_loss.item()
-                gauss_loss += gaussian_loss.item()
-                cat_loss += categorical_loss.item()
-                metric_loss += metric_loss.item()
+                tr_rec_loss += recon_loss.item()
+                tr_gauss_loss += gaussian_loss.item()
+                tr_cat_loss += categorical_loss.item()
+                tr_metric_loss += metric_loss.item()
                 usage += torch.sum(y, dim=0).cpu().detach().numpy()
                 gaussian_component.append(y.cpu().detach().numpy())
                 true_manner_list.append(manner)
@@ -973,11 +972,11 @@ def SpeechTherapist_trainer(
             print(
                 "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                     e,
-                    train_loss / len(trainloader.dataset),
-                    rec_loss / len(trainloader.dataset),
-                    gauss_loss / len(trainloader.dataset),
-                    cat_loss / len(trainloader.dataset),
-                    metric_loss / len(trainloader.dataset),
+                    tr_running_loss / len(trainloader.dataset),
+                    tr_rec_loss / len(trainloader.dataset),
+                    tr_gauss_loss / len(trainloader.dataset),
+                    tr_cat_loss / len(trainloader.dataset),
+                    tr_metric_loss / len(trainloader.dataset),
                     acc,
                     nmi_score,
                 )
@@ -988,7 +987,7 @@ def SpeechTherapist_trainer(
             balanced_acc = balanced_accuracy_score(label_list, y_pred)
             print(
                 "Epoch: {} Train Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f}".format(
-                    e, train_loss, acc_super, balanced_acc
+                    e, tr_running_loss, acc_super, balanced_acc
                 )
             )
 
@@ -997,7 +996,7 @@ def SpeechTherapist_trainer(
                 wandb.log(
                     {
                         "train/Epoch": e,
-                        "train/Loss": train_loss,
+                        "train/Loss": tr_running_loss,
                         "train/Acc": acc_super,
                     }
                 )
@@ -1005,11 +1004,11 @@ def SpeechTherapist_trainer(
                 wandb.log(
                     {
                         "train/Epoch": e,
-                        "train/Loss": train_loss,
-                        "train/Rec Loss": rec_loss,
-                        "train/Gaussian Loss": gauss_loss,
+                        "train/Loss": tr_running_loss / len(trainloader.dataset),
+                        "train/Rec Loss": tr_rec_loss / len(trainloader.dataset),
+                        "train/Gaussian Loss": tr_gauss_loss / len(trainloader.dataset),
                         "train/Categorical usage": usage,
-                        "train/Metric Loss": metric_loss,
+                        "train/Metric Loss": tr_metric_loss / len(trainloader.dataset),
                         "train/Acc": acc,
                         "train/NMI": nmi_score,
                         "train/usage": usage / len(trainloader.dataset),
@@ -1020,8 +1019,7 @@ def SpeechTherapist_trainer(
             model.eval()
             with torch.no_grad():
                 usage = np.zeros(model.k)
-                valid_loss, rec_loss, gauss_loss, cat_loss, clf_loss, metric_loss = (
-                    0,
+                v_running_loss, v_rec_loss, v_gauss_loss, v_cat_loss, v_metric_loss = (
                     0,
                     0,
                     0,
@@ -1093,13 +1091,13 @@ def SpeechTherapist_trainer(
                             y_logits,
                         )
 
-                    valid_loss += complete_loss.item()
+                    v_running_loss += complete_loss.item()
 
                     if not supervised:
-                        rec_loss += recon_loss.item()
-                        gauss_loss += gaussian_loss.item()
-                        cat_loss += categorical_loss.item()
-                        metric_loss += metric_loss.item()
+                        v_rec_loss += recon_loss.item()
+                        v_gauss_loss += gaussian_loss.item()
+                        v_cat_loss += categorical_loss.item()
+                        v_metric_loss += metric_loss.item()
                         usage += torch.sum(y, dim=0).cpu().detach().numpy()
 
                         true_manner_list.append(manner)
@@ -1121,7 +1119,7 @@ def SpeechTherapist_trainer(
                     bacc = balanced_accuracy_score(label_list, y_pred)
                     print(
                         "Epoch: {} Valid Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f}".format(
-                            e, valid_loss, acc_super, bacc
+                            e, v_running_loss, acc_super, bacc
                         )
                     )
 
@@ -1129,26 +1127,27 @@ def SpeechTherapist_trainer(
                 print(
                     "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                         e,
-                        valid_loss / len(validloader.dataset),
-                        rec_loss / len(validloader.dataset),
-                        gauss_loss / len(validloader.dataset),
-                        cat_loss / len(validloader.dataset),
-                        metric_loss / len(validloader.dataset),
+                        v_running_loss / len(validloader.dataset),
+                        v_rec_loss / len(validloader.dataset),
+                        v_gauss_loss / len(validloader.dataset),
+                        v_cat_loss / len(validloader.dataset),
+                        v_metric_loss / len(validloader.dataset),
                         acc,
                         nmi_score,
                     )
                 )
-                valid_loss_store.append(valid_loss / len(validloader.dataset))
+                print(len(validloader.dataset))
+                valid_loss_store.append(v_running_loss)
             else:
                 # If supervised, use the balanced accuracy to store the best model. The greater the better
-                valid_loss_store.append(valid_loss / len(validloader.dataset))
+                valid_loss_store.append(v_running_loss)
 
             if wandb_flag:
                 if supervised:
                     wandb.log(
                         {
                             "valid/Epoch": e,
-                            "valid/Loss": valid_loss,
+                            "valid/Loss": v_running_loss,
                             "valid/Acc": acc_super,
                         }
                     )
@@ -1156,12 +1155,12 @@ def SpeechTherapist_trainer(
                     wandb.log(
                         {
                             "valid/Epoch": e,
-                            "valid/Loss": valid_loss / len(validloader.dataset),
-                            "valid/Rec Loss": rec_loss / len(validloader.dataset),
-                            "valid/Gaussian Loss": gauss_loss
+                            "valid/Loss": v_running_loss / len(validloader.dataset),
+                            "valid/Rec Loss": v_rec_loss / len(validloader.dataset),
+                            "valid/Gaussian Loss": v_gauss_loss,
+                            "valid/Cat Loss": v_cat_loss / len(validloader.dataset),
+                            "valid/Metric Loss": v_metric_loss
                             / len(validloader.dataset),
-                            "valid/Cat Loss": cat_loss / len(validloader.dataset),
-                            "valid/Metric Loss": metric_loss / len(validloader.dataset),
                             "valid/Acc": acc,
                             "valid/NMI": nmi_score,
                             "valid/Categorical usage": usage / len(trainloader.dataset),
