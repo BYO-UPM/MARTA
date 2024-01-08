@@ -227,6 +227,12 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # Read the .wav files and store the signals and sampling rates
         data["signal"], data["sr"] = zip(*data["file_path"].map(librosa.load))
 
+        # Downsample the signals to 16kHz
+        data["signal"] = data["signal"].apply(
+            lambda x: librosa.resample(x, data["sr"].iloc[0], 16000)
+        )
+        data["sr"] = 16000
+
         # Normalize the audio
         data["signal"] = data["signal"].apply(self.normalize_audio)
 
