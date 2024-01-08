@@ -432,6 +432,8 @@ class SpeechTherapist(torch.nn.Module):
         self.generative()
         # From encoded spectrogram (e_s) to spectrogram (x)
         self.SpecDecoder()
+        # Classifier: from latent space (z) to parkinson prediction (y_pred)
+        self.classifier()
 
         # ============ Losses ============
         self.reducer = reducer
@@ -606,20 +608,18 @@ class SpeechTherapist(torch.nn.Module):
             torch.nn.Linear(32 * 7, self.class_dims[2]),
             torch.nn.ReLU(),
             # Dropout
-            torch.nn.Dropout(p=0.5),
+            torch.nn.Dropout(p=0.9),
             torch.nn.Linear(self.class_dims[2], 1),
-            torch.nn.Sigmoid(),
         )
 
         self.clf_mlp = torch.nn.Sequential(
             torch.nn.Linear(self.z_dim * self.window_size, 256),
             torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.8),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(256, 32),
             torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.8),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(32, 1),
-            torch.nn.Sigmoid(),
         )
 
     def spec_encoder_forward(self, x):
@@ -678,7 +678,7 @@ class SpeechTherapist(torch.nn.Module):
         hmc = self.hmc(manner)
 
         # Now z is (batch*window, z_dim), reshape to: (batch, window_size, z_dim)
-        z = z.reshape(hmc.shape[0], self.window_size, self.z_dim)
+        z = z.reshape(manner.shape[0], self.window_size, self.z_dim)
 
         if self.classifier_type == "mlp":
             # For the MLP classifier, flatten both z and hmc from (batch, window, z_dim) to (batch, window*z_dim)
@@ -688,10 +688,17 @@ class SpeechTherapist(torch.nn.Module):
         # \tilde{z} = z + h(mc)
         if self.classifier_type == "cnn":
             # Sum them and reshape to (batch, 1, window_size, z_dim) for the CNN
+            z = z / torch.norm(z, dim=2).unsqueeze(2)
+            hmc = hmc / torch.norm(hmc, dim=2).unsqueeze(2)
             z_hat = (z + hmc).unsqueeze(1)
+            # z_hat = z.unsqueeze(1)
         else:
             # Sum them, now the shape is (batch, window_size*z_dim)
+            # Make sure z and hmc have norm 1 by dim=1
+            z = z / torch.norm(z, dim=1).unsqueeze(1)
+            hmc = hmc / torch.norm(hmc, dim=1).unsqueeze(1)
             z_hat = z + hmc
+            # z_hat = z
 
         if self.classifier_type == "cnn":
             y_pred = self.clf_cnn(z_hat)
@@ -818,8 +825,62 @@ class SpeechTherapist(torch.nn.Module):
             y_pred = y_pred.unsqueeze(1)
         if len(labels.shape) == 1:
             labels = labels.unsqueeze(1)
+
+        n_samples = len(labels)
+        n_pos = labels.sum()
+        if n_pos == 0:
+            n_pos += 1
+        n_neg = n_samples - n_pos
+        weight_pos = n_neg / n_pos
+
+        # Create a weighted BCEWithLogitsLoss
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=weight_pos)
         # BCE loss
-        loss = self.bce_loss(y_pred, labels)
+        loss = criterion(y_pred, labels)
+        return loss, 0, 0, 0, 0
+
+    def directly_classifier_loss(self, z_sample, manner_classes):
+        z_sample = z_sample.reshape(
+            -1,
+            self.z_dim,
+            self.window_size,
+        )
+        z_sample = z_sample.reshape(z_sample.shape[0], -1)
+        y_pred = self.clf_mlp(z_sample)
+
+        manner_classes = manner_classes.reshape(-1)
+        labels = torch.where(
+            manner_classes > 7,
+            torch.ones_like(manner_classes),
+            torch.zeros_like(manner_classes),
+        )
+        labels = labels.reshape(z_sample.shape[0], -1)
+        # labels is now shaped (batch, window_size). Sum by columsn to get the labels of each 400ms frame
+        labels = torch.sum(labels, dim=1)
+        # Any number above 0 is label 1, i.e., parkinsonian
+        labels = torch.where(labels > 0, torch.ones_like(labels), labels)
+
+        # Calculate class weights
+        n_samples = len(labels)
+        n_pos = labels.sum()
+        n_neg = n_samples - n_pos
+        weight_pos = n_neg / n_samples
+        weight_neg = n_pos / n_samples
+
+        # Prepare the weights for BCEWithLogitsLoss
+        class_weights = torch.tensor([weight_neg, weight_pos]).to(y_pred.device)
+
+        # Create a weighted BCEWithLogitsLoss
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=class_weights[1])
+
+        # Reshape if necessary
+        if len(y_pred.shape) == 1:
+            y_pred = y_pred.unsqueeze(1)
+        if len(labels.shape) == 1:
+            labels = labels.unsqueeze(1).to(y_pred.device)
+
+        # Calculate loss
+        loss = criterion(y_pred, labels.float())
         return loss, 0, 0, 0, 0
 
 

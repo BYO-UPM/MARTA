@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -24,7 +24,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model"
-            + "testingsupervised"
+            + "testing_supervised2"
         )
 
     # Create the path if does not exist
@@ -190,7 +190,7 @@ if __name__ == "__main__":
         "cnn_classifier": True,
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
-        "train": False,
+        "train": True,
         "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
     }
 

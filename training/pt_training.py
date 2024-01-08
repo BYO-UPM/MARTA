@@ -888,16 +888,23 @@ def SpeechTherapist_trainer(
             0,
         )
 
-        for batch_idx, (data, labels, manner) in enumerate(tqdm(trainloader)):
+        for batch_idx, (data, labels, manner, dataset) in enumerate(tqdm(trainloader)):
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
 
             # ==== Forward pass ====
 
             if supervised:
+                # Remove all dataset=="albayzin"
+                # data = data[dataset != "albayzin"].squeeze(0)
+                # manner = manner[dataset != "albayzin"].squeeze(0)
+                # labels = labels[dataset != "albayzin"].squeeze(0)
+                # Remove all manner > 7
+                manner[manner > 7] = manner[manner > 7] - 8
                 manner = manner.to(model.device).int()
                 labels = labels.to(model.device).float()
                 y_pred = model.classifier_forward(data, manner)
+                y_pred = torch.sigmoid(y_pred)
                 (
                     complete_loss,
                     recon_loss,
@@ -908,6 +915,7 @@ def SpeechTherapist_trainer(
                 y_pred_list = np.concatenate(
                     (y_pred_list, y_pred.cpu().detach().numpy().squeeze())
                 )
+
                 label_list = np.concatenate((label_list, labels.cpu().detach().numpy()))
             else:
                 (
@@ -982,12 +990,15 @@ def SpeechTherapist_trainer(
                 )
             )
         else:
+            best_th_youden, best_th_eer, auc = threshold_selection(
+                label_list, y_pred_list, verbose=0
+            )
             y_pred = np.round(y_pred_list)
             acc_super = accuracy_score(label_list, y_pred)
             balanced_acc = balanced_accuracy_score(label_list, y_pred)
             print(
-                "Epoch: {} Train Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f}".format(
-                    e, tr_running_loss, acc_super, balanced_acc
+                "Epoch: {} Train Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f} AUC: {:.4f}".format(
+                    e, tr_running_loss, acc_super, balanced_acc, auc
                 )
             )
 
@@ -1031,14 +1042,22 @@ def SpeechTherapist_trainer(
                 label_list = []
                 y_pred_list = []
 
-                for batch_idx, (data, labels, manner) in enumerate(tqdm(validloader)):
+                for batch_idx, (data, labels, manner, dataset) in enumerate(
+                    tqdm(validloader)
+                ):
                     # Make sure dtype is Tensor float
                     data = data.to(model.device).float()
 
                     if supervised:
+                        # Remove Albayzin to validate
+                        # data = data[dataset != "albayzin"].squeeze(0)
+                        # manner = manner[dataset != "albayzin"].squeeze(0)
+                        # labels = labels[dataset != "albayzin"].squeeze(0)
+                        manner[manner > 7] = manner[manner > 7] - 8
                         manner = manner.to(model.device).int()
                         labels = labels.to(model.device).float()
                         y_pred = model.classifier_forward(data, manner)
+                        y_pred = torch.sigmoid(y_pred)
                         (
                             complete_loss,
                             recon_loss,
@@ -1114,12 +1133,15 @@ def SpeechTherapist_trainer(
                     acc = cluster_acc(gaussian_component, true_manner)
                     nmi_score = nmi(gaussian_component, true_manner)
                 else:
+                    best_th_youden, best_th_eer, auc = threshold_selection(
+                        label_list, y_pred_list, verbose=1
+                    )
                     y_pred = np.round(y_pred_list)
                     acc_super = accuracy_score(label_list, y_pred)
                     bacc = balanced_accuracy_score(label_list, y_pred)
                     print(
-                        "Epoch: {} Valid Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f}".format(
-                            e, v_running_loss, acc_super, bacc
+                        "Epoch: {} Valid Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f} AUC: {:4f}".format(
+                            e, v_running_loss, acc_super, bacc, auc
                         )
                     )
 
@@ -1182,18 +1204,26 @@ def SpeechTherapist_trainer(
                 },
                 name,
             )
+            # Store best youden th in a txt
+            if supervised:
+                print("Best threshold Youden: ", best_th_youden)
+                print("Best threshold EER: ", best_th_eer)
+                name = path_to_save
+                namefile = name + "/best_threshold.txt"
+                with open(namefile, "w") as f:
+                    f.write(str(best_th_youden))
 
         if not supervised:
             check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
 
         # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
-        if e > 50:
+        if e > 40:
             if not supervised:
                 if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
                     print("Early stopping")
                     break
             if supervised:
-                if valid_loss_store[-1] > max(valid_loss_store[-50:-1]):
+                if valid_loss_store[-1] > max(valid_loss_store[-30:-1]):
                     print("Early stopping")
                     print("Reloading best model")
                     # Restore best model:
@@ -1424,6 +1454,7 @@ def SpeechTherapist_tester(
     supervised=False,
     wandb_flag=False,
     path_to_plot=None,
+    best_threshold=0.5,
 ):
     # Set model in evaluation mode
     model.eval()
@@ -1439,15 +1470,18 @@ def SpeechTherapist_tester(
         x_array = np.zeros((batch_size, 1, 65, 33))
 
         x_hat_array = np.zeros(x_array.shape)
-        for batch_idx, (x, labels, manner) in enumerate(tqdm(testloader)):
+        for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(testloader)):
             # Move data to device
             x = x.to(model.device).float()
 
             if supervised:
                 # ==== Forward pass ====
+                manner[manner > 7] = manner[manner > 7] - 8
                 manner = manner.to(model.device).int()
                 labels = labels.to(model.device).float()
-                y_pred = model.classifier_forward(x, manner)
+
+                y_logit = model.classifier_forward(x, manner)
+                y_pred = torch.sigmoid(y_logit)
                 y_hat_array = np.concatenate(
                     (
                         y_hat_array,
@@ -1501,6 +1535,7 @@ def SpeechTherapist_tester(
             x_hat,
             _,
         )
+        from sklearn.metrics import roc_curve, roc_auc_score
 
         print("Calculating MSE")
         # Remove the first batch_size elements
@@ -1539,16 +1574,108 @@ def SpeechTherapist_tester(
         )
         # Calculate results in total
         if supervised:
+            # Convert predictions and labels to PyTorch tensors
+            y_hat_tensor = torch.tensor(y_hat_array, dtype=torch.float)
+            y_tensor = torch.tensor(y_array, dtype=torch.long)
+
+            print("====== Using 0.5 as threshold ======")
             print("Results for all frames:")
             y_pred = np.round(y_hat_array)
-            # Print value counts of y_bin
-            print("Value counts of y_bin: ", np.unique(y_pred, return_counts=True))
+            print(
+                "Value counts of y_predicted: ", np.unique(y_pred, return_counts=True)
+            )
+            print("Value counts of y: ", np.unique(y_array, return_counts=True))
             accuracy = accuracy_score(y_array, y_pred)
             balanced_accuracy = balanced_accuracy_score(y_array, y_pred)
             auc = roc_auc_score(y_array, y_hat_array)
-            print("Results for all frames:")
             print(
                 f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
+            )
+            # Consensus methods with logits
+            (
+                mean_log_odds,
+                consensus_true,
+                consensus_pred,
+            ) = soft_output_by_subject_logits(
+                y_hat_tensor, y_tensor, test_data["id_patient"].to_numpy()
+            )
+
+            # Calculate metrics for consensus predictions
+            accuracy_consensus_logits = accuracy_score(
+                consensus_true.numpy(), consensus_pred.numpy()
+            )
+            balanced_accuracy_consensus_logits = balanced_accuracy_score(
+                consensus_true.numpy(), consensus_pred.numpy()
+            )
+            auc_consensus_logits = roc_auc_score(
+                consensus_true.numpy(), torch.sigmoid(mean_log_odds).numpy()
+            )
+
+            # Print the consensus results
+            print("Consensus results with logits:")
+            print(
+                f"Consensus Accuracy: {accuracy_consensus_logits:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_logits:.2f}, Consensus AUC: {auc_consensus_logits:.2f}"
+            )
+
+            # Implementing consensus method
+            mean_soft_odds, consensus_true, consensus_pred = soft_output_by_subject(
+                y_hat_tensor, y_tensor, test_data["id_patient"].to_numpy()
+            )
+
+            # Calculate metrics for consensus predictions
+            accuracy_consensus = accuracy_score(
+                consensus_true.numpy(), consensus_pred.numpy()
+            )
+            balanced_accuracy_consensus = balanced_accuracy_score(
+                consensus_true.numpy(), consensus_pred.numpy()
+            )
+
+            auc_consensus = roc_auc_score(
+                consensus_true.numpy(), mean_soft_odds.numpy()
+            )
+
+            # Print the consensus results
+            print("Consensus results:")
+            print(
+                f"Consensus Accuracy: {accuracy_consensus:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus:.2f}, Consensus AUC: {auc_consensus:.2f}"
+            )
+
+            print("====== Using best threshold (selected in validation) ======")
+            print("Best threshold: ", best_threshold)
+            y_pred_best_th = np.zeros_like(mean_soft_odds)
+            y_pred_best_th[mean_soft_odds >= best_threshold] = 1
+            accuracy_consensus_best_th = accuracy_score(
+                consensus_true.numpy(), y_pred_best_th
+            )
+            balanced_accuracy_consensus_best_th = balanced_accuracy_score(
+                consensus_true.numpy(), y_pred_best_th
+            )
+            print(
+                f"Consensus Accuracy: {accuracy_consensus_best_th:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_best_th:.2f}, Consensus AUC: {auc_consensus:.2f}"
+            )
+
+            print("====== Using best threshold (selected in test) ======")
+            # Get best threshold via Youden's J statistic
+            fpr, tpr, thresholds = roc_curve(
+                consensus_true.numpy(), mean_soft_odds.numpy()
+            )
+            j_scores = tpr - fpr
+            best_threshold = thresholds[np.argmax(j_scores)]
+
+            auc_consensus = roc_auc_score(
+                consensus_true.numpy(), mean_soft_odds.numpy()
+            )
+            print("Best threshold: ", best_threshold)
+            y_pred_best_th = np.zeros_like(mean_soft_odds)
+            y_pred_best_th[mean_soft_odds >= best_threshold] = 1
+            accuracy_consensus_best_th = accuracy_score(
+                consensus_true.numpy(), y_pred_best_th
+            )
+            balanced_accuracy_consensus_best_th = balanced_accuracy_score(
+                consensus_true.numpy(), y_pred_best_th
+            )
+            print(
+                f"Consensus Accuracy: {accuracy_consensus_best_th:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_best_th:.2f}, Consensus AUC: {auc_consensus:.2f}"
             )
 
             # Calculate results per patient
@@ -1587,3 +1714,72 @@ def SpeechTherapist_tester(
                         ),
                     }
                 )
+
+
+def threshold_selection(y_true, y_pred_soft, verbose=0):
+    from sklearn.metrics import roc_curve, accuracy_score
+
+    # Select best threshold by youden index
+    fpr, tpr, thresholds = roc_curve(y_true, y_pred_soft)
+    j_scores = tpr - fpr
+    youden_th = thresholds[np.argmax(j_scores)]
+
+    # Select best threshold by EER
+    fnr = 1 - tpr
+    eer_threshold = thresholds[np.argmin(np.absolute((fnr - fpr)))]
+
+    # Calculate AUC
+    auc = roc_auc_score(y_true, y_pred_soft)
+
+    return youden_th, eer_threshold, auc
+
+
+def soft_output_by_subject(output_test, Y_test, subject_group_test):
+    unique_subjects = np.unique(subject_group_test)
+    Y_test_bySubject = []
+    mean_probabilities = torch.zeros(len(unique_subjects))
+
+    for i, subject in enumerate(unique_subjects):
+        subject_indices = np.where(subject_group_test == subject)
+        subject_outputs = output_test[subject_indices]
+
+        # Calculate mean probability for the subject
+        mean_probabilities[i] = torch.mean(subject_outputs)
+
+        # Store the first label found for the subject
+        Y_test_bySubject.append(Y_test[subject_indices][0])
+
+    # Estimate labels based on mean probability
+    estimated_labels = torch.zeros_like(mean_probabilities)
+    estimated_labels[mean_probabilities >= 0.5] = 1
+
+    Y_test_tensor_bySubject = torch.tensor(Y_test_bySubject, dtype=torch.long)
+
+    return mean_probabilities, Y_test_tensor_bySubject, estimated_labels
+
+
+def soft_output_by_subject_logits(output_test, Y_test, subject_group_test):
+    unique_subjects = np.unique(subject_group_test)
+    Y_test_bySubject = []
+    mean_log_odds = torch.zeros(len(unique_subjects))
+
+    for i, subject in enumerate(unique_subjects):
+        subject_indices = np.where(subject_group_test == subject)
+        subject_outputs = output_test[subject_indices]
+
+        # Calculate mean log odds for the subject
+        log_odds = torch.log(subject_outputs + 1e-6) - torch.log(
+            1 - subject_outputs + 1e-6
+        )
+        mean_log_odds[i] = torch.mean(log_odds)
+
+        # Store the first label found for the subject
+        Y_test_bySubject.append(Y_test[subject_indices][0])
+
+    # Estimate labels based on mean log odds
+    estimated_labels = torch.zeros_like(mean_log_odds)
+    estimated_labels[mean_log_odds >= 0] = 1
+
+    Y_test_tensor_bySubject = torch.tensor(Y_test_bySubject, dtype=torch.long)
+
+    return mean_log_odds, Y_test_tensor_bySubject, estimated_labels

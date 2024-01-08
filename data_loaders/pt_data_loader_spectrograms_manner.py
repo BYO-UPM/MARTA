@@ -348,13 +348,13 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             "N": 2,
             "m": 2,
             "NY": 2,
-            "J": 2,  # enye
+            "J": 2,
             "f": 3,  # fricatives
             "s": 3,
             "z": 3,
             "x": 3,
             "h": 3,
-            "T": 3,  # theta
+            "T": 3,
             "R": 4,  # liquids
             "r": 4,
             "4": 4,
@@ -387,9 +387,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Modify the manner class: sum to each manner class the label multiplied by the number of manner classes (8)
         # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
-        self.data["manner_class"] = self.data.apply(
-            lambda x: [x["label"] * 8 + y for y in x["manner_class"]], axis=1
-        )
+        if not supervised:
+            self.data["manner_class"] = self.data.apply(
+                lambda x: [x["label"] * 8 + y for y in x["manner_class"]], axis=1
+            )
 
         # Print unique values in manner_class
         print("Unique values in manner_class: ", np.unique(self.data["manner_class"]))
@@ -400,78 +401,74 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             train_albayzin
         ):  # If we want to train with albayzin + 0.5 of neurovoz healthy patients
             # =============== TRAIN DATA ===============
-            train_data = self.data[self.data["dataset"] == "albayzin"]
+            albayzin_data = self.data[self.data["dataset"] == "albayzin"]
             # Add 0.5 of neurovoz healthy patients to the train data
             # To do so, get unique "id_patient" where label is 0
             healthy_patients_neurovoz = self.data[
                 (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
             ]["id_patient"].unique()
             # Randomly get 50% of the healthy patients
-            half_1_hp_neurovoz = np.random.choice(
+            half_1_hp_neurovoz_idx = np.random.choice(
                 healthy_patients_neurovoz, int(len(healthy_patients_neurovoz) / 2)
             )
             # Get the other 50%
-            half_2_hp_neurovoz = np.array(
-                [x for x in healthy_patients_neurovoz if x not in half_1_hp_neurovoz]
+            half_2_hp_neurovoz_idx = np.array(
+                [
+                    x
+                    for x in healthy_patients_neurovoz
+                    if x not in half_1_hp_neurovoz_idx
+                ]
             )
+            neurovoz_healthy_first_half_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["id_patient"].isin(half_1_hp_neurovoz_idx))
+            ]
 
             # Train data is albayzin + half_1_hp_neurovoz
-            train_data = pd.concat(
-                [
-                    train_data,
-                    self.data[
-                        (self.data["dataset"] == "neurovoz")
-                        & (self.data["id_patient"].isin(half_1_hp_neurovoz))
-                    ],
-                ]
+            train_data_only_healthy = pd.concat(
+                [albayzin_data, neurovoz_healthy_first_half_data]
             )
 
             # =============== TEST DATA ===============
             # For test data, we want to use the other half of neurovoz healthy patients and all parkinson patients
             # Get the other half of neurovoz healthy patients
-            test_data = self.data[
+            neurovoz_healthy_second_half_data = self.data[
                 (self.data["dataset"] == "neurovoz")
-                & (self.data["id_patient"].isin(half_2_hp_neurovoz))
+                & (self.data["id_patient"].isin(half_2_hp_neurovoz_idx))
             ]
 
-            # # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
             # Split the parkinsonian in two halfs
             # Get the id of the patients with parkinson
-            parkinson_patients = self.data[
+            neurovoz_parkinson_patients = self.data[
                 (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
             ]["id_patient"].unique()
 
             # Add to the train set half of the parkinson patients
             half_1_pk_neurovoz = np.random.choice(
-                parkinson_patients, int(len(parkinson_patients) / 2)
+                neurovoz_parkinson_patients, int(len(neurovoz_parkinson_patients) / 2)
             )
 
-            # Add half_1_pk_neurovoz to the train data
+            neurovoz_parkinson_first_half_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["id_patient"].isin(half_1_pk_neurovoz))
+            ]
+
+            # Train data is then albayzin + 50% of healthy neurovoz + 50% of parkinson neurovoz
             train_data = pd.concat(
-                [
-                    train_data,
-                    self.data[
-                        (self.data["dataset"] == "neurovoz")
-                        & (self.data["id_patient"].isin(half_1_pk_neurovoz))
-                    ],
-                ]
+                [train_data_only_healthy, neurovoz_parkinson_first_half_data]
             )
 
-            # # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
+            # Select the other half of the parkinson patients for the test data
+            neurovoz_parkinson_second_half_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 1)
+                & (self.data["id_patient"].isin(half_1_pk_neurovoz) == False)
+            ]
 
-            # Add all parkinson patients
+            # Test data is then 50% of healthy neurovoz + 50% of parkinson neurovoz
             test_data = pd.concat(
-                [
-                    test_data,
-                    self.data[
-                        (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
-                    ],
-                ]
+                [neurovoz_healthy_second_half_data, neurovoz_parkinson_second_half_data]
             )
-
-            # # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
-            # Remove half1_pk_neurovoz from the test data
-            test_data = test_data[~test_data["id_patient"].isin(half_1_pk_neurovoz)]
 
             # Check if any "id_patient" is in both train and test data
             train_patients = train_data["id_patient"].unique()
@@ -482,41 +479,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             assert (
                 len(intersection) == 0
             ), "There are patients in both train and test data!"
-
-            if supervised:
-                # Get the id of the patients with parkinson
-                parkinson_patients = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
-                ]["id_patient"].unique()
-
-                # Add to the train set half of the parkinson patients
-                half_1_pk_neurovoz = np.random.choice(
-                    parkinson_patients, int(len(parkinson_patients) / 2)
-                )
-
-                # Add half_1_pk_neurovoz to the train data
-                train_data = pd.concat(
-                    [
-                        train_data,
-                        self.data[
-                            (self.data["dataset"] == "neurovoz")
-                            & (self.data["id_patient"].isin(half_1_pk_neurovoz))
-                        ],
-                    ]
-                )
-
-                # Remove half1_pk_neurovoz from the test data
-                test_data = test_data[~test_data["id_patient"].isin(half_1_pk_neurovoz)]
-
-                # Check if any "id_patient" is in both train and test data
-                train_patients = train_data["id_patient"].unique()
-                test_patients = test_data["id_patient"].unique()
-
-                # Get the intersection
-                intersection = np.intersect1d(train_patients, test_patients)
-                assert (
-                    len(intersection) == 0
-                ), "There are patients in both train and test data!"
 
         else:  # If we want to train with only neurovoz healthy patients and not use albayzin for enriching the training data
             # Train data will be 0.8 of neurovoz healthy patients
@@ -542,10 +504,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         val_data = train_data[train_data["id_patient"].isin(val_patients)]
         train_data = train_data[train_data["id_patient"].isin(train_patients)]
 
-        if supervised:
-            # only testing: lets remove all albayzin patients from train and val data
-            train_data = train_data[train_data["dataset"] == "neurovoz"]
-            val_data = val_data[val_data["dataset"] == "neurovoz"]
+        # TESTING IF THIS WORK: remove all albazyin data from train and val data
+        # train_data = train_data[train_data["dataset"] == "neurovoz"]
+        # val_data = val_data[val_data["dataset"] == "neurovoz"]
 
         train_patients = train_data["id_patient"].unique()
         val_patients = val_data["id_patient"].unique()
@@ -611,8 +572,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         )
         n_classes = np.unique(p_train).shape[0]
         z_train = np.array([np.array(x[1] + n_classes * x[0]) for x in z_train])
+        d_train = np.array([np.array(x) for x in train_data["dataset"]])
 
-        x_val = np.stack(val_data[audio_features])
+        x_val = np.stack(val_data[audio_features].values)
         x_val = np.expand_dims(x_val, axis=1)
         y_val = val_data["label"].values
         p_val = np.array([np.array(x) for x in val_data["manner_class"]])
@@ -620,8 +582,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             [np.array([np.repeat(x, len(y)), y]) for x, y in zip(y_val, p_val)]
         )
         z_val = np.array([np.array(x[1] + n_classes * x[0]) for x in z_val])
+        d_val = np.array([np.array(x) for x in val_data["dataset"]])
 
-        x_test = np.stack(test_data[audio_features])
+        x_test = np.stack(test_data[audio_features].values)
         x_test = np.expand_dims(x_test, axis=1)
         y_test = test_data["label"].values
         p_test = np.array([np.array(x) for x in test_data["manner_class"]])
@@ -629,6 +592,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             [np.array([np.repeat(x, len(y)), y]) for x, y in zip(y_test, p_test)]
         )
         z_test = np.array([np.array(x[1] + n_classes * x[0]) for x in z_test])
+        d_test = np.array([np.array(x) for x in test_data["dataset"]])
 
         # Normalise the spectrograms which are 2D using standard scaler
         std = StandardScaler()
@@ -640,10 +604,16 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             ]
         )
         x_val = np.stack(
-            [std.transform(x.reshape(-1, x.shape[1])).reshape(x.shape) for x in x_val]
+            [
+                std.fit_transform(x.reshape(-1, x.shape[1])).reshape(x.shape)
+                for x in x_val
+            ]
         )
         x_test = np.stack(
-            [std.transform(x.reshape(-1, x.shape[1])).reshape(x.shape) for x in x_test]
+            [
+                std.fit_transform(x.reshape(-1, x.shape[1])).reshape(x.shape)
+                for x in x_test
+            ]
         )
 
         # When supervised, we should oversample the minority class
@@ -707,6 +677,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_train,
                     y_train,
                     p_train,
+                    d_train,
                 )
             ),
             drop_last=False,
@@ -719,6 +690,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_val,
                     y_val,
                     p_val,
+                    d_val,
                 )
             ),
             drop_last=False,
@@ -731,12 +703,56 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     x_test,
                     y_test,
                     p_test,
+                    d_test,
                 )
             ),
             drop_last=False,
             batch_size=self.hyperparams["batch_size"],
             shuffle=False,
         )
+
+        # Save the dataloaders to a file
+        train_name = (
+            "local_results/train_loader"
+            + str(self.hyperparams["frame_size_ms"])
+            + "spec_winsize_"
+            + str(self.hyperparams["spectrogram_win_size"])
+            + "hopsize_"
+            + str(self.hyperparams["hop_size_percent"])
+            + ".pt"
+        )
+        val_name = (
+            "local_results/val_loader"
+            + str(self.hyperparams["frame_size_ms"])
+            + "spec_winsize_"
+            + str(self.hyperparams["spectrogram_win_size"])
+            + "hopsize_"
+            + str(self.hyperparams["hop_size_percent"])
+            + ".pt"
+        )
+        test_name = (
+            "local_results/test_loader"
+            + str(self.hyperparams["frame_size_ms"])
+            + "spec_winsize_"
+            + str(self.hyperparams["spectrogram_win_size"])
+            + "hopsize_"
+            + str(self.hyperparams["hop_size_percent"])
+            + ".pt"
+        )
+        test_data_name = (
+            "local_results/test_data"
+            + str(self.hyperparams["frame_size_ms"])
+            + "spec_winsize_"
+            + str(self.hyperparams["spectrogram_win_size"])
+            + "hopsize_"
+            + str(self.hyperparams["hop_size_percent"])
+            + ".pt"
+        )
+
+        torch.save(train_loader, train_name)
+        torch.save(val_loader, val_name)
+        torch.save(test_loader, test_name)
+        torch.save(test_data, test_data_name)
 
         return train_loader, val_loader, test_loader, train_data, val_data, test_data
 

@@ -1288,7 +1288,7 @@ def calculate_distances_manner(
         # Get randomly 32000 points
         positions = positions[
             np.random.choice(
-                positions.shape[0], size=10000, replace=len(positions) < 10000
+                positions.shape[0], size=1000, replace=len(positions) < 1000
             )
         ]
         # positions = np.random.uniform(low=latent_mu.min(), high=latent_mu.max(), size=(5000 * latent_mu.shape[1], latent_mu.shape[1]))

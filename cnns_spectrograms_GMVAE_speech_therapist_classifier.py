@@ -14,7 +14,8 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 print("Device being used:", device)
 
 
@@ -24,7 +25,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model_classifier"
-            + "code_cleaning"
+            + "_LATENTSPACE+manner_CNN3"
         )
 
     else:
@@ -32,7 +33,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_only_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model_classifier"
-            + "code_cleaning"
+            + "adding_"
         )
 
     # Create the path if does not exist
@@ -45,6 +46,7 @@ def main(args, hyperparams):
 
     print("Reading data...")
     # Read the data
+
     dataset = Dataset_AudioFeatures(
         "labeled/NeuroVoz",
         hyperparams,
@@ -63,17 +65,65 @@ def main(args, hyperparams):
             group=gname,
         )
 
-    (
-        train_loader,
-        val_loader,
-        test_loader,
-        _,  # train_data, not used
-        _,  # val_data, not used
-        test_data,
-    ) = dataset.get_dataloaders(
-        train_albayzin=hyperparams["train_albayzin"],
-        supervised=hyperparams["supervised"],
-    )
+    # First check in local_results/ if there eist any .pt file with the dataloaders
+    # If not, create them and save them in local_results/
+
+    if os.path.exists("local_results/train_loader0.4spec_winsize_0.023hopsize_0.5.pt"):
+        print("Reading train, val and test loaders from local_results/...")
+        train_loader = torch.load(
+            "local_results/train_loader0.4spec_winsize_0.023hopsize_0.5.pt"
+        )
+        val_loader = torch.load(
+            "local_results/val_loader0.4spec_winsize_0.023hopsize_0.5.pt"
+        )
+        test_loader = torch.load(
+            "local_results/test_loader0.4spec_winsize_0.023hopsize_0.5.pt"
+        )
+        test_data = torch.load(
+            "local_results/test_data0.4spec_winsize_0.023hopsize_0.5.pt"
+        )
+
+        # Split val_loader in two: val_loader and test_loader
+        new_train, new_val = torch.utils.data.random_split(
+            val_loader.dataset,
+            [
+                int(0.5 * len(val_loader.dataset)),
+                int(0.5 * len(val_loader.dataset)),
+            ],
+        )
+        new_train_loader = torch.utils.data.DataLoader(
+            dataset=new_train,
+            batch_size=hyperparams["batch_size"],
+            shuffle=True,
+            drop_last=False,
+        )
+        val2_loader = torch.utils.data.DataLoader(
+            dataset=new_val,
+            batch_size=hyperparams["batch_size"],
+            shuffle=True,
+            drop_last=False,
+        )
+        new_test_set = torch.utils.data.DataLoader(
+            dataset=test_loader.dataset,
+            batch_size=hyperparams["batch_size"],
+            shuffle=True,
+            drop_last=False,
+        )
+
+        #
+    else:
+        print("Creating train, val and test loaders...")
+        (
+            train_loader,
+            val_loader,
+            test_loader,
+            _,  # train_data, not used
+            _,  # val_data, not used
+            test_data,
+        ) = dataset.get_dataloaders(
+            train_albayzin=hyperparams["train_albayzin"],
+            supervised=hyperparams["supervised"],
+        )
 
     print("Defining models...")
     # Create the model
@@ -93,7 +143,7 @@ def main(args, hyperparams):
 
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
-        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_32final_model/GMVAE_cnn_best_model_2d.pt"
+        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_32final_modeltesting_supervised2/GMVAE_cnn_best_model_2d.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -137,8 +187,12 @@ def main(args, hyperparams):
     tmp = torch.load(name)
     model.load_state_dict(tmp["model_state_dict"])
 
-    audio_features = "spectrogram"
     print("Testing GMVAE...")
+
+    # Read the best threshold
+    path = hyperparams["path_to_save"] + "/best_threshold.txt"
+    with open(path, "r") as f:
+        threshold = float(f.read())
 
     # Test the model
     SpeechTherapist_tester(
@@ -148,6 +202,7 @@ def main(args, hyperparams):
         supervised=True,  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
         path_to_plot=hyperparams["path_to_save"],
+        best_threshold=threshold,
     )
     print("Testing finished!")
 
@@ -197,7 +252,7 @@ if __name__ == "__main__":
         "hop_size_percent": 0.5,
         "spectrogram": True,
         "wandb_flag": False,
-        "epochs": 1000,
+        "epochs": 500,
         "batch_size": 128,
         "lr": 1e-3,
         "latent_dim": 32,
@@ -210,7 +265,7 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         "supervised": True,
-        "classifier": "mlp",  # "cnn" or "mlp"
+        "classifier": "cnn",  # "cnn" or "mlp"
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,
