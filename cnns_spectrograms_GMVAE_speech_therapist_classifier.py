@@ -9,14 +9,54 @@ from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeature
 import torch
 import wandb
 import numpy as np
-import pandas as pd
 import sys
 import os
+import random
+from collections import Counter
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
 print("Device being used:", device)
+
+
+def find_minority_class(dataset):
+    labels = [data[1] for data in dataset]
+    label_counts = Counter(labels)
+    minority_class = min(label_counts, key=label_counts.get)
+    return minority_class, label_counts
+
+
+# Function for frequency-based data augmentation
+def augment_spectrogram(spectrogram):
+    # Implement your frequency-based augmentation here
+    # This could be frequency masking, shifting, etc.
+    # Example: Frequency masking
+    freq_dimension = spectrogram.shape[0]
+    mask_percentage = 0.15  # Example: Mask 15% of the frequencies
+    mask_size = int(freq_dimension * mask_percentage)
+    mask_start = random.randint(0, freq_dimension - mask_size)
+    spectrogram[mask_start : mask_start + mask_size] = 0  # Masking
+    return spectrogram
+
+
+def make_sampler(dataset):
+    # Count the occurrences of each class
+    class_counts = {}
+    for _, label, _, _ in dataset:
+        label = label.item()  # Assuming label is a tensor
+        class_counts[label] = class_counts.get(label, 0) + 1
+
+    # Assign weights inversely proportional to class frequencies
+    weights = []
+    for _, label, _, _ in dataset:
+        label = label.item()
+        weight = 1.0 / class_counts[label]
+        weights.append(weight)
+
+    # Create a WeightedRandomSampler
+    sampler = torch.utils.data.WeightedRandomSampler(weights, len(weights))
+    return sampler
 
 
 def main(args, hyperparams):
@@ -25,7 +65,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "final_model_classifier"
-            + "_LATENTSPACE+manner_CNN3"
+            + "_LATENTSPACE+manner_CNN"
         )
 
     else:
@@ -43,14 +83,6 @@ def main(args, hyperparams):
     old_stdout = sys.stdout
     log_file = open(hyperparams["path_to_save"] + "/log.txt", "w")
     sys.stdout = log_file
-
-    print("Reading data...")
-    # Read the data
-
-    dataset = Dataset_AudioFeatures(
-        "labeled/NeuroVoz",
-        hyperparams,
-    )
 
     if hyperparams["wandb_flag"]:
         gname = (
@@ -83,35 +115,82 @@ def main(args, hyperparams):
             "local_results/test_data0.4spec_winsize_0.023hopsize_0.5.pt"
         )
 
-        # Split val_loader in two: val_loader and test_loader
-        new_train, new_val = torch.utils.data.random_split(
-            val_loader.dataset,
-            [
-                int(0.5 * len(val_loader.dataset)),
-                int(0.5 * len(val_loader.dataset)),
-            ],
+        # Create a new train and val loaders: get val_loader remove all albayzin samples (they have 'albayzin' in the third element of the triplet) and split it into two loaders: new train and new val
+        filtered_dataset = [
+            data for data in val_loader.dataset if data[3] != "albayzin"
+        ]
+
+        # Duplicate data for both classes with augmentation
+        augmented_data = []
+        for data in filtered_dataset:
+            spectrogram, label, manner, dataset = data
+            augmented_spectrogram = augment_spectrogram(spectrogram)
+            augmented_data.append((augmented_spectrogram, label, manner, dataset))
+
+        # Add augmented data to the original dataset
+        extended_dataset = filtered_dataset + augmented_data
+
+        # Shuffle the dataset
+        np.random.shuffle(extended_dataset)
+
+        # Check stratification of labels (they are the second element of the triplet)
+        minority_class, label_counts = find_minority_class(extended_dataset)
+        majority_class_count = max(label_counts.values())
+
+        if label_counts[minority_class] < majority_class_count:
+            additional_augmented_data = []
+            augmentations_needed = majority_class_count - label_counts[minority_class]
+            minority_class_data = [
+                data for data in extended_dataset if data[1] == minority_class
+            ]
+
+            while augmentations_needed > 0:
+                for data in minority_class_data:
+                    if augmentations_needed <= 0:
+                        break
+                    spectrogram, label, manner, dataset = data
+                    augmented_spectrogram = augment_spectrogram(spectrogram)
+                    additional_augmented_data.append(
+                        (augmented_spectrogram, label, manner, dataset)
+                    )
+                    augmentations_needed -= 1
+
+            # Combine additional augmented data
+            balanced_dataset = extended_dataset + additional_augmented_data
+        else:
+            balanced_dataset = extended_dataset
+
+        # Shuffle the dataset
+        np.random.shuffle(balanced_dataset)
+
+        # Split the dataset into two halves
+        split_index = len(balanced_dataset) // 2
+        new_train_dataset = torch.utils.data.Subset(
+            balanced_dataset, range(0, split_index)
         )
+        new_val_dataset = torch.utils.data.Subset(
+            balanced_dataset, range(split_index, len(balanced_dataset))
+        )
+        train_sampler = make_sampler(new_train_dataset)
+        val_sampler = make_sampler(new_val_dataset)
+
+        # Create new dataloaders
         new_train_loader = torch.utils.data.DataLoader(
-            dataset=new_train,
-            batch_size=hyperparams["batch_size"],
-            shuffle=True,
-            drop_last=False,
+            new_train_dataset, batch_size=val_loader.batch_size, sampler=train_sampler
         )
         val2_loader = torch.utils.data.DataLoader(
-            dataset=new_val,
-            batch_size=hyperparams["batch_size"],
-            shuffle=True,
-            drop_last=False,
-        )
-        new_test_set = torch.utils.data.DataLoader(
-            dataset=test_loader.dataset,
-            batch_size=hyperparams["batch_size"],
-            shuffle=True,
-            drop_last=False,
+            new_val_dataset, batch_size=val_loader.batch_size, sampler=val_sampler
         )
 
         #
     else:
+        print("Reading data...")
+        # Read the data
+
+        dataset = Dataset_AudioFeatures(
+            "labeled/NeuroVoz",
+            hyperparams,
+        )
         print("Creating train, val and test loaders...")
         (
             train_loader,
@@ -169,8 +248,8 @@ def main(args, hyperparams):
         # Train the model
         SpeechTherapist_trainer(
             model=model,
-            trainloader=train_loader,
-            validloader=val_loader,
+            trainloader=new_train_loader,
+            validloader=val2_loader,
             epochs=hyperparams["epochs"],
             lr=hyperparams["lr"],
             wandb_flag=hyperparams["wandb_flag"],

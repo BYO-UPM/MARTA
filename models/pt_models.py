@@ -343,7 +343,7 @@ class Spectrogram_networks_vowels(torch.nn.Module):
                 torch.nn.MaxPool2d(2),
                 torch.nn.Flatten(),
             )
-            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 33)).shape
+            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 80, 24)).shape
         else:
             raise NotImplementedError
 
@@ -380,12 +380,12 @@ class SpeechTherapist(torch.nn.Module):
     to measure the distance between the latent space representation of each phoneme and the clusters learned by the SpeechTherapist. If the distance is too high, then the patient is parkinsonian. If the distance is low, then the patient is healthy. We are learning how the pronunciation of each manner class
     differ between healthy and parkinsonian patients.
     This class will be wrapper composed by three main components:
-    1. SpecEncoder: this network will encode the spectrograms of N, 1, 65, 33 into a feature representation of N*33, Channels*Height.
-    2- GMVAE: a Gaussian Mixture VAE. Its input will be a flatten version of the output of the SpecEncoder, i.e., N*33, (to determine). So, it will provide a latent space representation of each window of the spectrogram.
+    1. SpecEncoder: this network will encode the spectrograms of N, 1, 80, 24 into a feature representation of N*24, Channels*Height.
+    2- GMVAE: a Gaussian Mixture VAE. Its input will be a flatten version of the output of the SpecEncoder, i.e., N*24, (to determine). So, it will provide a latent space representation of each window of the spectrogram.
         2.1 This GMVAE will use metric learning to learn the latent space representation of each window of the spectrogram to match clusters with the manner class of each phoneme. Each window represents a phoneme, therefore, each window will be assigned to a manner class and the GMVAE
         will be trained to match the clusters of the latent space with the manner class of each phoneme.
-        2.2 The GMVAE will reconstruct the N*33, (to determine) input, i.e., the flatten version of the output of the SpecEncoder.
-    3. AudioDecoder: this network will decode the output of the GMVAE, i.e., N*33, (to determine), into a spectrogram of N, 1, 65, 33.
+        2.2 The GMVAE will reconstruct the N*24, (to determine) input, i.e., the flatten version of the output of the SpecEncoder.
+    3. AudioDecoder: this network will decode the output of the GMVAE, i.e., N*24, (to determine), into a spectrogram of N, 1, 80, 24.
 
     The loss terms will be:
     1. Reconstruction term of the GMVAE: MSE between both spectrograms, input and output of SpecEncoder and AudioDecoder, respectively.
@@ -462,7 +462,7 @@ class SpeechTherapist(torch.nn.Module):
                     torch.nn.init.constant_(m.bias, 0)
 
     def SpecEncoder(self):
-        """This network will encode the spectrograms of N, 1, 65, 33 into a feature representation of N*33, Channels*Height."""
+        """This network will encode the spectrograms of N, 1, 80, 24 into a feature representation of N*24, Channels*Height."""
         self.spec_enc = torch.nn.Sequential(
             torch.nn.Conv2d(
                 self.x_dim,
@@ -501,7 +501,7 @@ class SpeechTherapist(torch.nn.Module):
         return self.spec_enc
 
     def SpecDecoder(self):
-        """This network will decode the output of the GMVAE, i.e., N*33, Channels*Height, into a spectrogram of N, 1, 65, 33."""
+        """This network will decode the output of the GMVAE, i.e., N*24, Channels*Height, into a spectrogram of N, 1, 80, 24."""
         self.spec_dec = torch.nn.Sequential(
             UnFlatten(),
             # ConvTranspose
@@ -529,7 +529,10 @@ class SpeechTherapist(torch.nn.Module):
                 self.hidden_dims_spectrogram[0],
                 self.x_dim,
                 stride=[2, 1],
-                kernel_size=[3, 3],
+                kernel_size=[
+                    2,
+                    3,
+                ],  # kernel 2 is because now we have 80 mels, if we have 65 mels we can use kernel 3
                 padding=[5, 1],
             ),
         )
@@ -537,7 +540,7 @@ class SpeechTherapist(torch.nn.Module):
 
     def inference(self):
         # p(y | e_s): the probability of each gaussian component givben the encoded spectrogram (e_s)
-        # This networks get the e_s (N*33, Channels*Height), reduces dimensionality to N*33, h_dim, and then applies GumbelSoftmax to N*33, K components.
+        # This networks get the e_s (N*24, Channels*Height), reduces dimensionality to N*24, h_dim, and then applies GumbelSoftmax to N*24, K components.
         self.py_es = torch.nn.Sequential(
             torch.nn.Linear(self.x_hat_shape_after_flat[1], self.hidden_dims_gmvae[0]),
             torch.nn.ReLU(),  # Check if makes sense to have a ReLU here
@@ -545,7 +548,7 @@ class SpeechTherapist(torch.nn.Module):
         ).to(self.device)
 
         # y_hat = h(y): the output of the GumbelSoftmax is the probability of each gaussian component given the encoded spectrogram (e_s).
-        # This network will upsample the K components to match the dimensionality of the encoded spectrogram (e_s), i.e., N*33, Channels*Height.
+        # This network will upsample the K components to match the dimensionality of the encoded spectrogram (e_s), i.e., N*24, Channels*Height.
         self.hy = torch.nn.Linear(self.k, self.x_hat_shape_after_flat[1]).to(
             self.device
         )
@@ -568,7 +571,7 @@ class SpeechTherapist(torch.nn.Module):
 
     def generative(self):
         # This network will get the latent space representation of each window of the spectrogram (z) and will output the feature representation of
-        # p(e_s | z): the output of the GMVAE will be the reconstruction of the input, i.e., the encoded spectrogram (N*33, Channels*Height).
+        # p(e_s | z): the output of the GMVAE will be the reconstruction of the input, i.e., the encoded spectrogram (N*24, Channels*Height).
         self.pes_z = torch.nn.Sequential(
             torch.nn.Linear(
                 self.z_dim, self.x_hat_shape_after_flat[1]
@@ -577,7 +580,7 @@ class SpeechTherapist(torch.nn.Module):
 
     def classifier(self):
         """This function adds a classifier to the network.
-        First, the manner_class (N x 33 x 1) are embedded to a z_dim vector (N x win_size x z_dim).
+        First, the manner_class (N x 24 x 1) are embedded to a z_dim vector (N x win_size x z_dim).
         Then, two options are possible:
         1. Use a CNN classifier whose input is: z + h(manner_class) (N x win_size x z_dim)
         2. Use a MLP classifier whose input is: z + h(manner_class) flattened (N x (win_size*z_dim))
@@ -605,10 +608,10 @@ class SpeechTherapist(torch.nn.Module):
             # Flatten
             ClassifierFlatten(),
             # Linear
-            torch.nn.Linear(32 * 7, self.class_dims[2]),
+            torch.nn.Linear(32 * 5, self.class_dims[2]),
             torch.nn.ReLU(),
             # Dropout
-            torch.nn.Dropout(p=0.9),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(self.class_dims[2], 1),
         )
 
@@ -632,7 +635,7 @@ class SpeechTherapist(torch.nn.Module):
         # p(y | e_s): the probability of each gaussian component givben the encoded spectrogram (e_s). Returns the logits, the softmax probability and the gumbel softmax output, respectively.
         y_logits, prob, y = self.py_es(e_s)
 
-        # y_hat = h(y): now we upsample the K components to match the dimensionality of the encoded spectrogram (e_s), i.e., N*33, Channels*Height.
+        # y_hat = h(y): now we upsample the K components to match the dimensionality of the encoded spectrogram (e_s), i.e., N*24, Channels*Height.
         y_hat = self.hy(y)
 
         # We combine both the e_s and y_hat to create the input to the q(z | e_s, y) network.
@@ -655,7 +658,7 @@ class SpeechTherapist(torch.nn.Module):
 
     def generative_forward(self, z_sample):
         """Forward function of the generative network. It receives the samples of the latent space (z_sample) and outputs the feature representation of the spectrogram reconstruction (e_hat_s)."""
-        # p(e_hat_s | z): the output of the GMVAE will be the reconstruction of the input, i.e., the encoded spectrogram (N*33, Channels*Height).
+        # p(e_hat_s | z): the output of the GMVAE will be the reconstruction of the input, i.e., the encoded spectrogram (N*24, Channels*Height).
         e_hat_s = self.pes_z(z_sample)
         return e_hat_s
 
@@ -834,7 +837,7 @@ class SpeechTherapist(torch.nn.Module):
         weight_pos = n_neg / n_pos
 
         # Create a weighted BCEWithLogitsLoss
-        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=weight_pos)
+        criterion = torch.nn.BCEWithLogitsLoss()
         # BCE loss
         loss = criterion(y_pred, labels)
         return loss, 0, 0, 0, 0
@@ -895,10 +898,10 @@ class ClassifierFlatten(torch.nn.Module):
 class UnFlatten(torch.nn.Module):
     def forward(self, x):
         # x_hat is shaped as (B*W, C*H), lets conver it to (B*W, C, H)
-        x = x.reshape(-1, 64, 7)
+        x = x.reshape(-1, 64, 9)
 
         # x is now shaped (B*W, C, H), lets conver it to (B, W, C, H)
-        x = x.reshape(-1, 33, 64, 7)
+        x = x.reshape(-1, 24, 64, 9)
 
         # x is now shaped (B, W, C, H), lets conver it to (B, C, H, W)
         x = x.permute(0, 2, 3, 1)

@@ -12,7 +12,7 @@ import time
 from torch.utils.data import Dataset, DataLoader, sampler
 
 
-# Function to collapse the matrix into a 33x1 vector with the most repeated string
+# Function to collapse the matrix into a 24x1 vector with the most repeated string
 def collapse_to_most_repeated(row):
     from collections import Counter
 
@@ -224,14 +224,11 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         data["label"] = data["label"].astype("category").cat.codes
 
         print("Reading the .wav files...")
+        target_sr = 16000  # Because Albayzin has 16kHz sampling rate and is the lowest sampling rate in our datasets
         # Read the .wav files and store the signals and sampling rates
-        data["signal"], data["sr"] = zip(*data["file_path"].map(librosa.load))
-
-        # Downsample the signals to 16kHz
-        data["signal"] = data["signal"].apply(
-            lambda x: librosa.resample(x, data["sr"].iloc[0], 16000)
+        data["signal"], data["sr"] = zip(
+            *data["file_path"].map(lambda x: librosa.load(x, sr=target_sr))
         )
-        data["sr"] = 16000
 
         # Normalize the audio
         data["signal"] = data["signal"].apply(self.normalize_audio)
@@ -285,7 +282,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             hop_length = win_length // 2  # 50% overlap
 
             n_fft = 512
-            n_mels = 65
+            n_mels = 80  # just trying with 80 to use hifigan
 
             # Calculate the melspectrogram using librosa
             data["spectrogram"] = data["signal_framed"].apply(
@@ -567,6 +564,12 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         if self.spectrogram:
             audio_features = "spectrogram"
 
+        if not supervised:
+            # Remove from train_data, val_data and test_data all the rows where the label is 1
+            train_data = train_data[train_data["label"] == 0]
+            val_data = val_data[val_data["label"] == 0]
+            test_data = test_data[test_data["label"] == 0]
+
         # Make sure that x_train is shape N, Channels, Height, Width (N,C,H,W) where C is 1
         x_train = np.stack(train_data[audio_features].values)
         x_train = np.expand_dims(x_train, axis=1)
@@ -719,7 +722,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         # Save the dataloaders to a file
         train_name = (
-            "local_results/train_loader"
+            "local_results/train_loader_supervised_"
+            + str(self.hyperparams["supervised"])
+            + "_frame_size_"
             + str(self.hyperparams["frame_size_ms"])
             + "spec_winsize_"
             + str(self.hyperparams["spectrogram_win_size"])
@@ -728,7 +733,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             + ".pt"
         )
         val_name = (
-            "local_results/val_loader"
+            "local_results/val_loader_supervised_"
+            + str(self.hyperparams["supervised"])
+            + "_frame_size_"
             + str(self.hyperparams["frame_size_ms"])
             + "spec_winsize_"
             + str(self.hyperparams["spectrogram_win_size"])
@@ -737,7 +744,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             + ".pt"
         )
         test_name = (
-            "local_results/test_loader"
+            "local_results/test_loader_supervised_"
+            + str(self.hyperparams["supervised"])
+            + "_frame_size_"
             + str(self.hyperparams["frame_size_ms"])
             + "spec_winsize_"
             + str(self.hyperparams["spectrogram_win_size"])
@@ -746,7 +755,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             + ".pt"
         )
         test_data_name = (
-            "local_results/test_data"
+            "local_results/test_data_supervised_"
+            + str(self.hyperparams["supervised"])
+            + "_frame_size_"
             + str(self.hyperparams["frame_size_ms"])
             + "spec_winsize_"
             + str(self.hyperparams["spectrogram_win_size"])

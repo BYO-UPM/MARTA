@@ -844,7 +844,7 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
             # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
             if e > 50:
-                if loss_valid[-1] > max(loss_valid[-20:-1]):
+                if loss_valid[-1] > max(loss_valid[-40:-1]):
                     print("Early stopping")
                     break
 
@@ -874,6 +874,14 @@ def SpeechTherapist_trainer(
     for e in range(epochs):
         model.train()
         usage = np.zeros(model.k)
+
+        if e % 10 == 0:
+            print("Epoch: {}".format(e))
+            print("Metric weight: {}".format(model.w[3]))
+            # Check metric weight
+            if model.w[3] > 1:
+                print("Reducing metric weight")
+                model.w[3] = model.w[3] / 10
 
         true_manner_list = []
         gaussian_component = []
@@ -918,6 +926,8 @@ def SpeechTherapist_trainer(
 
                 label_list = np.concatenate((label_list, labels.cpu().detach().numpy()))
             else:
+                # Assert that any manner is no bigger than 7
+                assert torch.max(manner) <= 7
                 (
                     x,
                     x_hat,
@@ -1075,6 +1085,8 @@ def SpeechTherapist_trainer(
                             (label_list, labels.cpu().detach().numpy())
                         )
                     else:
+                        # Assert that any manner is no bigger than 7
+                        assert torch.max(manner) <= 7
                         # ==== Forward pass ====
                         (
                             x,
@@ -1223,7 +1235,7 @@ def SpeechTherapist_trainer(
                     print("Early stopping")
                     break
             if supervised:
-                if valid_loss_store[-1] > max(valid_loss_store[-30:-1]):
+                if valid_loss_store[-1] > max(valid_loss_store[-50:-1]):
                     print("Early stopping")
                     print("Reloading best model")
                     # Restore best model:
@@ -1297,7 +1309,7 @@ def GMVAE_tester(
 
         # Create x_array of shape Batch x Output shape
         if audio_features == "spectrogram":
-            x_array = np.zeros((batch_size, 1, 65, 33))
+            x_array = np.zeros((batch_size, 1, 80, 24))
         else:
             x_array = np.zeros((batch_size, test_data[audio_features].iloc[0].shape[0]))
 
@@ -1467,7 +1479,7 @@ def SpeechTherapist_tester(
         y_array = []
 
         # Create x_array of shape Batch x Output shape
-        x_array = np.zeros((batch_size, 1, 65, 33))
+        x_array = np.zeros((batch_size, 1, 80, 24))
 
         x_hat_array = np.zeros(x_array.shape)
         for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(testloader)):
