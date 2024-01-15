@@ -343,7 +343,7 @@ class Spectrogram_networks_vowels(torch.nn.Module):
                 torch.nn.MaxPool2d(2),
                 torch.nn.Flatten(),
             )
-            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 80, 24)).shape
+            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 24)).shape
         else:
             raise NotImplementedError
 
@@ -380,12 +380,12 @@ class SpeechTherapist(torch.nn.Module):
     to measure the distance between the latent space representation of each phoneme and the clusters learned by the SpeechTherapist. If the distance is too high, then the patient is parkinsonian. If the distance is low, then the patient is healthy. We are learning how the pronunciation of each manner class
     differ between healthy and parkinsonian patients.
     This class will be wrapper composed by three main components:
-    1. SpecEncoder: this network will encode the spectrograms of N, 1, 80, 24 into a feature representation of N*24, Channels*Height.
+    1. SpecEncoder: this network will encode the spectrograms of N, 1, 65, 24 into a feature representation of N*24, Channels*Height.
     2- GMVAE: a Gaussian Mixture VAE. Its input will be a flatten version of the output of the SpecEncoder, i.e., N*24, (to determine). So, it will provide a latent space representation of each window of the spectrogram.
         2.1 This GMVAE will use metric learning to learn the latent space representation of each window of the spectrogram to match clusters with the manner class of each phoneme. Each window represents a phoneme, therefore, each window will be assigned to a manner class and the GMVAE
         will be trained to match the clusters of the latent space with the manner class of each phoneme.
         2.2 The GMVAE will reconstruct the N*24, (to determine) input, i.e., the flatten version of the output of the SpecEncoder.
-    3. AudioDecoder: this network will decode the output of the GMVAE, i.e., N*24, (to determine), into a spectrogram of N, 1, 80, 24.
+    3. AudioDecoder: this network will decode the output of the GMVAE, i.e., N*24, (to determine), into a spectrogram of N, 1, 65, 24.
 
     The loss terms will be:
     1. Reconstruction term of the GMVAE: MSE between both spectrograms, input and output of SpecEncoder and AudioDecoder, respectively.
@@ -462,7 +462,7 @@ class SpeechTherapist(torch.nn.Module):
                     torch.nn.init.constant_(m.bias, 0)
 
     def SpecEncoder(self):
-        """This network will encode the spectrograms of N, 1, 80, 24 into a feature representation of N*24, Channels*Height."""
+        """This network will encode the spectrograms of N, 1, 65, 24 into a feature representation of N*24, Channels*Height."""
         self.spec_enc = torch.nn.Sequential(
             torch.nn.Conv2d(
                 self.x_dim,
@@ -501,7 +501,7 @@ class SpeechTherapist(torch.nn.Module):
         return self.spec_enc
 
     def SpecDecoder(self):
-        """This network will decode the output of the GMVAE, i.e., N*24, Channels*Height, into a spectrogram of N, 1, 80, 24."""
+        """This network will decode the output of the GMVAE, i.e., N*24, Channels*Height, into a spectrogram of N, 1, 65, 24."""
         self.spec_dec = torch.nn.Sequential(
             UnFlatten(),
             # ConvTranspose
@@ -530,9 +530,9 @@ class SpeechTherapist(torch.nn.Module):
                 self.x_dim,
                 stride=[2, 1],
                 kernel_size=[
-                    2,
                     3,
-                ],  # kernel 2 is because now we have 80 mels, if we have 65 mels we can use kernel 3
+                    3,
+                ],  # kernel 2 is because now we have 65 mels, if we have 65 mels we can use kernel 3
                 padding=[5, 1],
             ),
         )
@@ -898,10 +898,10 @@ class ClassifierFlatten(torch.nn.Module):
 class UnFlatten(torch.nn.Module):
     def forward(self, x):
         # x_hat is shaped as (B*W, C*H), lets conver it to (B*W, C, H)
-        x = x.reshape(-1, 64, 9)
+        x = x.reshape(-1, 64, 7)
 
         # x is now shaped (B*W, C, H), lets conver it to (B, W, C, H)
-        x = x.reshape(-1, 24, 64, 9)
+        x = x.reshape(-1, 24, 64, 7)
 
         # x is now shaped (B, W, C, H), lets conver it to (B, C, H, W)
         x = x.permute(0, 2, 3, 1)

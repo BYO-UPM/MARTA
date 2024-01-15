@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 

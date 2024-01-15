@@ -879,7 +879,7 @@ def SpeechTherapist_trainer(
             print("Epoch: {}".format(e))
             print("Metric weight: {}".format(model.w[3]))
             # Check metric weight
-            if model.w[3] > 1:
+            if model.w[3] > 10:
                 print("Reducing metric weight")
                 model.w[3] = model.w[3] / 10
 

@@ -565,10 +565,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             audio_features = "spectrogram"
 
         if not supervised:
-            # Remove from train_data, val_data and test_data all the rows where the label is 1
+            # Remove from train_data and val_data where the label is 1
             train_data = train_data[train_data["label"] == 0]
             val_data = val_data[val_data["label"] == 0]
-            test_data = test_data[test_data["label"] == 0]
 
         # Make sure that x_train is shape N, Channels, Height, Width (N,C,H,W) where C is 1
         x_train = np.stack(train_data[audio_features].values)

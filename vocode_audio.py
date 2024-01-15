@@ -50,11 +50,17 @@ print("Reading data...")
 
 print("Reading train, val and test loaders from local_results/...")
 train_loader = torch.load(
-    "local_results/train_loader0.4spec_winsize_0.023hopsize_0.5.pt"
+    "local_results/train_loader_supervised_False_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
 )
-val_loader = torch.load("local_results/val_loader0.4spec_winsize_0.023hopsize_0.5.pt")
-test_loader = torch.load("local_results/test_loader0.4spec_winsize_0.023hopsize_0.5.pt")
-test_data = torch.load("local_results/test_data0.4spec_winsize_0.023hopsize_0.5.pt")
+val_loader = torch.load(
+    "local_results/val_loader_supervised_False_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+)
+test_loader = torch.load(
+    "local_results/test_loader_supervised_False_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+)
+test_data = torch.load(
+    "local_results/test_data_supervised_False_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+)
 
 
 model = SpeechTherapist(
@@ -105,21 +111,43 @@ idx_list = random.sample(range(len(test_data)), 10)
 spectrograms = np.stack([test_data["spectrogram"].iloc[idx] for idx in idx_list])
 # Convert to torch tensor and move to GPU
 spectrograms = torch.tensor(spectrograms).to(device)
-
+spectrograms = torch.log(torch.clamp(spectrograms, min=1e-5) * 1)
 # Get the corresponding audio by using the HiFiGAN
 audio = generator(spectrograms).squeeze(1)
-# Get the real audio
+
+
+# Get the real audio and process it by higan
 real_audio = np.stack([test_data["signal_framed"].iloc[idx] for idx in idx_list])
 # Real audio processed full by higan
 wav = torch.FloatTensor(real_audio).to(device)
-spect = meldataset.mel_spectrogram(
-    wav, h.n_fft, h.num_mels, h.sampling_rate, h.hop_size, h.win_size, h.fmin, h.fmax
-)
+spect = meldataset.mel_spectrogram(wav, 512, h.num_mels, 16000, 256, 512, h.fmin, 8000)
+audio_hifi = generator(spect).squeeze(1)
+
+
+# Get the reconstructed spectrogram
+(
+    x,
+    x_hat,
+    pz_mu,
+    pz_var,
+    y_logits,
+    y,
+    qz_mu,
+    qz_var,
+    z_sample,
+    e_s,
+    e_hat_s,
+) = model.forward(spectrograms.squeeze(0).unsqueeze(1))
+spectrogram_reconstructed = torch.log(torch.clamp(x_hat, min=1e-5) * 1)
+
+# Get the reconstructed audio
+audio_reconstructed = generator(spectrogram_reconstructed.squeeze(1)).squeeze(1)
+
 
 # Play both audios and compare in the noteook
 import IPython.display as ipd
 
 ipd.Audio(real_audio[0], rate=16000)
 ipd.Audio(audio[0].detach().cpu().numpy(), rate=16000)
-
-# Get the reconstructed spectrogram
+ipd.Audio(audio_hifi[0].detach().cpu().numpy(), rate=16000)
+ipd.Audio(audio_reconstructed[0].detach().cpu().numpy(), rate=16000)
