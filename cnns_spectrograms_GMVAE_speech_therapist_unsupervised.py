@@ -24,7 +24,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "unsupervised"
-            + "3d_metricimportancedynamic"
+            + "3d_final_model"
         )
 
     # Create the path if does not exist
@@ -198,14 +198,14 @@ if __name__ == "__main__":
             1,  # w1 is rec loss,
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
-            1000,  # w5 is metric loss
+            100,  # w5 is metric loss
         ],
         "supervised": False,
         "cnn_classifier": True,
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,
-        "new_data_partition": False,
+        "new_data_partition": True,
         "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
     }
 

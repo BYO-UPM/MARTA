@@ -875,14 +875,6 @@ def SpeechTherapist_trainer(
         model.train()
         usage = np.zeros(model.k)
 
-        if e % 10 == 0:
-            print("Epoch: {}".format(e))
-            print("Metric weight: {}".format(model.w[3]))
-            # Check metric weight
-            if model.w[3] > 10:
-                print("Reducing metric weight")
-                model.w[3] = model.w[3] / 10
-
         true_manner_list = []
         gaussian_component = []
         y_pred_list = []

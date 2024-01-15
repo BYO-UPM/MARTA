@@ -282,7 +282,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             hop_length = win_length // 2  # 50% overlap
 
             n_fft = 512
-            n_mels = 80  # just trying with 80 to use hifigan
+            n_mels = 65  # if hifigan use 80
 
             # Calculate the melspectrogram using librosa
             data["spectrogram"] = data["signal_framed"].apply(
