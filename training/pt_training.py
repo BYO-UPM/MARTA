@@ -859,7 +859,15 @@ def VQVAE_trainer(model, trainloader, validloader, epochs, lr, supervised, wandb
 
 
 def SpeechTherapist_trainer(
-    model, trainloader, validloader, epochs, lr, wandb_flag, path_to_save, supervised
+    model,
+    trainloader,
+    validloader,
+    epochs,
+    lr,
+    wandb_flag,
+    path_to_save,
+    supervised,
+    classifier,
 ):
     # ============================= LR scheduler =============================
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -894,7 +902,7 @@ def SpeechTherapist_trainer(
 
             # ==== Forward pass ====
 
-            if supervised:
+            if classifier:
                 # Remove all dataset=="albayzin"
                 # data = data[dataset != "albayzin"].squeeze(0)
                 # manner = manner[dataset != "albayzin"].squeeze(0)
@@ -919,7 +927,8 @@ def SpeechTherapist_trainer(
                 label_list = np.concatenate((label_list, labels.cpu().detach().numpy()))
             else:
                 # Assert that any manner is no bigger than 7
-                assert torch.max(manner) <= 7
+                if not supervised:
+                    assert torch.max(manner) <= 7
                 (
                     x,
                     x_hat,
@@ -959,7 +968,7 @@ def SpeechTherapist_trainer(
 
             # ==== Update metrics ====
             tr_running_loss += complete_loss.item()
-            if not supervised:
+            if not classifier:
                 tr_rec_loss += recon_loss.item()
                 tr_gauss_loss += gaussian_loss.item()
                 tr_cat_loss += categorical_loss.item()
@@ -972,7 +981,7 @@ def SpeechTherapist_trainer(
         scheduler.step()
 
         # Check reconstruction of X
-        if not supervised:
+        if not classifier:
             check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
             # Check unsupervised cluster accuracy and NMI
             true_manner = torch.tensor(np.concatenate(true_manner_list))
@@ -1005,7 +1014,7 @@ def SpeechTherapist_trainer(
             )
 
         if wandb_flag:
-            if supervised:
+            if classifier:
                 wandb.log(
                     {
                         "train/Epoch": e,
@@ -1044,13 +1053,13 @@ def SpeechTherapist_trainer(
                 label_list = []
                 y_pred_list = []
 
-                for batch_idx, (data, labels, manner, dataset) in enumerate(
+                for batch_idx, (data, labels, manner, dataset, id_patient) in enumerate(
                     tqdm(validloader)
                 ):
                     # Make sure dtype is Tensor float
                     data = data.to(model.device).float()
 
-                    if supervised:
+                    if classifier:
                         # Remove Albayzin to validate
                         # data = data[dataset != "albayzin"].squeeze(0)
                         # manner = manner[dataset != "albayzin"].squeeze(0)
@@ -1077,8 +1086,9 @@ def SpeechTherapist_trainer(
                             (label_list, labels.cpu().detach().numpy())
                         )
                     else:
-                        # Assert that any manner is no bigger than 7
-                        assert torch.max(manner) <= 7
+                        if not supervised:
+                            # Assert that any manner is no bigger than 7
+                            assert torch.max(manner) <= 7
                         # ==== Forward pass ====
                         (
                             x,
@@ -1116,7 +1126,7 @@ def SpeechTherapist_trainer(
 
                     v_running_loss += complete_loss.item()
 
-                    if not supervised:
+                    if not classifier:
                         v_rec_loss += recon_loss.item()
                         v_gauss_loss += gaussian_loss.item()
                         v_cat_loss += categorical_loss.item()
@@ -1127,7 +1137,7 @@ def SpeechTherapist_trainer(
                         gaussian_component.append(y.cpu().detach().numpy())
 
                 # Check reconstruction of X
-                if not supervised:
+                if not classifier:
                     check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
                     # Check unsupervised cluster accuracy and NMI
                     true_manner = torch.tensor(np.concatenate(true_manner_list))
@@ -1149,7 +1159,7 @@ def SpeechTherapist_trainer(
                         )
                     )
 
-            if not supervised:
+            if not classifier:
                 print(
                     "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                         e,
@@ -1169,7 +1179,7 @@ def SpeechTherapist_trainer(
                 valid_loss_store.append(v_running_loss)
 
             if wandb_flag:
-                if supervised:
+                if classifier:
                     wandb.log(
                         {
                             "valid/Epoch": e,
@@ -1209,7 +1219,7 @@ def SpeechTherapist_trainer(
                 name,
             )
             # Store best youden th in a txt
-            if supervised:
+            if classifier:
                 print("Best threshold Youden: ", best_th_youden)
                 print("Best threshold EER: ", best_th_eer)
                 name = path_to_save
@@ -1217,16 +1227,16 @@ def SpeechTherapist_trainer(
                 with open(namefile, "w") as f:
                     f.write(str(best_th_youden))
 
-        if not supervised:
+        if not classifier:
             check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
 
         # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
         if e > 40:
-            if not supervised:
+            if not classifier:
                 if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
                     print("Early stopping")
                     break
-            if supervised:
+            if classifier:
                 if valid_loss_store[-1] > max(valid_loss_store[-50:-1]):
                     print("Early stopping")
                     print("Reloading best model")
@@ -1301,7 +1311,7 @@ def GMVAE_tester(
 
         # Create x_array of shape Batch x Output shape
         if audio_features == "spectrogram":
-            x_array = np.zeros((batch_size, 1, 80, 24))
+            x_array = np.zeros((batch_size, 1, 65, 24))
         else:
             x_array = np.zeros((batch_size, test_data[audio_features].iloc[0].shape[0]))
 
@@ -1471,7 +1481,7 @@ def SpeechTherapist_tester(
         y_array = []
 
         # Create x_array of shape Batch x Output shape
-        x_array = np.zeros((batch_size, 1, 80, 24))
+        x_array = np.zeros((batch_size, 1, 65, 24))
 
         x_hat_array = np.zeros(x_array.shape)
         for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(testloader)):

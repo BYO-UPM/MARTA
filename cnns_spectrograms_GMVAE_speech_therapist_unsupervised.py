@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -24,7 +24,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "unsupervised"
-            + "3d_final_model"
+            + "32d_final_model2"
         )
 
     # Create the path if does not exist
@@ -105,6 +105,7 @@ def main(args, hyperparams):
             wandb_flag=hyperparams["wandb_flag"],
             path_to_save=hyperparams["path_to_save"],
             supervised=False,
+            classifier=False,
         )
 
         print("Training finished!")
@@ -191,7 +192,7 @@ if __name__ == "__main__":
         "epochs": 1000,
         "batch_size": 128,
         "lr": 1e-3,
-        "latent_dim": 3,
+        "latent_dim": 32,
         "hidden_dims_enc": [64, 1024, 64],
         "hidden_dims_gmvae": [256],
         "weights": [
@@ -205,7 +206,7 @@ if __name__ == "__main__":
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,
-        "new_data_partition": True,
+        "new_data_partition": False,
         "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
     }
 

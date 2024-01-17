@@ -389,8 +389,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         self.data["label"] = self.data["label"].apply(lambda x: 0 if x < 2 else 1)
 
         # Modify the manner class: sum to each manner class the label multiplied by the number of manner classes (8)
-        # ALERT: TESTEANDO SI FUNCIONA USANDO SUPERVISADO
-        if not supervised:
+        if supervised:
             self.data["manner_class"] = self.data.apply(
                 lambda x: [x["label"] * 8 + y for y in x["manner_class"]], axis=1
             )
@@ -591,6 +590,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         )
         z_val = np.array([np.array(x[1] + n_classes * x[0]) for x in z_val])
         d_val = np.array([np.array(x) for x in val_data["dataset"]])
+        id_val = np.array([np.array(x) for x in val_data["id_patient"]])
 
         x_test = np.stack(test_data[audio_features].values)
         x_test = np.expand_dims(x_test, axis=1)
@@ -699,6 +699,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     y_val,
                     p_val,
                     d_val,
+                    id_val,
                 )
             ),
             drop_last=False,

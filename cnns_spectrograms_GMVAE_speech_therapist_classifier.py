@@ -13,6 +13,7 @@ import sys
 import os
 import random
 from collections import Counter
+import copy
 
 # Select the free GPU if there is one available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -27,22 +28,107 @@ def find_minority_class(dataset):
     return minority_class, label_counts
 
 
+def augment_data(dataset, validation=False):
+    augmented_data = []
+    for data in dataset:
+        if validation:
+            spectrogram, label, manner, ds, id = data
+        else:
+            spectrogram, label, manner, ds = data
+
+        spectrogram_to_modify1 = copy.deepcopy(spectrogram)
+        spectrogram_to_modify2 = copy.deepcopy(spectrogram)
+
+        # First augmentation
+        augmented_spectrogram_1 = augment_spectrogram(
+            spectrogram_to_modify1, p=0.8, q=0.8, r=0.2
+        )
+        if validation:
+            augmented_data.append((augmented_spectrogram_1, label, manner, ds, id))
+        else:
+            augmented_data.append((augmented_spectrogram_1, label, manner, ds))
+
+        # Second augmentation
+        augmented_spectrogram_2 = augment_spectrogram(
+            spectrogram_to_modify2, p=0.8, q=0.8, r=0.2
+        )
+        if validation:
+            augmented_data.append((augmented_spectrogram_2, label, manner, ds, id))
+        else:
+            augmented_data.append((augmented_spectrogram_2, label, manner, ds))
+
+    dataset += augmented_data
+
+    return dataset
+
+
 # Function for frequency-based data augmentation
-def augment_spectrogram(spectrogram):
-    # Implement your frequency-based augmentation here
-    # This could be frequency masking, shifting, etc.
-    # Example: Frequency masking
-    freq_dimension = spectrogram.shape[0]
-    mask_percentage = 0.15  # Example: Mask 15% of the frequencies
-    mask_size = int(freq_dimension * mask_percentage)
-    mask_start = random.randint(0, freq_dimension - mask_size)
-    spectrogram[mask_start : mask_start + mask_size] = 0  # Masking
+def augment_spectrogram(spectrogram, p=0.5, q=0.5, r=0.2):
+    _, freq_dimension, time_dimension = spectrogram.shape
+
+    # With probability p, mask 15% of frequency bands
+    if random.random() < p:
+        mask_percentage = 0.15
+        mask_size = int(freq_dimension * mask_percentage)
+        mask_start = random.randint(0, freq_dimension - mask_size)
+        spectrogram[0, mask_start : mask_start + mask_size, :] = 0
+
+    # With probability q, mask 15% of time windows
+    if random.random() < q:
+        mask_percentage = 0.15
+        mask_size = int(time_dimension * mask_percentage)
+        mask_start = random.randint(0, time_dimension - mask_size)
+        spectrogram[0, :, mask_start : mask_start + mask_size] = 0
+
+    # With probability r, add Gaussian noise
+    if random.random() < r:
+        noise = np.random.normal(0, 1, spectrogram.shape)
+        spectrogram += 0.10 * noise
+        # Renormalize the spectrogram
+        spectrogram = (spectrogram - spectrogram.mean()) / spectrogram.std()
+
     return spectrogram
 
 
-def make_sampler(dataset):
+def stratify_dataset(dataset):
+    # Check stratification of labels (they are the second element of the triplet)
+    minority_class, label_counts = find_minority_class(dataset)
+    majority_class_count = max(label_counts.values())
+
+    if label_counts[minority_class] < majority_class_count:
+        additional_augmented_data = []
+        augmentations_needed = majority_class_count - label_counts[minority_class]
+        minority_class_data = [data for data in dataset if data[1] == minority_class]
+
+        while augmentations_needed > 0:
+            for data in minority_class_data:
+                if augmentations_needed <= 0:
+                    break
+                spectrogram, label, manner, ds = data
+
+                spectrogram_to_modify3 = copy.deepcopy(spectrogram)
+
+                augmented_spectrogram = augment_spectrogram(spectrogram_to_modify3)
+
+                additional_augmented_data.append(
+                    (augmented_spectrogram, label, manner, ds)
+                )
+                augmentations_needed -= 1
+
+        # Combine additional augmented data
+        balanced_dataset = dataset + additional_augmented_data
+    else:
+        balanced_dataset = dataset
+
+    return balanced_dataset
+
+
+def make_sampler(dataset, validation=False):
     # Count the occurrences of each class
     class_counts = {}
+    if validation:
+        dataset = [data[:4] for data in dataset]
+
     for _, label, _, _ in dataset:
         label = label.item()  # Assuming label is a tensor
         class_counts[label] = class_counts.get(label, 0) + 1
@@ -100,86 +186,55 @@ def main(args, hyperparams):
     # First check in local_results/ if there eist any .pt file with the dataloaders
     # If not, create them and save them in local_results/
 
-    if os.path.exists("local_results/train_loader0.4spec_winsize_0.023hopsize_0.5.pt"):
+    if not hyperparams["new_data_partition"]:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/train_loader0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/train_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
         )
         val_loader = torch.load(
-            "local_results/val_loader0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/val_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
         )
         test_loader = torch.load(
-            "local_results/test_loader0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/test_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
         )
         test_data = torch.load(
-            "local_results/test_data0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/test_data_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
         )
 
-        # Create a new train and val loaders: get val_loader remove all albayzin samples (they have 'albayzin' in the third element of the triplet) and split it into two loaders: new train and new val
-        filtered_dataset = [
-            data for data in val_loader.dataset if data[3] != "albayzin"
-        ]
+        # Remove all albayzin samples from train_loader
+        # new_train = [data for data in train_loader.dataset if data[3] == "neurovoz"]
 
-        # Duplicate data for both classes with augmentation
-        augmented_data = []
-        for data in filtered_dataset:
-            spectrogram, label, manner, dataset = data
-            augmented_spectrogram = augment_spectrogram(spectrogram)
-            augmented_data.append((augmented_spectrogram, label, manner, dataset))
+        # First, remove all albayzin samples from val_loader
+        new_val = [data for data in val_loader.dataset if data[3] == "neurovoz"]
 
-        # Add augmented data to the original dataset
-        extended_dataset = filtered_dataset + augmented_data
+        # Split the new val dataset into train and validation. Use "id_patient" to ensure that all samples from the same patient are in the same set
+        patients = set([data[4] for data in new_val])
+        patients = list(patients)
+        np.random.shuffle(patients)
+        train_patients = patients[: int(0.6 * len(patients))]
+        val_patients = patients[int(0.6 * len(patients)) :]
+        new_train = [data[:4] for data in new_val if data[4] in train_patients]
+        new_val = [data for data in new_val if data[4] in val_patients]
 
-        # Shuffle the dataset
-        np.random.shuffle(extended_dataset)
+        # Augment the train dataset
+        extended_dataset = augment_data(new_train)
+        # Agment the validation dataset
+        # new_val = augment_data(new_val, validation=True)
 
-        # Check stratification of labels (they are the second element of the triplet)
-        minority_class, label_counts = find_minority_class(extended_dataset)
-        majority_class_count = max(label_counts.values())
+        # Stratify train dataset
+        balanced_dataset = stratify_dataset(extended_dataset)
 
-        if label_counts[minority_class] < majority_class_count:
-            additional_augmented_data = []
-            augmentations_needed = majority_class_count - label_counts[minority_class]
-            minority_class_data = [
-                data for data in extended_dataset if data[1] == minority_class
-            ]
-
-            while augmentations_needed > 0:
-                for data in minority_class_data:
-                    if augmentations_needed <= 0:
-                        break
-                    spectrogram, label, manner, dataset = data
-                    augmented_spectrogram = augment_spectrogram(spectrogram)
-                    additional_augmented_data.append(
-                        (augmented_spectrogram, label, manner, dataset)
-                    )
-                    augmentations_needed -= 1
-
-            # Combine additional augmented data
-            balanced_dataset = extended_dataset + additional_augmented_data
-        else:
-            balanced_dataset = extended_dataset
-
-        # Shuffle the dataset
-        np.random.shuffle(balanced_dataset)
-
-        # Split the dataset into two halves
-        split_index = len(balanced_dataset) // 2
-        new_train_dataset = torch.utils.data.Subset(
-            balanced_dataset, range(0, split_index)
-        )
-        new_val_dataset = torch.utils.data.Subset(
-            balanced_dataset, range(split_index, len(balanced_dataset))
-        )
-        train_sampler = make_sampler(new_train_dataset)
-        val_sampler = make_sampler(new_val_dataset)
+        # train_sampler = make_sampler(balanced_dataset)
+        # val_sampler = make_sampler(new_val, validation=True)
 
         # Create new dataloaders
         new_train_loader = torch.utils.data.DataLoader(
-            new_train_dataset, batch_size=val_loader.batch_size, sampler=train_sampler
+            balanced_dataset,
+            batch_size=val_loader.batch_size,
         )
         val2_loader = torch.utils.data.DataLoader(
-            new_val_dataset, batch_size=val_loader.batch_size, sampler=val_sampler
+            new_val,
+            batch_size=val_loader.batch_size,
         )
 
         #
@@ -213,7 +268,7 @@ def main(args, hyperparams):
         n_manner=8,
         hidden_dims_spectrogram=hyperparams["hidden_dims_enc"],
         hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
-        classifier=hyperparams["classifier"],
+        classifier=hyperparams["classifier_type"],
         weights=hyperparams["weights"],
         device=device,
     )
@@ -222,7 +277,7 @@ def main(args, hyperparams):
 
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
-        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_32final_modeltesting_supervised2/GMVAE_cnn_best_model_2d.pt"
+        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_32supervised32d/GMVAE_cnn_best_model_2d.pt"
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -255,6 +310,7 @@ def main(args, hyperparams):
             wandb_flag=hyperparams["wandb_flag"],
             path_to_save=hyperparams["path_to_save"],
             supervised=hyperparams["supervised"],
+            classifier=hyperparams["classifier"],
         )
 
         print("Training finished!")
@@ -343,12 +399,14 @@ if __name__ == "__main__":
             1,  # w3 is categorical kl loss,
             10,  # w5 is metric loss
         ],
-        "supervised": True,
-        "classifier": "cnn",  # "cnn" or "mlp"
+        "classifier_type": "cnn",  # "cnn" or "mlp"
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,
-        "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
+        "train_albayzin": True,
+        "new_data_partition": False,
+        "supervised": True,
+        "classifier": True,
     }
 
     main(args, hyperparams)
