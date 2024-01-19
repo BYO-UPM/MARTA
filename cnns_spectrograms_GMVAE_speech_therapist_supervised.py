@@ -12,19 +12,21 @@ import numpy as np
 import pandas as pd
 import sys
 import os
-
-# Select the free GPU if there is one available
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
-print("Device being used:", device)
+import argparse
 
 
 def main(args, hyperparams):
+    gpu = "cuda:" + str(hyperparams["gpu"])
+    device = torch.device(gpu if torch.cuda.is_available() else "cpu")
+    print("Device being used:", device)
+
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "supervised"
-            + "32d"
+            + "90-10-fold"
+            + str(hyperparams["fold"])
         )
 
     # Create the path if does not exist
@@ -69,16 +71,24 @@ def main(args, hyperparams):
     else:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/train_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/train_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            + str(hyperparams["fold"])
+            + ".pt"
         )
         val_loader = torch.load(
-            "local_results/val_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/val_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            + str(hyperparams["fold"])
+            + ".pt"
         )
         test_loader = torch.load(
-            "local_results/test_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/test_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            + str(hyperparams["fold"])
+            + ".pt"
         )
         test_data = torch.load(
-            "local_results/test_data_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/test_data_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            + str(hyperparams["fold"])
+            + ".pt"
         )
 
     print("Defining models...")
@@ -86,6 +96,7 @@ def main(args, hyperparams):
     model = SpeechTherapist(
         x_dim=train_loader.dataset[0][0].shape,
         z_dim=hyperparams["latent_dim"],
+        n_manner=16,
         n_gaussians=hyperparams["n_gaussians"],
         hidden_dims_spectrogram=hyperparams["hidden_dims_enc"],
         hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
@@ -181,7 +192,15 @@ def main(args, hyperparams):
 
 
 if __name__ == "__main__":
-    args = {}
+    parser = argparse.ArgumentParser(description="Script configuration")
+    parser.add_argument(
+        "--fold", type=int, default=1, help="Fold number for the experiment"
+    )
+    parser.add_argument(
+        "--gpu", type=int, default=0, help="GPU number to use in the experiment"
+    )
+
+    args = parser.parse_args()
 
     hyperparams = {
         "frame_size_ms": 0.400,  # 400ms
@@ -202,16 +221,18 @@ if __name__ == "__main__":
             1,  # w1 is rec loss,
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
-            100,  # w5 is metric loss
+            10,  # w5 is metric loss
         ],
         "supervised": True,
         "classifier_type": "cnn",
         "n_gaussians": 16,  # 2 per manner class
         "semisupervised": False,
         "train": True,
-        "new_data_partition": True,
+        "new_data_partition": False,
         "train_albayzin": True,
-        "classifier": False,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
+        "classifier": False,
+        "fold": args.fold,
+        "gpu": args.gpu,
     }
 
     main(args, hyperparams)

@@ -1053,7 +1053,7 @@ def SpeechTherapist_trainer(
                 label_list = []
                 y_pred_list = []
 
-                for batch_idx, (data, labels, manner, dataset, id_patient) in enumerate(
+                for batch_idx, (data, labels, manner, dataset, id) in enumerate(
                     tqdm(validloader)
                 ):
                     # Make sure dtype is Tensor float

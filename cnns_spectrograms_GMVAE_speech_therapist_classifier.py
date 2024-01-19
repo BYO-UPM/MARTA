@@ -14,11 +14,7 @@ import os
 import random
 from collections import Counter
 import copy
-
-# Select the free GPU if there is one available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu")
-print("Device being used:", device)
+import argparse
 
 
 def find_minority_class(dataset):
@@ -146,21 +142,18 @@ def make_sampler(dataset, validation=False):
 
 
 def main(args, hyperparams):
-    if hyperparams["train_albayzin"]:
-        hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
-            + str(hyperparams["latent_dim"])
-            + "final_model_classifier"
-            + "_LATENTSPACE+manner_CNN"
-        )
+    gpu = args.gpu
+    fold = args.fold
+    device = torch.device("cuda:" + str(gpu) if torch.cuda.is_available() else "cpu")
+    print("Device being used:", device)
 
-    else:
-        hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_only_neurovoz_"
-            + str(hyperparams["latent_dim"])
-            + "final_model_classifier"
-            + "adding_"
-        )
+    hyperparams["path_to_save"] = (
+        "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
+        + str(hyperparams["latent_dim"])
+        + "final_model_classifier"
+        + "_LATENTSPACE+manner_CNN_fold"
+        + str(hyperparams["fold"])
+    )
 
     # Create the path if does not exist
     if not os.path.exists(hyperparams["path_to_save"]):
@@ -189,52 +182,63 @@ def main(args, hyperparams):
     if not hyperparams["new_data_partition"]:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/train_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/train_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            + str(hyperparams["fold"])
+            + ".pt"
         )
         val_loader = torch.load(
-            "local_results/val_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/val_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            + str(hyperparams["fold"])
+            + ".pt"
         )
         test_loader = torch.load(
-            "local_results/test_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/test_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            + str(hyperparams["fold"])
+            + ".pt"
         )
         test_data = torch.load(
-            "local_results/test_data_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/test_data_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            + str(hyperparams["fold"])
+            + ".pt"
         )
 
         # Remove all albayzin samples from train_loader
-        # new_train = [data for data in train_loader.dataset if data[3] == "neurovoz"]
+        new_train = [data for data in train_loader.dataset if data[3] == "neurovoz"]
 
         # First, remove all albayzin samples from val_loader
         new_val = [data for data in val_loader.dataset if data[3] == "neurovoz"]
 
         # Split the new val dataset into train and validation. Use "id_patient" to ensure that all samples from the same patient are in the same set
-        patients = set([data[4] for data in new_val])
-        patients = list(patients)
-        np.random.shuffle(patients)
-        train_patients = patients[: int(0.6 * len(patients))]
-        val_patients = patients[int(0.6 * len(patients)) :]
-        new_train = [data[:4] for data in new_val if data[4] in train_patients]
-        new_val = [data for data in new_val if data[4] in val_patients]
+        # patients = set([data[4] for data in new_val])
+        # patients = list(patients)
+        # np.random.shuffle(patients)
+        # train_patients = patients[: int(0.6 * len(patients))]
+        # val_patients = patients[int(0.6 * len(patients)) :]
+        # new_train = [data[:4] for data in new_val if data[4] in train_patients]
+        # new_val = [data for data in new_val if data[4] in val_patients]
 
         # Augment the train dataset
         extended_dataset = augment_data(new_train)
-        # Agment the validation dataset
+
+        # # Agment the validation dataset
         # new_val = augment_data(new_val, validation=True)
 
         # Stratify train dataset
         balanced_dataset = stratify_dataset(extended_dataset)
 
-        # train_sampler = make_sampler(balanced_dataset)
-        # val_sampler = make_sampler(new_val, validation=True)
+        train_sampler = make_sampler(balanced_dataset)
+        val_sampler = make_sampler(new_val, validation=True)
 
         # Create new dataloaders
         new_train_loader = torch.utils.data.DataLoader(
             balanced_dataset,
             batch_size=val_loader.batch_size,
+            sampler=train_sampler,
         )
         val2_loader = torch.utils.data.DataLoader(
             new_val,
             batch_size=val_loader.batch_size,
+            sampler=val_sampler,
         )
 
         #
@@ -265,7 +269,7 @@ def main(args, hyperparams):
         x_dim=train_loader.dataset[0][0].shape,
         z_dim=hyperparams["latent_dim"],
         n_gaussians=hyperparams["n_gaussians"],
-        n_manner=8,
+        n_manner=16,
         hidden_dims_spectrogram=hyperparams["hidden_dims_enc"],
         hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
         classifier=hyperparams["classifier_type"],
@@ -277,7 +281,11 @@ def main(args, hyperparams):
 
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
-        name = "local_results/spectrograms/manner_gmvae_alb_neurovoz_32supervised32d/GMVAE_cnn_best_model_2d.pt"
+        name = (
+            "local_results/spectrograms/results_90_10_da_latentspace+manner_cnn/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
+            + str(hyperparams["fold"])
+            + "/GMVAE_cnn_best_model_2d.pt"
+        )
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
 
@@ -290,7 +298,7 @@ def main(args, hyperparams):
         # Unfreeze the classifier
         for param in model.hmc.parameters():
             # Unfreezing the manner class embeddings
-            param.requires_grad = True
+            param.requires_grad = False
         for param in model.clf_cnn.parameters():
             # Unfreezing the cnn classifier
             param.requires_grad = True
@@ -376,7 +384,15 @@ def main(args, hyperparams):
 
 
 if __name__ == "__main__":
-    args = {}
+    parser = argparse.ArgumentParser(description="Script configuration")
+    parser.add_argument(
+        "--fold", type=int, default=1, help="Fold number for the experiment"
+    )
+    parser.add_argument(
+        "--gpu", type=int, default=0, help="GPU number for the experiment"
+    )
+
+    args = parser.parse_args()
 
     hyperparams = {
         "frame_size_ms": 0.400,  # 400ms
@@ -407,6 +423,8 @@ if __name__ == "__main__":
         "new_data_partition": False,
         "supervised": True,
         "classifier": True,
+        "fold": args.fold,
+        "gpu": args.gpu,
     }
 
     main(args, hyperparams)

@@ -618,10 +618,10 @@ class SpeechTherapist(torch.nn.Module):
         self.clf_mlp = torch.nn.Sequential(
             torch.nn.Linear(self.z_dim * self.window_size, 256),
             torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.8),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(256, 32),
             torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.8),
+            torch.nn.Dropout(p=0.5),
             torch.nn.Linear(32, 1),
         )
 
