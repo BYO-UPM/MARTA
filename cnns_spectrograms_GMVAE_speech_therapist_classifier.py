@@ -282,7 +282,7 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "local_results/spectrograms/results_90_10_da_latentspace+manner_cnn/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
+            "local_results/spectrograms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
             + str(hyperparams["fold"])
             + "/GMVAE_cnn_best_model_2d.pt"
         )
@@ -298,7 +298,7 @@ def main(args, hyperparams):
         # Unfreeze the classifier
         for param in model.hmc.parameters():
             # Unfreezing the manner class embeddings
-            param.requires_grad = False
+            param.requires_grad = True
         for param in model.clf_cnn.parameters():
             # Unfreezing the cnn classifier
             param.requires_grad = True

@@ -1,16 +1,15 @@
-# Adjusted loop for distributing folds 0 to 9 across 4 GPUs
-for GPU_ID in 0 1 2 3; do
-    # Calculate start and end fold for each GPU
-    START_FOLD=$((GPU_ID * 2)) # Start from fold 0
-    END_FOLD=$((START_FOLD + 1))
+# Adjusted loop for distributing folds 0 to 9 across GPUs 0 and 1
+for FOLD in `seq 0 9`; do
+    # Assign GPU 0 for even folds and GPU 1 for odd folds
+    GPU_ID=$((FOLD % 2))
 
-    # Adjust for the last GPU to go up to fold 9
-    if [ "$GPU_ID" -eq 3 ]; then
-        END_FOLD=9
+    ./run_fold.sh $FOLD $GPU_ID &
+
+    # Wait after launching two processes on the same GPU
+    if [ $((FOLD % 4)) -eq 1 ] || [ $((FOLD % 4)) -eq 2 ]; then
+        wait
     fi
-
-    for FOLD in `seq $START_FOLD $END_FOLD`; do
-        ./run_fold.sh $FOLD $GPU_ID &
-    done
 done
+
+# Wait for the last set of processes to finish
 wait

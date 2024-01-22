@@ -275,7 +275,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         if self.spectrogram:
             # Calculate the spectrogram. We want that each spectrogram is 400ms long with 20 windows of 23ms each.
-            win_length = 512
+            win_length = 368  # 512
             hop_length = win_length // 2  # 50% overlap
 
             n_fft = 512

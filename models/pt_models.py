@@ -343,7 +343,7 @@ class Spectrogram_networks_vowels(torch.nn.Module):
                 torch.nn.MaxPool2d(2),
                 torch.nn.Flatten(),
             )
-            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 24)).shape
+            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 33)).shape
         else:
             raise NotImplementedError
 
@@ -608,7 +608,7 @@ class SpeechTherapist(torch.nn.Module):
             # Flatten
             ClassifierFlatten(),
             # Linear
-            torch.nn.Linear(32 * 5, self.class_dims[2]),
+            torch.nn.Linear(32 * 7, self.class_dims[2]),
             torch.nn.ReLU(),
             # Dropout
             torch.nn.Dropout(p=0.8),
@@ -901,7 +901,7 @@ class UnFlatten(torch.nn.Module):
         x = x.reshape(-1, 64, 7)
 
         # x is now shaped (B*W, C, H), lets conver it to (B, W, C, H)
-        x = x.reshape(-1, 24, 64, 7)
+        x = x.reshape(-1, 33, 64, 7)
 
         # x is now shaped (B, W, C, H), lets conver it to (B, C, H, W)
         x = x.permute(0, 2, 3, 1)

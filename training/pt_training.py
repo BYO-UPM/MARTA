@@ -1311,7 +1311,7 @@ def GMVAE_tester(
 
         # Create x_array of shape Batch x Output shape
         if audio_features == "spectrogram":
-            x_array = np.zeros((batch_size, 1, 65, 24))
+            x_array = np.zeros((batch_size, 1, 65, 33))
         else:
             x_array = np.zeros((batch_size, test_data[audio_features].iloc[0].shape[0]))
 
@@ -1481,7 +1481,7 @@ def SpeechTherapist_tester(
         y_array = []
 
         # Create x_array of shape Batch x Output shape
-        x_array = np.zeros((batch_size, 1, 65, 24))
+        x_array = np.zeros((batch_size, 1, 65, 33))
 
         x_hat_array = np.zeros(x_array.shape)
         for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(testloader)):
