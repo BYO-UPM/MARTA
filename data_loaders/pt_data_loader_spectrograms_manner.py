@@ -1,3 +1,44 @@
+"""
+Phoneme-Based Audio Feature Extraction and Classification Dataset Preparation
+
+This script is designed for preparing datasets for phoneme-based audio feature extraction and classification. 
+It focuses on processing audio files, extracting relevant features, and aligning these with phonetic 
+annotations from TextGrid files. The primary aim is to facilitate the training of machine learning models 
+for tasks like speech and language pathology analysis, particularly in the context of Parkinson's Disease.
+
+Main Components:
+1. Data Preparation: Reads and processes audio files from specified directories, aligning audio 
+   signals with corresponding phoneme annotations from TextGrid files.
+2. Feature Extraction: Supports extraction of various audio features such as PLPs, MFCCs, and spectrograms.
+3. Dataset Creation: Constructs a PyTorch Dataset with extracted features, labels, and additional metadata.
+4. DataLoader Generation: Splits the dataset into training, validation, and testing sets and prepares 
+   DataLoaders for model training and evaluation.
+
+Functions:
+- collapse_to_most_repeated: Collapses a matrix into a vector with the most repeated string.
+- match_phonemes: Align phoneme annotations with audio signals.
+- read_neurovoz, read_albayzin: Read and process specific datasets (Neurovoz, Albayzin).
+- normalize_audio: Normalize audio signals.
+
+Usage:
+- The script is expected to be used as part of a larger pipeline for training speech and language pathology models.
+- It requires the directory paths for the audio files and TextGrid files, along with specified hyperparameters.
+
+Output:
+- Prepared PyTorch DataLoaders with processed audio features and labels, ready for model training and evaluation.
+
+Requirements:
+- The script assumes a specific directory structure and file naming convention for the audio and TextGrid files.
+- Libraries: torch, numpy, pandas, librosa, textgrids.
+
+Author: Guerrero-López, Alejandro
+Date: 25/01/2024
+
+Note:
+- Ensure that the required data directories and files are correctly structured and accessible.
+- Hyperparameter configuration may need adjustment based on specific requirements of the dataset and the model.
+"""
+
 import torch
 import numpy as np
 import os
@@ -173,32 +214,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 phoneme_labels.append(matching_interval.text)
             else:
                 phoneme_labels.append(None)
-
-        return phoneme_labels
-
-    def match_phonemes2(self, phonemes, signal, sr):
-        # Create a dictionary for fast interval lookup
-        phoneme_dict = {interval.xmin: interval.text for interval in phonemes}
-
-        # Convert signal timestamps to seconds
-        timestamps_seconds = np.arange(len(signal)) / sr
-
-        # Initialize an array to store phoneme labels
-        phoneme_labels = np.empty(len(signal), dtype=object)
-
-        # Iterate through timestamps and fill in phoneme labels
-        for timestamp_index, timestamp_seconds in enumerate(timestamps_seconds):
-            # Use binary search to find the matching interval
-            interval_start_times = np.array(list(phoneme_dict.keys()))
-            matching_interval_index = (
-                np.searchsorted(interval_start_times, timestamp_seconds) - 1
-            )
-
-            if matching_interval_index >= 0:
-                matching_interval = phonemes[matching_interval_index]
-                phoneme_labels[timestamp_index] = matching_interval.text
-            else:
-                phoneme_labels[timestamp_index] = None
 
         return phoneme_labels
 
