@@ -14,7 +14,7 @@ import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -66,16 +66,16 @@ def main(args, hyperparams):
     else:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/train_loader_supervised_False_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/train_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
         )
         val_loader = torch.load(
-            "local_results/val_loader_supervised_False_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/val_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
         )
         test_loader = torch.load(
-            "local_results/test_loader_supervised_False_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/test_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
         )
         test_data = torch.load(
-            "local_results/test_data_supervised_False_frame_size_0.4spec_winsize_0.023hopsize_0.5.pt"
+            "local_results/folds/test_data_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
         )
 
     print("Defining models...")
@@ -184,7 +184,7 @@ if __name__ == "__main__":
         "frame_size_ms": 0.400,  # 400ms
         "n_plps": 0,
         "n_mfccs": 0,
-        "spectrogram_win_size": 0.023,  # 23ms as it is recommended in the librosa library for speech recognition
+        "spectrogram_win_size": 0.030,
         "material": "MANNER",
         "hop_size_percent": 0.5,
         "spectrogram": True,

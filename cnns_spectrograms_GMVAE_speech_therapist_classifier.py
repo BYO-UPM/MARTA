@@ -182,22 +182,30 @@ def main(args, hyperparams):
     if not hyperparams["new_data_partition"]:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/folds/train_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            "local_results/folds/train_loader_supervised_True_frame_size_0.4spec_winsize_"
+            + str(hyperparams["spectrogram_win_size"])
+            + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         val_loader = torch.load(
-            "local_results/folds/val_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            "local_results/folds/val_loader_supervised_True_frame_size_0.4spec_winsize_"
+            + str(hyperparams["spectrogram_win_size"])
+            + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         test_loader = torch.load(
-            "local_results/folds/test_loader_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            "local_results/folds/test_loader_supervised_True_frame_size_0.4spec_winsize_"
+            + str(hyperparams["spectrogram_win_size"])
+            + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         test_data = torch.load(
-            "local_results/folds/test_data_supervised_True_frame_size_0.4spec_winsize_0.023hopsize_0.5fold"
+            "local_results/folds/test_data_supervised_True_frame_size_0.4spec_winsize_"
+            + str(hyperparams["spectrogram_win_size"])
+            + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
@@ -398,7 +406,7 @@ if __name__ == "__main__":
         "frame_size_ms": 0.400,  # 400ms
         "n_plps": 0,
         "n_mfccs": 0,
-        "spectrogram_win_size": 0.023,  # 23ms as it is recommended in the librosa library for speech recognition
+        "spectrogram_win_size": 0.030,  # 23ms as it is recommended in the librosa library for speech recognition
         "material": "MANNER",
         "hop_size_percent": 0.5,
         "spectrogram": True,
