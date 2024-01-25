@@ -36,7 +36,6 @@ Date: 25/01/2024
 
 import pandas as pd
 import os
-import librosa
 
 
 def find_wav_path(text, condition="HC"):
