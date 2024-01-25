@@ -2,14 +2,8 @@ import torch
 import numpy as np
 import os
 import pandas as pd
-from sklearn.model_selection import train_test_split
 import librosa
-from sklearn.preprocessing import StandardScaler
-import torchaudio
-from torchaudio import transforms
 import textgrids as tg
-import time
-from torch.utils.data import Dataset, DataLoader, sampler
 
 
 # Function to collapse the matrix into a 24x1 vector with the most repeated string
@@ -275,7 +269,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         if self.spectrogram:
             # Calculate the spectrogram. We want that each spectrogram is 400ms long with X windows of 30ms each.
-            win_length = int(self.hyperparams["spectrogram_win_size"] * data["sr"].iloc[0])
+            win_length = int(
+                self.hyperparams["spectrogram_win_size"] * data["sr"].iloc[0]
+            )
             hop_length = win_length // 2  # 50% overlap
 
             n_fft = 512
