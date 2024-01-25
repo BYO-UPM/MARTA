@@ -1,20 +1,62 @@
+"""
+Unsupervised GMVAE (SThVAE) for Parkinson's Disease Analysis
+
+This script implements an unsupervised Gaussian Mixture Variational Autoencoder (GMVAE), 
+named SThVAE, for analyzing speech features related to Parkinson's Disease. The model is 
+trained exclusively on healthy patients and then used to evaluate the latent space 
+distances between healthy and Parkinsonian patients (who were never seen by the model 
+during training). This approach aims to identify distinct patterns in speech that could 
+be indicative of Parkinson's Disease.
+
+Main Components:
+1. Data Preparation: Uses 'Dataset_AudioFeatures' for loading and preprocessing spectrogram data.
+2. Model Definition: Sets up the SThVAE model with specified hyperparameters.
+3. Training: Trains the SThVAE model in an unsupervised manner using healthy patient data.
+4. Evaluation: Evaluates the model by computing distances in the latent space between healthy 
+   and Parkinsonian spectrograms.
+5. Visualization: Plots and analyzes the results to understand the model's performance.
+
+Usage:
+- The script is configured for running in environments with CUDA-capable devices.
+- Hyperparameters for the model and training process are adjustable.
+
+Key Functions:
+- SpeechTherapist_trainer: Handles the training loop of the SThVAE model.
+- SpeechTherapist_tester: Manages the testing and evaluation of the model.
+- plot_logopeda_alb_neuro: Visualization utility for plotting model outputs and analysis.
+
+Output:
+- Trained GMVAE model capable of distinguishing between healthy and Parkinsonian speech features.
+- Log files and performance metrics for model training and testing.
+- Visualizations of latent space representations and distances.
+
+Requirements:
+- Torch, pandas, and other dependencies for model building and data handling.
+- Properly structured and preprocessed data in expected formats.
+
+Author: Guerrero-López, Alejandro 
+Date: 25/01/2024
+
+Note:
+- The script assumes a specific structure and format for input data.
+- The hyperparameters and model configurations may need tuning based on the specific characteristics 
+  of the input data and the computational resources available.
+"""
+
 from models.pt_models import SpeechTherapist
 from training.pt_training import SpeechTherapist_trainer, SpeechTherapist_tester
 from utils.utils import (
-    plot_logopeda,
-    calculate_distances_manner,
     plot_logopeda_alb_neuro,
 )
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
-import numpy as np
 import pandas as pd
 import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -125,7 +167,7 @@ def main(args, hyperparams):
         model=model,
         testloader=test_loader,
         test_data=test_data,
-        supervised=False,  # Not implemented yet
+        supervised=False,
         wandb_flag=hyperparams["wandb_flag"],
         path_to_plot=hyperparams["path_to_save"],
     )
@@ -137,26 +179,11 @@ def main(args, hyperparams):
     df_train["label"] = [t[1] for t in train_loader.dataset]
     df_train["manner"] = [t[2] for t in train_loader.dataset]
 
-    ## ALERT: REMOVE THIS LINE AFTER TESTING!!!!
-    # Substract 8 to manner if their corresponidng label is 1
-    df_train["manner"] = df_train.apply(
-        lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
-    )
-
-    # Select randomly 1000 samples of dftrain
-    # df_train = df_train.sample(n=1000)
-
     # Create an empty pd dataframe with three columns: data, label and manner
     df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
     df_test[audio_features] = [t[0] for t in test_loader.dataset]
     df_test["label"] = [t[1] for t in test_loader.dataset]
     df_test["manner"] = [t[2] for t in test_loader.dataset]
-
-    ## ALERT: REMOVE THIS LINE AFTER TESTING!!!!
-    # Substract 8 to manner if their corresponidng label is 1
-    df_test["manner"] = df_test.apply(
-        lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
-    )
 
     print("Starting to calculate distances...")
     plot_logopeda_alb_neuro(
@@ -181,33 +208,43 @@ if __name__ == "__main__":
     args = {}
 
     hyperparams = {
-        "frame_size_ms": 0.400,  # 400ms
-        "n_plps": 0,
-        "n_mfccs": 0,
-        "spectrogram_win_size": 0.030,
-        "material": "MANNER",
-        "hop_size_percent": 0.5,
-        "spectrogram": True,
-        "wandb_flag": False,
-        "epochs": 1000,
-        "batch_size": 128,
-        "lr": 1e-3,
-        "latent_dim": 32,
-        "hidden_dims_enc": [64, 1024, 64],
-        "hidden_dims_gmvae": [256],
-        "weights": [
+        # ================ Spectrogram parameters ===================
+        "spectrogram": True,  # If true, use spectrogram. If false, use plp (In this study we only use spectrograms)
+        "frame_size_ms": 0.400,  # Size of each spectrogram frame
+        "spectrogram_win_size": 0.030,  # Window size of each window in the spectrogram
+        "hop_size_percent": 0.5,  # Hop size (0.5 means 50%) between each window in the spectrogram
+        # ================ GMVAE parameters ===================
+        "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
+        "batch_size": 128,  # Batch size
+        "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
+        "latent_dim": 3,  # Latent dimension of the z vector (remember it is also the input to the classifier)
+        "n_gaussians": 16,  # Number of gaussians in the GMVAE
+        "hidden_dims_enc": [
+            64,
+            1024,
+            64,
+        ],  # Hidden dimensions of encoder/decoder (from audio framed to spectrogram and viceversa)
+        "hidden_dims_gmvae": [256],  # Hidden dimensions of the GMVAE encoder/decoder
+        "weights": [  # Weights for the different losses
             1,  # w1 is rec loss,
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
-            100,  # w5 is metric loss
+            10,  # w5 is metric loss
         ],
-        "supervised": False,
-        "cnn_classifier": True,
-        "n_gaussians": 16,  # 2 per manner class
-        "semisupervised": False,
-        "train": True,
-        "new_data_partition": False,
-        "train_albayzin": True,  # If True, only albayzin+neuro is used to train. If False only neuro are used for training
+        # ================ Classifier parameters ===================
+        "cnn_classifier": False,  # Here no classifier is used
+        "supervised": False,  # Here no classifier is used
+        # ================ Training parameters ===================
+        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
+        "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
+        # ================ UNUSED PARAMETERS (we should fix this) ===================
+        # These parameters are not used at all and they are from all versions of the code, we should fix this.
+        "material": "MANNER",  # not used here
+        "n_plps": 0,  # Not used here
+        "n_mfccs": 0,  # Not used here
+        "wandb_flag": False,  # Not used here
+        "semisupervised": False,  # Not used here
     }
 
     main(args, hyperparams)
