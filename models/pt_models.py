@@ -1,10 +1,7 @@
 import torch
 import timm
-import numpy as np
-import copy
-import time
 from utils.utils import log_normal, KL_cat
-from pytorch_metric_learning import miners, losses, reducers, samplers
+from pytorch_metric_learning import miners, losses, reducers
 
 
 width = 64
@@ -315,61 +312,6 @@ def finetuning_model(embedding_input, freeze=True):
             return x
 
     return final_model(embedding_input, freeze=freeze)
-
-
-class Spectrogram_networks_vowels(torch.nn.Module):
-    def __init__(self, x_dim, hidden_dims, cnn=False):
-        super().__init__()
-
-        self.x_dim = x_dim
-        self.hidden_dims = hidden_dims
-        self.cnn = cnn
-
-        # ===== Inference =====
-        # Deterministic x_hat = g(x)
-        if cnn:
-            self.inference_gx = torch.nn.Sequential(
-                torch.nn.Conv2d(self.x_dim, self.hidden_dims[0], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[0]),
-                torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Conv2d(self.hidden_dims[0], self.hidden_dims[1], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[1]),
-                torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Conv2d(self.hidden_dims[1], self.hidden_dims[2], 3),
-                torch.nn.BatchNorm2d(self.hidden_dims[2]),
-                torch.nn.ReLU(),
-                torch.nn.MaxPool2d(2),
-                torch.nn.Flatten(),
-            )
-            self.x_hat_shape = self.inference_gx(torch.zeros(1, 1, 65, 25)).shape
-        else:
-            raise NotImplementedError
-
-        # ===== Generative =====
-        # Deterministic x = f(x_hat)
-        if cnn:
-            self.generative_fxhat = torch.nn.Sequential(
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(self.hidden_dims[0], self.hidden_dims[1], 5),
-                torch.nn.ReLU(),
-                torch.nn.Upsample(scale_factor=2),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(self.hidden_dims[1], self.hidden_dims[2], 5),
-                torch.nn.ReLU(),
-                torch.nn.Upsample(scale_factor=2),
-                # ConvTranspose
-                torch.nn.ConvTranspose2d(
-                    self.hidden_dims[2],
-                    self.x_dim,
-                    stride=[2, 1],
-                    kernel_size=[3, 6],
-                    padding=[4, 0],
-                ),
-            )
-        else:
-            raise NotImplementedError
 
 
 # ======================================= Speech Therapist =======================================
