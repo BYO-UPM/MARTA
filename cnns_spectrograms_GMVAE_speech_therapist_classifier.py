@@ -1,3 +1,42 @@
+"""
+Speech Therapist VAE-based Parkinson's Disease Classification from Spectrograms
+
+This script implements a pipeline for classifying Parkinsonian and healthy control spectrograms using a 
+pre-trained Gaussian Mixture Variational Autoencoder (GMVAE) and a subsequent classifier. The GMVAE model 
+is first trained in a supervised manner (using SThVAE_supervised.py) and then frozen. A classifier is trained on the latent space 
+outputs of the SThVAE to distinguish between Parkinsonian and healthy spectrograms. Finally, postprocessing 
+is conducted to calculate joint probability predictions, providing a unified prediction for each patient 
+based on all available 400ms spectrogram segments.
+
+The main steps include:
+1. Initializing the environment and setting up GPU for computations.
+2. Loading pre-processed data or creating new data partitions.
+3. Defining and loading the SThVAE supervised model and classifier architecture.
+4. Training the classifier on the latent space representations provided by the SThVAE.
+5. Evaluating the model on test data and calculating joint probability predictions for patients.
+
+Requirements:
+- This script assumes the existence of a pre-trained SThVAE model.
+- Data should be pre-processed and organized in specific formats for effective loading and training.
+
+Outputs:
+- A trained classifier model capable of differentiating between Parkinsonian and healthy control spectrograms.
+- Log files and model checkpoints saved in specified directories.
+- (Optional) Weights and Biases (wandb) integration for experiment tracking.
+
+Usage:
+- The script is configured via command-line arguments and a set of hyperparameters.
+- GPU selection and fold number for experiments are among the configurable parameters.
+
+Author: Guerrero-López, Alejandro
+Date: 25/01/2024
+
+Note: 
+- The script includes several hardcoded paths and parameters, which might need to be adjusted 
+  based on the specific setup and data organization.
+"""
+
+
 from models.pt_models import SpeechTherapist
 from training.pt_training import SpeechTherapist_trainer, SpeechTherapist_tester
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
@@ -11,7 +50,6 @@ from utils.utils import make_balanced_sampler, augment_data, stratify_dataset
 
 def main(args, hyperparams):
     gpu = args.gpu
-    fold = args.fold
     device = torch.device("cuda:" + str(gpu) if torch.cuda.is_available() else "cpu")
     print("Device being used:", device)
 
@@ -79,10 +117,12 @@ def main(args, hyperparams):
         )
 
         # Remove all albayzin samples from train_loader
-        new_train = [data for data in train_loader.dataset if data[3] == "neurovoz"]
-
-        # First, remove all albayzin samples from val_loader
-        new_val = [data for data in val_loader.dataset if data[3] == "neurovoz"]
+        if not hyperparams["train_albayzin"]:
+            new_train = [data for data in train_loader.dataset if data[3] == "neurovoz"]
+            new_val = [data for data in val_loader.dataset if data[3] == "neurovoz"]
+        else:
+            new_train = train_loader.dataset
+            new_val = val_loader.dataset
 
         # Augment the train dataset
         extended_dataset = augment_data(new_train)
@@ -105,11 +145,8 @@ def main(args, hyperparams):
             sampler=val_sampler,
         )
 
-        #
     else:
         print("Reading data...")
-        # Read the data
-
         dataset = Dataset_AudioFeatures(
             "labeled/NeuroVoz",
             hyperparams,
@@ -140,8 +177,6 @@ def main(args, hyperparams):
         weights=hyperparams["weights"],
         device=device,
     )
-
-    # model = torch.compile(model)
 
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
@@ -232,36 +267,46 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     hyperparams = {
-        "frame_size_ms": 0.400,  # 400ms
-        "n_plps": 0,
-        "n_mfccs": 0,
-        "spectrogram_win_size": 0.030,  # 23ms as it is recommended in the librosa library for speech recognition
-        "material": "MANNER",
-        "hop_size_percent": 0.5,
-        "spectrogram": True,
-        "wandb_flag": False,
-        "epochs": 500,
-        "batch_size": 128,
-        "lr": 1e-3,
-        "latent_dim": 32,
-        "hidden_dims_enc": [64, 1024, 64],
-        "hidden_dims_gmvae": [256],
-        "weights": [
+        # ================ Spectrogram parameters ===================
+        "spectrogram": True,  # If true, use spectrogram. If false, use plp (In this study we only use spectrograms)
+        "frame_size_ms": 0.400,  # Size of each spectrogram frame
+        "spectrogram_win_size": 0.030,  # Window size of each window in the spectrogram
+        "hop_size_percent": 0.5,  # Hop size (0.5 means 50%) between each window in the spectrogram
+        # ================ GMVAE parameters ===================
+        "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
+        "batch_size": 128,  # Batch size
+        "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
+        "latent_dim": 32,  # Latent dimension of the z vector (remember it is also the input to the classifier)
+        "n_gaussians": 16,  # Number of gaussians in the GMVAE
+        "hidden_dims_enc": [
+            64,
+            1024,
+            64,
+        ],  # Hidden dimensions of encoder/decoder (from audio framed to spectrogram and viceversa)
+        "hidden_dims_gmvae": [256],  # Hidden dimensions of the GMVAE encoder/decoder
+        "weights": [  # Weights for the different losses
             1,  # w1 is rec loss,
             1,  # w2 is gaussian kl loss,
             1,  # w3 is categorical kl loss,
             10,  # w5 is metric loss
         ],
-        "classifier_type": "cnn",  # "cnn" or "mlp"
-        "n_gaussians": 16,  # 2 per manner class
-        "semisupervised": False,
-        "train": True,
-        "train_albayzin": True,
-        "new_data_partition": False,
-        "supervised": True,
-        "classifier": True,
-        "fold": args.fold,
-        "gpu": args.gpu,
+        # ================ Classifier parameters ===================
+        "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
+        "classifier": True,  # If true, train the classifier
+        "supervised": True,  # It must be true
+        # ================ Training parameters ===================
+        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
+        "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
+        "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
+        "gpu": args.gpu,  # Which gpu to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
+        # ================ UNUSED PARAMETERS (we should fix this) ===================
+        # These parameters are not used at all and they are from all versions of the code, we should fix this.
+        "material": "MANNER",  # not used here
+        "n_plps": 0,  # Not used here
+        "n_mfccs": 0,  # Not used here
+        "wandb_flag": False,  # Not used here
+        "semisupervised": False,  # Not used here
     }
 
     main(args, hyperparams)
