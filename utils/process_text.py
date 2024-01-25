@@ -1,8 +1,42 @@
+"""
+FASE Aligner Preparation Script
+
+This script processes voice and speech data for the FASE aligner. It is specifically designed 
+to work with the Neurovoz database, handling both Healthy Control (HC) and Parkinson's Disease (PD) 
+data.
+
+Key functionalities include:
+- Reading text data from '.dat' files for each condition (HC and PD).
+- Cleaning and formatting the textual data, including generating unique utterance and speaker IDs.
+- Locating corresponding '.wav' audio files for each text entry in the dataset.
+- Merging data across conditions and exporting the aligned text and audio data for further analysis.
+
+Input:
+- Text data files named 'textHC.dat' and 'textPD.dat', containing textual representations 
+  of speech recordings.
+- Directory of '.wav' files organized by condition and patient ID.
+
+Output:
+- A consolidated Pandas DataFrame containing speech text, corresponding audio file paths, and metadata.
+- Copied and renamed '.wav' files and corresponding text files in a structured folder for use 
+  with FASE aligner.
+
+Usage:
+- The script expects a specific directory structure for the Neurovoz database and outputs the processed 
+  files to a predefined directory.
+- Run this script in an environment where Pandas, os, and librosa libraries are installed.
+
+Note:
+- This script assumes specific formatting in the source '.dat' files and may need adjustments 
+  for differently formatted data.
+
+Author: Guerrero-López, Alejandro
+Date: 25/01/2024
+"""
+
 import pandas as pd
 import os
 import librosa
-
-# Thiss code gens the necessary files for FASE aligner
 
 
 def find_wav_path(text, condition="HC"):

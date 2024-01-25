@@ -1,11 +1,137 @@
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
 import torch
-import pandas as pd
 import wandb
 from matplotlib import pyplot as plt
 from scipy import linalg
 import matplotlib as mpl
+import random
+from collections import Counter
+import copy
+
+
+def augment_data(dataset, validation=False):
+    augmented_data = []
+    for data in dataset:
+        if validation:
+            spectrogram, label, manner, ds, id = data
+        else:
+            spectrogram, label, manner, ds = data
+
+        spectrogram_to_modify1 = copy.deepcopy(spectrogram)
+        spectrogram_to_modify2 = copy.deepcopy(spectrogram)
+
+        # First augmentation
+        augmented_spectrogram_1 = augment_spectrogram(
+            spectrogram_to_modify1, p=0.8, q=0.8, r=0.2
+        )
+        if validation:
+            augmented_data.append((augmented_spectrogram_1, label, manner, ds, id))
+        else:
+            augmented_data.append((augmented_spectrogram_1, label, manner, ds))
+
+        # Second augmentation
+        augmented_spectrogram_2 = augment_spectrogram(
+            spectrogram_to_modify2, p=0.8, q=0.8, r=0.2
+        )
+        if validation:
+            augmented_data.append((augmented_spectrogram_2, label, manner, ds, id))
+        else:
+            augmented_data.append((augmented_spectrogram_2, label, manner, ds))
+
+    dataset += augmented_data
+
+    return dataset
+
+
+# Function for frequency-based data augmentation
+def augment_spectrogram(spectrogram, p=0.5, q=0.5, r=0.2):
+    _, freq_dimension, time_dimension = spectrogram.shape
+
+    # With probability p, mask 15% of frequency bands
+    if random.random() < p:
+        mask_percentage = 0.15
+        mask_size = int(freq_dimension * mask_percentage)
+        mask_start = random.randint(0, freq_dimension - mask_size)
+        spectrogram[0, mask_start : mask_start + mask_size, :] = 0
+
+    # With probability q, mask 15% of time windows
+    if random.random() < q:
+        mask_percentage = 0.15
+        mask_size = int(time_dimension * mask_percentage)
+        mask_start = random.randint(0, time_dimension - mask_size)
+        spectrogram[0, :, mask_start : mask_start + mask_size] = 0
+
+    # With probability r, add Gaussian noise
+    if random.random() < r:
+        noise = np.random.normal(0, 1, spectrogram.shape)
+        spectrogram += 0.10 * noise
+        # Renormalize the spectrogram
+        spectrogram = (spectrogram - spectrogram.mean()) / spectrogram.std()
+
+    return spectrogram
+
+
+def find_minority_class(dataset):
+    labels = [data[1] for data in dataset]
+    label_counts = Counter(labels)
+    minority_class = min(label_counts, key=label_counts.get)
+    return minority_class, label_counts
+
+
+def stratify_dataset(dataset):
+    # Check stratification of labels (they are the second element of the triplet)
+    minority_class, label_counts = find_minority_class(dataset)
+    majority_class_count = max(label_counts.values())
+
+    if label_counts[minority_class] < majority_class_count:
+        additional_augmented_data = []
+        augmentations_needed = majority_class_count - label_counts[minority_class]
+        minority_class_data = [data for data in dataset if data[1] == minority_class]
+
+        while augmentations_needed > 0:
+            for data in minority_class_data:
+                if augmentations_needed <= 0:
+                    break
+                spectrogram, label, manner, ds = data
+
+                spectrogram_to_modify3 = copy.deepcopy(spectrogram)
+
+                augmented_spectrogram = augment_spectrogram(spectrogram_to_modify3)
+
+                additional_augmented_data.append(
+                    (augmented_spectrogram, label, manner, ds)
+                )
+                augmentations_needed -= 1
+
+        # Combine additional augmented data
+        balanced_dataset = dataset + additional_augmented_data
+    else:
+        balanced_dataset = dataset
+
+    return balanced_dataset
+
+
+def make_balanced_sampler(dataset, validation=False):
+    # Count the occurrences of each class
+    class_counts = {}
+    if validation:
+        dataset = [data[:4] for data in dataset]
+
+    for _, label, _, _ in dataset:
+        label = label.item()  # Assuming label is a tensor
+        class_counts[label] = class_counts.get(label, 0) + 1
+
+    # Assign weights inversely proportional to class frequencies
+    weights = []
+    for _, label, _, _ in dataset:
+        label = label.item()
+        weight = 1.0 / class_counts[label]
+        weights.append(weight)
+
+    # Create a WeightedRandomSampler
+    sampler = torch.utils.data.WeightedRandomSampler(weights, len(weights))
+    return sampler
 
 
 def StratifiedGroupKFold_local(class_labels, groups, n_splits=2, shuffle=True):

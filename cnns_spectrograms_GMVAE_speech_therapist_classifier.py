@@ -1,144 +1,12 @@
 from models.pt_models import SpeechTherapist
 from training.pt_training import SpeechTherapist_trainer, SpeechTherapist_tester
-from utils.utils import (
-    plot_logopeda,
-    calculate_distances_manner,
-    plot_logopeda_alb_neuro,
-)
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
-import numpy as np
 import sys
 import os
-import random
-from collections import Counter
-import copy
 import argparse
-
-
-def find_minority_class(dataset):
-    labels = [data[1] for data in dataset]
-    label_counts = Counter(labels)
-    minority_class = min(label_counts, key=label_counts.get)
-    return minority_class, label_counts
-
-
-def augment_data(dataset, validation=False):
-    augmented_data = []
-    for data in dataset:
-        if validation:
-            spectrogram, label, manner, ds, id = data
-        else:
-            spectrogram, label, manner, ds = data
-
-        spectrogram_to_modify1 = copy.deepcopy(spectrogram)
-        spectrogram_to_modify2 = copy.deepcopy(spectrogram)
-
-        # First augmentation
-        augmented_spectrogram_1 = augment_spectrogram(
-            spectrogram_to_modify1, p=0.8, q=0.8, r=0.2
-        )
-        if validation:
-            augmented_data.append((augmented_spectrogram_1, label, manner, ds, id))
-        else:
-            augmented_data.append((augmented_spectrogram_1, label, manner, ds))
-
-        # Second augmentation
-        augmented_spectrogram_2 = augment_spectrogram(
-            spectrogram_to_modify2, p=0.8, q=0.8, r=0.2
-        )
-        if validation:
-            augmented_data.append((augmented_spectrogram_2, label, manner, ds, id))
-        else:
-            augmented_data.append((augmented_spectrogram_2, label, manner, ds))
-
-    dataset += augmented_data
-
-    return dataset
-
-
-# Function for frequency-based data augmentation
-def augment_spectrogram(spectrogram, p=0.5, q=0.5, r=0.2):
-    _, freq_dimension, time_dimension = spectrogram.shape
-
-    # With probability p, mask 15% of frequency bands
-    if random.random() < p:
-        mask_percentage = 0.15
-        mask_size = int(freq_dimension * mask_percentage)
-        mask_start = random.randint(0, freq_dimension - mask_size)
-        spectrogram[0, mask_start : mask_start + mask_size, :] = 0
-
-    # With probability q, mask 15% of time windows
-    if random.random() < q:
-        mask_percentage = 0.15
-        mask_size = int(time_dimension * mask_percentage)
-        mask_start = random.randint(0, time_dimension - mask_size)
-        spectrogram[0, :, mask_start : mask_start + mask_size] = 0
-
-    # With probability r, add Gaussian noise
-    if random.random() < r:
-        noise = np.random.normal(0, 1, spectrogram.shape)
-        spectrogram += 0.10 * noise
-        # Renormalize the spectrogram
-        spectrogram = (spectrogram - spectrogram.mean()) / spectrogram.std()
-
-    return spectrogram
-
-
-def stratify_dataset(dataset):
-    # Check stratification of labels (they are the second element of the triplet)
-    minority_class, label_counts = find_minority_class(dataset)
-    majority_class_count = max(label_counts.values())
-
-    if label_counts[minority_class] < majority_class_count:
-        additional_augmented_data = []
-        augmentations_needed = majority_class_count - label_counts[minority_class]
-        minority_class_data = [data for data in dataset if data[1] == minority_class]
-
-        while augmentations_needed > 0:
-            for data in minority_class_data:
-                if augmentations_needed <= 0:
-                    break
-                spectrogram, label, manner, ds = data
-
-                spectrogram_to_modify3 = copy.deepcopy(spectrogram)
-
-                augmented_spectrogram = augment_spectrogram(spectrogram_to_modify3)
-
-                additional_augmented_data.append(
-                    (augmented_spectrogram, label, manner, ds)
-                )
-                augmentations_needed -= 1
-
-        # Combine additional augmented data
-        balanced_dataset = dataset + additional_augmented_data
-    else:
-        balanced_dataset = dataset
-
-    return balanced_dataset
-
-
-def make_sampler(dataset, validation=False):
-    # Count the occurrences of each class
-    class_counts = {}
-    if validation:
-        dataset = [data[:4] for data in dataset]
-
-    for _, label, _, _ in dataset:
-        label = label.item()  # Assuming label is a tensor
-        class_counts[label] = class_counts.get(label, 0) + 1
-
-    # Assign weights inversely proportional to class frequencies
-    weights = []
-    for _, label, _, _ in dataset:
-        label = label.item()
-        weight = 1.0 / class_counts[label]
-        weights.append(weight)
-
-    # Create a WeightedRandomSampler
-    sampler = torch.utils.data.WeightedRandomSampler(weights, len(weights))
-    return sampler
+from utils.utils import make_balanced_sampler, augment_data, stratify_dataset
 
 
 def main(args, hyperparams):
@@ -216,26 +84,14 @@ def main(args, hyperparams):
         # First, remove all albayzin samples from val_loader
         new_val = [data for data in val_loader.dataset if data[3] == "neurovoz"]
 
-        # Split the new val dataset into train and validation. Use "id_patient" to ensure that all samples from the same patient are in the same set
-        # patients = set([data[4] for data in new_val])
-        # patients = list(patients)
-        # np.random.shuffle(patients)
-        # train_patients = patients[: int(0.6 * len(patients))]
-        # val_patients = patients[int(0.6 * len(patients)) :]
-        # new_train = [data[:4] for data in new_val if data[4] in train_patients]
-        # new_val = [data for data in new_val if data[4] in val_patients]
-
         # Augment the train dataset
         extended_dataset = augment_data(new_train)
-
-        # # Agment the validation dataset
-        # new_val = augment_data(new_val, validation=True)
 
         # Stratify train dataset
         balanced_dataset = stratify_dataset(extended_dataset)
 
-        train_sampler = make_sampler(balanced_dataset)
-        val_sampler = make_sampler(new_val, validation=True)
+        train_sampler = make_balanced_sampler(balanced_dataset)
+        val_sampler = make_balanced_sampler(new_val, validation=True)
 
         # Create new dataloaders
         new_train_loader = torch.utils.data.DataLoader(
@@ -290,7 +146,7 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
+            "local_results/spectrograms/results_30ms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
             + str(hyperparams["fold"])
             + "/GMVAE_cnn_best_model_2d.pt"
         )
@@ -356,33 +212,6 @@ def main(args, hyperparams):
         best_threshold=threshold,
     )
     print("Testing finished!")
-
-    # Create an empty pd dataframe with three columns: data, label and manner
-    # df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    # df_train[audio_features] = [t[0] for t in train_loader.dataset]
-    # df_train["label"] = [t[1] for t in train_loader.dataset]
-    # df_train["manner"] = [t[2] for t in train_loader.dataset]
-
-    # # Select randomly 1000 samples of dftrain
-    # # df_train = df_train.sample(n=1000)
-
-    # # Create an empty pd dataframe with three columns: data, label and manner
-    # df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    # df_test[audio_features] = [t[0] for t in test_loader.dataset]
-    # df_test["label"] = [t[1] for t in test_loader.dataset]
-    # df_test["manner"] = [t[2] for t in test_loader.dataset]
-
-    # print("Starting to calculate distances...")
-    # plot_logopeda_alb_neuro(
-    #     model,
-    #     df_train,
-    #     df_test,
-    #     hyperparams["wandb_flag"],
-    #     name="test",
-    #     supervised=hyperparams["supervised"],
-    #     samples=5000,
-    #     path_to_plot=hyperparams["path_to_save"],
-    # )
 
     if hyperparams["wandb_flag"]:
         wandb.finish()
