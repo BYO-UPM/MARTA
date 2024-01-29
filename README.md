@@ -24,3 +24,7 @@ This repository contains the base modules for experimenting with Deep Learning m
 main: file to launch the experiment
 
 Directories for saving check point models, data and results are keeping local.
+
+# TODO list
+
+- [ ] Supervise by vowels

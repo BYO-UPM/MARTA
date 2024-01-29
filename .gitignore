@@ -2,6 +2,12 @@
 /model_checkpoints
 /wandb
 .DS_Store
+local_results/
+old/
+*.txt
+/labeled/
+
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -10,6 +16,17 @@ __pycache__/
 
 # C extensions
 *.so
+
+# All tmp folders
+/**/tmp/
+
+# All zip files
+*.zip
+
+# fasealign htk
+/fasealign/htk/*
+/fasealign/albayzin/*
+/fasealign/albayzin_htk_forced_alignment/*
 
 # Distribution / packaging
 .Python
