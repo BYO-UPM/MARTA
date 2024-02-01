@@ -57,7 +57,7 @@ def main(args, hyperparams):
         "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
         + str(hyperparams["latent_dim"])
         + "final_model_classifier"
-        + "_LATENTSPACE+manner_CNN_fold"
+        + "_LATENTSPACE+manner_MLP_fold"
         + str(hyperparams["fold"])
     )
 
@@ -291,12 +291,12 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         # ================ Classifier parameters ===================
-        "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
+        "classifier_type": "mlp",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": True,  # If true, train the classifier
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
-        "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
+        "train_albayzin": False,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
         "gpu": args.gpu,  # Which gpu to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
