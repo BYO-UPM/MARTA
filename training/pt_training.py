@@ -1329,3 +1329,349 @@ def soft_output_by_subject_logits(output_test, Y_test, subject_group_test):
     Y_test_tensor_bySubject = torch.tensor(Y_test_bySubject, dtype=torch.long)
 
     return mean_log_odds, Y_test_tensor_bySubject, estimated_labels
+
+
+from models.pt_models import HybridModel
+
+
+def SpeechTherapist_trainer_TimeCNNLSTM(
+    model,
+    trainloader,
+    validloader,
+    epochs,
+    lr,
+    wandb_flag,
+    path_to_save,
+    supervised,
+    classifier,
+):
+    # ============================= LR scheduler =============================
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    T_max = 50  # Maximum number of iterations or epochs
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=T_max, eta_min=0.0001
+    )
+
+    # ============================= Storage variables =============================
+    valid_loss_store = []
+
+    for e in range(epochs):
+        model.train()
+        usage = np.zeros(model.k)
+
+        true_manner_list = []
+        gaussian_component = []
+        y_pred_list = []
+        label_list = []
+
+        tr_running_loss, tr_rec_loss, tr_gauss_loss, tr_cat_loss, tr_metric_loss = (
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+
+        for batch_idx, data in enumerate(tqdm(trainloader)):
+            # Make sure dtype is Tensor float
+            try:
+                data, hmc, labels, true_seq_length = data
+            except:
+                print("Error in data, unexpected format")
+
+            # ==== Forward pass ====
+
+            if classifier:
+                input = (data + hmc).unsqueeze(2).to(model.device).float()
+                # Swap two last dimensions
+                input = input.permute(0, 1, 2, 4, 3)
+                labels = labels.to(model.device).float()
+
+                y_pred = model.forward(input, true_seq_length)
+
+            # ==== Backward pass ====
+            optimizer.zero_grad()
+            complete_loss.backward()
+            optimizer.step()
+
+            # ==== Update metrics ====
+            tr_running_loss += complete_loss.item()
+            if not classifier:
+                tr_rec_loss += recon_loss.item()
+                tr_gauss_loss += gaussian_loss.item()
+                tr_cat_loss += categorical_loss.item()
+                tr_metric_loss += metric_loss.item()
+                usage += torch.sum(y, dim=0).cpu().detach().numpy()
+                gaussian_component.append(y.cpu().detach().numpy())
+                true_manner_list.append(manner)
+
+        # Scheduler step
+        scheduler.step()
+
+        # Check reconstruction of X
+        if not classifier:
+            check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+            # Check unsupervised cluster accuracy and NMI
+            true_manner = torch.tensor(np.concatenate(true_manner_list))
+            gaussian_component = torch.tensor(np.concatenate(gaussian_component))
+            acc = cluster_acc(gaussian_component, true_manner)
+            nmi_score = nmi(gaussian_component, true_manner)
+            print(
+                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                    e,
+                    tr_running_loss / len(trainloader.dataset),
+                    tr_rec_loss / len(trainloader.dataset),
+                    tr_gauss_loss / len(trainloader.dataset),
+                    tr_cat_loss / len(trainloader.dataset),
+                    tr_metric_loss / len(trainloader.dataset),
+                    acc,
+                    nmi_score,
+                )
+            )
+        else:
+            best_th_youden, best_th_eer, auc = threshold_selection(
+                label_list, y_pred_list, verbose=0
+            )
+            y_pred = np.round(y_pred_list)
+            acc_super = accuracy_score(label_list, y_pred)
+            balanced_acc = balanced_accuracy_score(label_list, y_pred)
+            print(
+                "Epoch: {} Train Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f} AUC: {:.4f}".format(
+                    e, tr_running_loss, acc_super, balanced_acc, auc
+                )
+            )
+
+        if wandb_flag:
+            if classifier:
+                wandb.log(
+                    {
+                        "train/Epoch": e,
+                        "train/Loss": tr_running_loss,
+                        "train/Acc": acc_super,
+                    }
+                )
+            else:
+                wandb.log(
+                    {
+                        "train/Epoch": e,
+                        "train/Loss": tr_running_loss / len(trainloader.dataset),
+                        "train/Rec Loss": tr_rec_loss / len(trainloader.dataset),
+                        "train/Gaussian Loss": tr_gauss_loss / len(trainloader.dataset),
+                        "train/Categorical usage": usage,
+                        "train/Metric Loss": tr_metric_loss / len(trainloader.dataset),
+                        "train/Acc": acc,
+                        "train/NMI": nmi_score,
+                        "train/usage": usage / len(trainloader.dataset),
+                    }
+                )
+
+        if validloader is not None:
+            model.eval()
+            with torch.no_grad():
+                usage = np.zeros(model.k)
+                v_running_loss, v_rec_loss, v_gauss_loss, v_cat_loss, v_metric_loss = (
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+                true_manner_list = []
+                gaussian_component = []
+                label_list = []
+                y_pred_list = []
+
+                for batch_idx, (data, labels, manner, dataset, id) in enumerate(
+                    tqdm(validloader)
+                ):
+                    # Make sure dtype is Tensor float
+                    data = data.to(model.device).float()
+
+                    if classifier:
+                        # Remove Albayzin to validate
+                        # data = data[dataset != "albayzin"].squeeze(0)
+                        # manner = manner[dataset != "albayzin"].squeeze(0)
+                        # labels = labels[dataset != "albayzin"].squeeze(0)
+                        manner[manner > 7] = manner[manner > 7] - 8
+                        manner = manner.to(model.device).int()
+                        labels = labels.to(model.device).float()
+                        y_pred = model.classifier_forward(data, manner)
+                        y_pred = torch.sigmoid(y_pred)
+                        (
+                            complete_loss,
+                            recon_loss,
+                            gaussian_loss,
+                            categorical_loss,
+                            metric_loss,
+                        ) = model.classifier_loss(y_pred, labels)
+                        y_pred_list = np.concatenate(
+                            (
+                                y_pred_list,
+                                y_pred.cpu().detach().numpy().squeeze().reshape(-1),
+                            )
+                        )
+                        label_list = np.concatenate(
+                            (label_list, labels.cpu().detach().numpy())
+                        )
+                    else:
+                        if not supervised:
+                            # Assert that any manner is no bigger than 7
+                            assert torch.max(manner) <= 7
+                        # ==== Forward pass ====
+                        (
+                            x,
+                            x_hat,
+                            pz_mu,
+                            pz_var,
+                            y_logits,
+                            y,
+                            qz_mu,
+                            qz_var,
+                            z_sample,
+                            e_s,
+                            e_hat_s,
+                        ) = model(data)
+
+                        # ==== Loss ====
+                        (
+                            complete_loss,
+                            recon_loss,
+                            gaussian_loss,
+                            categorical_loss,
+                            metric_loss,
+                        ) = model.loss(
+                            data,
+                            manner,
+                            x_hat,
+                            z_sample,
+                            qz_mu,
+                            qz_var,
+                            pz_mu,
+                            pz_var,
+                            y,
+                            y_logits,
+                        )
+
+                    v_running_loss += complete_loss.item()
+
+                    if not classifier:
+                        v_rec_loss += recon_loss.item()
+                        v_gauss_loss += gaussian_loss.item()
+                        v_cat_loss += categorical_loss.item()
+                        v_metric_loss += metric_loss.item()
+                        usage += torch.sum(y, dim=0).cpu().detach().numpy()
+
+                        true_manner_list.append(manner)
+                        gaussian_component.append(y.cpu().detach().numpy())
+
+                # Check reconstruction of X
+                if not classifier:
+                    check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
+                    # Check unsupervised cluster accuracy and NMI
+                    true_manner = torch.tensor(np.concatenate(true_manner_list))
+                    gaussian_component = torch.tensor(
+                        np.concatenate(gaussian_component)
+                    )
+                    acc = cluster_acc(gaussian_component, true_manner)
+                    nmi_score = nmi(gaussian_component, true_manner)
+                else:
+                    best_th_youden, best_th_eer, auc = threshold_selection(
+                        label_list, y_pred_list, verbose=1
+                    )
+                    y_pred = np.round(y_pred_list)
+                    acc_super = accuracy_score(label_list, y_pred)
+                    bacc = balanced_accuracy_score(label_list, y_pred)
+                    print(
+                        "Epoch: {} Valid Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f} AUC: {:4f}".format(
+                            e, v_running_loss, acc_super, bacc, auc
+                        )
+                    )
+
+            if not classifier:
+                print(
+                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                        e,
+                        v_running_loss / len(validloader.dataset),
+                        v_rec_loss / len(validloader.dataset),
+                        v_gauss_loss / len(validloader.dataset),
+                        v_cat_loss / len(validloader.dataset),
+                        v_metric_loss / len(validloader.dataset),
+                        acc,
+                        nmi_score,
+                    )
+                )
+                print(len(validloader.dataset))
+                valid_loss_store.append(v_running_loss)
+            else:
+                # If supervised, use the balanced accuracy to store the best model. The greater the better
+                valid_loss_store.append(v_running_loss)
+
+            if wandb_flag:
+                if classifier:
+                    wandb.log(
+                        {
+                            "valid/Epoch": e,
+                            "valid/Loss": v_running_loss,
+                            "valid/Acc": acc_super,
+                        }
+                    )
+                else:
+                    wandb.log(
+                        {
+                            "valid/Epoch": e,
+                            "valid/Loss": v_running_loss / len(validloader.dataset),
+                            "valid/Rec Loss": v_rec_loss / len(validloader.dataset),
+                            "valid/Gaussian Loss": v_gauss_loss,
+                            "valid/Cat Loss": v_cat_loss / len(validloader.dataset),
+                            "valid/Metric Loss": v_metric_loss
+                            / len(validloader.dataset),
+                            "valid/Acc": acc,
+                            "valid/NMI": nmi_score,
+                            "valid/Categorical usage": usage / len(trainloader.dataset),
+                        }
+                    )
+        # Store best model
+        # If the validation loss is the best, save the model
+        if valid_loss_store[-1] <= min(valid_loss_store):
+            print("Storing the best model at epoch ", e)
+            name = path_to_save
+            # check if the folder exists if not create it
+            if not os.path.exists(name):
+                os.makedirs(name)
+            name += "/GMVAE_cnn_best_model_2d.pt"
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                },
+                name,
+            )
+            # Store best youden th in a txt
+            if classifier:
+                print("Best threshold Youden: ", best_th_youden)
+                print("Best threshold EER: ", best_th_eer)
+                name = path_to_save
+                namefile = name + "/best_threshold.txt"
+                with open(namefile, "w") as f:
+                    f.write(str(best_th_youden))
+
+        if not classifier:
+            check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
+
+        # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
+        if e > 40:
+            if not classifier:
+                if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
+                    print("Early stopping")
+                    break
+            if classifier:
+                if valid_loss_store[-1] > max(valid_loss_store[-50:-1]):
+                    print("Early stopping")
+                    print("Reloading best model")
+                    # Restore best model:
+                    name = path_to_save
+                    name += "/GMVAE_cnn_best_model_2d.pt"
+                    checkpoint = torch.load(name)
+                    model.load_state_dict(checkpoint["model_state_dict"])
+                    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+                    break

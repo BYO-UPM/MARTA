@@ -63,7 +63,7 @@ def main(args, hyperparams):
             "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "supervised"
-            + "90-10-fold"
+            + "90-10-fold_just_testing"
             + str(hyperparams["fold"])
         )
 

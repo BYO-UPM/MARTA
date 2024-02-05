@@ -11,12 +11,13 @@ import copy
 
 
 def augment_data(dataset, validation=False):
-    augmented_data = []
+    augmented_data1 = []
+    augmented_data2 = []
     for data in dataset:
         if validation:
-            spectrogram, label, manner, ds, id = data
+            spectrogram, label, manner, ds, id, audio_id = data
         else:
-            spectrogram, label, manner, ds = data
+            spectrogram, label, manner, ds, audio_id = data
 
         spectrogram_to_modify1 = copy.deepcopy(spectrogram)
         spectrogram_to_modify2 = copy.deepcopy(spectrogram)
@@ -26,20 +27,29 @@ def augment_data(dataset, validation=False):
             spectrogram_to_modify1, p=0.8, q=0.8, r=0.2
         )
         if validation:
-            augmented_data.append((augmented_spectrogram_1, label, manner, ds, id))
+            augmented_data1.append(
+                (augmented_spectrogram_1, label, manner, ds, id, audio_id)
+            )
         else:
-            augmented_data.append((augmented_spectrogram_1, label, manner, ds))
+            augmented_data1.append(
+                (augmented_spectrogram_1, label, manner, ds, audio_id)
+            )
 
         # Second augmentation
         augmented_spectrogram_2 = augment_spectrogram(
             spectrogram_to_modify2, p=0.8, q=0.8, r=0.2
         )
         if validation:
-            augmented_data.append((augmented_spectrogram_2, label, manner, ds, id))
+            augmented_data2.append(
+                (augmented_spectrogram_2, label, manner, ds, id, audio_id)
+            )
         else:
-            augmented_data.append((augmented_spectrogram_2, label, manner, ds))
+            augmented_data2.append(
+                (augmented_spectrogram_2, label, manner, ds, audio_id)
+            )
 
-    dataset += augmented_data
+    dataset += augmented_data1
+    dataset += augmented_data2
 
     return dataset
 
@@ -93,14 +103,14 @@ def stratify_dataset(dataset):
             for data in minority_class_data:
                 if augmentations_needed <= 0:
                     break
-                spectrogram, label, manner, ds = data
+                spectrogram, label, manner, ds, audio_id = data
 
                 spectrogram_to_modify3 = copy.deepcopy(spectrogram)
 
                 augmented_spectrogram = augment_spectrogram(spectrogram_to_modify3)
 
                 additional_augmented_data.append(
-                    (augmented_spectrogram, label, manner, ds)
+                    (augmented_spectrogram, label, manner, ds, audio_id)
                 )
                 augmentations_needed -= 1
 
@@ -116,15 +126,17 @@ def make_balanced_sampler(dataset, validation=False):
     # Count the occurrences of each class
     class_counts = {}
     if validation:
-        dataset = [data[:4] for data in dataset]
+        dataset = [data[:5] for data in dataset]
 
-    for _, label, _, _ in dataset:
+    for data in dataset:
+        label = data[1]
         label = label.item()  # Assuming label is a tensor
         class_counts[label] = class_counts.get(label, 0) + 1
 
     # Assign weights inversely proportional to class frequencies
     weights = []
-    for _, label, _, _ in dataset:
+    for data in dataset:
+        label = data[1]
         label = label.item()
         weight = 1.0 / class_counts[label]
         weights.append(weight)

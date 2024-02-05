@@ -688,7 +688,7 @@ class SpeechTherapist(torch.nn.Module):
             reducer=reducer
         ).to(self.device)
 
-        # Silences and affricates should be not used to compute the metric loss
+        #
         manner_classes = manner_classes.reshape(-1)
         # idx = np.where((manner_classes != 6) & (manner_classes != 7))[
         #     0
@@ -913,3 +913,100 @@ class GumbelSoftmax(torch.nn.Module):
 
 
 # ========================================= END of util for SpeechTherapist =========================================
+
+
+# ========================================= START of TimeDistributedCNN-LSTM =========================================
+
+
+class TimeDistributed(torch.nn.Module):
+    def __init__(self, module, batch_first=False):
+        super(TimeDistributed, self).__init__()
+        self.module = module
+        self.batch_first = batch_first
+
+    def forward(self, x):
+        """x size: (batch_size, time_steps, in_channels, height, width)"""
+        batch_size, time_steps, C, H, W = x.size()
+        c_in = x.view(batch_size * time_steps, C, H, W)
+        c_out = self.module(c_in)
+        r_in = c_out.view(batch_size, time_steps, -1)
+        if self.batch_first is False:
+            r_in = r_in.permute(1, 0, 2)
+        return r_in
+
+
+import math
+
+
+class HybridModel(torch.nn.Module):
+    def __init__(
+        self,
+        kernel_size_1=4,
+        kernel_size_2=9,
+        depth_CL=32,
+        hidden_LSTM=16,
+        neurons_MLP=32,
+        drop_out=0.2,
+        neurons_MLP_D=32,
+    ):
+        super().__init__()
+        # conv block
+        # 1. conv block
+        self.conv2Dblock_1 = TimeDistributed(
+            torch.nn.Sequential(
+                torch.nn.Conv2d(
+                    in_channels=1,
+                    out_channels=32,
+                    kernel_size=[32, 3],
+                    stride=1,
+                    padding=1,
+                ),
+                torch.nn.BatchNorm2d(depth_CL),
+                torch.nn.ReLU(),
+                torch.nn.MaxPool2d(kernel_size=2),
+                torch.nn.Dropout(p=0.2),
+            )
+        )
+        # LSTM block
+        self.lstm = torch.nn.LSTM(
+            input_size=384,
+            hidden_size=16,
+            batch_first=True,
+            bidirectional=True,
+        )
+
+        # Linear softmax layer
+        self.Class = torch.nn.Sequential(
+            torch.nn.Linear(hidden_LSTM * 2, neurons_MLP),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=drop_out),
+        )
+        self.Class_2 = torch.nn.Sequential(
+            torch.nn.Linear(neurons_MLP, 2), torch.nn.Softmax(dim=1)
+        )
+
+        self.domain = torch.nn.Sequential(
+            torch.nn.Linear(hidden_LSTM * 2, neurons_MLP_D),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=drop_out),
+            torch.nn.Linear(neurons_MLP_D, 4),
+            torch.nn.Softmax(dim=1),
+        )
+
+    def forward(self, x, seq_lengths, alpha):
+        X1 = self.conv2Dblock_1(x)
+        packed_embedded = torch.nn.utils.rnn.pack_padded_sequence(
+            X1,
+            seq_lengths.cpu().numpy(),
+            batch_first=True,
+            enforce_sorted=False,
+        )
+        lstm_embedding, (hidden_state, cell_state) = self.lstm(
+            packed_embedded
+        )  # lstm_embedding (batch * time, 2*hidden_size)
+        hidden = torch.cat((hidden_state[-2, :, :], hidden_state[-1, :, :]), dim=1)
+
+        Class_output_1 = self.Class(hidden)
+        Class_output = self.Class_2(Class_output_1)
+
+        return Class_output, Class_output_1

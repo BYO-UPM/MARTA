@@ -38,7 +38,10 @@ Note:
 
 
 from models.pt_models import SpeechTherapist
-from training.pt_training import SpeechTherapist_trainer, SpeechTherapist_tester
+from training.pt_training import (
+    SpeechTherapist_trainer_TimeCNNLSTM,
+    SpeechTherapist_tester,
+)
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
@@ -46,6 +49,68 @@ import sys
 import os
 import argparse
 from utils.utils import make_balanced_sampler, augment_data, stratify_dataset
+import pandas as pd
+import numpy as np
+
+
+def reorganize_dataloader(old_train_loader, model):
+    all_z = []
+    all_hmc = []
+    all_labels = []
+    all_aids = []
+
+    for _, data in enumerate(old_train_loader):
+        try:
+            data, labels, manner, dataset, audio_id = data
+        except:
+            data, labels, manner, dataset, audio_id, _ = data
+        manner[manner > 7] = manner[manner > 7] - 8
+        manner = manner.to(model.device).int()
+        data = data.to(model.device).float()
+
+        _, _, _, z, _, _, _ = model.inference_forward(model.spec_encoder_forward(data))
+        z = z.reshape(manner.shape[0], model.window_size, model.z_dim)
+        hmc = model.hmc(manner)
+        all_z.append(z.cpu().detach().numpy())
+        all_hmc.append(hmc.cpu().detach().numpy())
+        all_labels.append(labels.numpy())
+        all_aids.append(np.array([str(x) for x in audio_id]))
+
+    # Stack the list (remove last element which is a non complete batch)
+    all_z = np.concatenate(all_z, axis=0)
+    all_hmc = np.concatenate(all_hmc, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+    all_aids = np.concatenate(all_aids, axis=0)
+
+    # Group by audio id
+    unpadded_z = []
+    unpadded_hmc = []
+    unpadded_labels = []
+
+    for audioid in np.unique(all_aids):
+        idx = np.where(all_aids == str(audioid))[0]
+        unpadded_z.append(torch.tensor(all_z[idx]))
+        unpadded_hmc.append(torch.tensor(all_hmc[idx]))
+        unpadded_labels.append(torch.tensor(all_labels[idx]))
+
+    # Pad the dataset using pad_sequence
+    unpadded_length = torch.tensor([len(x) for x in unpadded_z])
+    padded_z = torch.nn.utils.rnn.pad_sequence(unpadded_z, batch_first=True)
+    padded_hmc = torch.nn.utils.rnn.pad_sequence(unpadded_hmc, batch_first=True)
+    padded_labels = torch.nn.utils.rnn.pad_sequence(unpadded_labels, batch_first=True)
+
+    # Create the new dataloader
+    new_loader = torch.utils.data.TensorDataset(
+        padded_z, padded_hmc, padded_labels, unpadded_length
+    )
+
+    data_loader = torch.utils.data.DataLoader(
+        new_loader,
+        batch_size=old_train_loader.batch_size,
+        shuffle=False,
+    )
+
+    return data_loader
 
 
 def main(args, hyperparams):
@@ -57,7 +122,7 @@ def main(args, hyperparams):
         "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
         + str(hyperparams["latent_dim"])
         + "final_model_classifier"
-        + "_LATENTSPACE+manner_MLP_fold"
+        + "_LATENTSPACE+manner_MLP_fold_just_testing"
         + str(hyperparams["fold"])
     )
 
@@ -92,6 +157,7 @@ def main(args, hyperparams):
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
+            + "_timecnnlstm"
             + ".pt"
         )
         val_loader = torch.load(
@@ -99,6 +165,7 @@ def main(args, hyperparams):
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
+            + "_timecnnlstm"
             + ".pt"
         )
         test_loader = torch.load(
@@ -106,6 +173,7 @@ def main(args, hyperparams):
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
+            + "_timecnnlstm"
             + ".pt"
         )
         test_data = torch.load(
@@ -113,6 +181,7 @@ def main(args, hyperparams):
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
+            + "_timecnnlstm"
             + ".pt"
         )
 
@@ -124,59 +193,57 @@ def main(args, hyperparams):
             new_train = train_loader.dataset
             new_val = val_loader.dataset
 
-        # Augment the train dataset
-        extended_dataset = augment_data(new_train)
+        # extended_dataset = augment_data(new_train)
 
-        # Stratify train dataset
-        balanced_dataset = stratify_dataset(extended_dataset)
-
-        train_sampler = make_balanced_sampler(balanced_dataset)
-        val_sampler = make_balanced_sampler(new_val, validation=True)
-
-        # Create new dataloaders
-        new_train_loader = torch.utils.data.DataLoader(
-            balanced_dataset,
+        old_train_loader = torch.utils.data.DataLoader(
+            new_train,
             batch_size=val_loader.batch_size,
-            sampler=train_sampler,
+            shuffle=False,
         )
-        val2_loader = torch.utils.data.DataLoader(
+
+        old_val_loader = torch.utils.data.DataLoader(
             new_val,
             batch_size=val_loader.batch_size,
-            sampler=val_sampler,
+            shuffle=False,
         )
 
-    else:
-        print("Reading data...")
-        dataset = Dataset_AudioFeatures(
-            "labeled/NeuroVoz",
-            hyperparams,
-        )
-        print("Creating train, val and test loaders...")
-        (
-            train_loader,
-            val_loader,
-            test_loader,
-            _,  # train_data, not used
-            _,  # val_data, not used
-            test_data,
-        ) = dataset.get_dataloaders(
-            train_albayzin=hyperparams["train_albayzin"],
-            supervised=hyperparams["supervised"],
-        )
+        model = SpeechTherapist(
+            x_dim=old_train_loader.dataset[0][0].shape,
+            z_dim=hyperparams["latent_dim"],
+            n_gaussians=hyperparams["n_gaussians"],
+            n_manner=16,
+            hidden_dims_spectrogram=hyperparams["hidden_dims_enc"],
+            hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
+            classifier=hyperparams["classifier_type"],
+            weights=hyperparams["weights"],
+            device=device,
+        ).to(device)
+        model.eval()
 
-    print("Defining models...")
-    # Create the model
-    model = SpeechTherapist(
-        x_dim=train_loader.dataset[0][0].shape,
-        z_dim=hyperparams["latent_dim"],
-        n_gaussians=hyperparams["n_gaussians"],
-        n_manner=16,
-        hidden_dims_spectrogram=hyperparams["hidden_dims_enc"],
-        hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
-        classifier=hyperparams["classifier_type"],
-        weights=hyperparams["weights"],
-        device=device,
-    )
+        new_train_loader = reorganize_dataloader(old_train_loader, model)
+        new_val_loader = reorganize_dataloader(old_val_loader, model)
+        new_test_loader = reorganize_dataloader(test_loader, model)
+
+        # # Augment the train dataset
+        # extended_dataset = augment_data(new_train)
+
+        # # Stratify train dataset
+        # balanced_dataset = stratify_dataset(extended_dataset)
+
+        # train_sampler = make_balanced_sampler(balanced_dataset)
+        # val_sampler = make_balanced_sampler(new_val, validation=True)
+
+        # Create new dataloaders
+        # new_train_loader = torch.utils.data.DataLoader(
+        #     balanced_dataset,
+        #     batch_size=val_loader.batch_size,
+        #     sampler=train_sampler,
+        # )
+        # val2_loader = torch.utils.data.DataLoader(
+        #     new_val,
+        #     batch_size=val_loader.batch_size,
+        #     sampler=val_sampler,
+        # )
 
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
@@ -208,10 +275,10 @@ def main(args, hyperparams):
 
         print("Training GMVAE...")
         # Train the model
-        SpeechTherapist_trainer(
+        SpeechTherapist_trainer_TimeCNNLSTM(
             model=model,
             trainloader=new_train_loader,
-            validloader=val2_loader,
+            validloader=new_val_loader,
             epochs=hyperparams["epochs"],
             lr=hyperparams["lr"],
             wandb_flag=hyperparams["wandb_flag"],
