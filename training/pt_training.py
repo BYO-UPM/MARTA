@@ -1281,6 +1281,7 @@ def threshold_selection(y_true, y_pred_soft, verbose=0):
 
 
 def soft_output_by_subject(output_test, Y_test, subject_group_test):
+    subject_group_test = np.array(subject_group_test, dtype=int)
     unique_subjects = np.unique(subject_group_test)
     Y_test_bySubject = []
     mean_probabilities = torch.zeros(len(unique_subjects))
@@ -1351,285 +1352,134 @@ def SpeechTherapist_trainer_TimeCNNLSTM(
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=T_max, eta_min=0.0001
     )
+    loss = torch.nn.CrossEntropyLoss()
 
     # ============================= Storage variables =============================
     valid_loss_store = []
 
     for e in range(epochs):
         model.train()
-        usage = np.zeros(model.k)
 
-        true_manner_list = []
-        gaussian_component = []
         y_pred_list = []
         label_list = []
 
-        tr_running_loss, tr_rec_loss, tr_gauss_loss, tr_cat_loss, tr_metric_loss = (
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
+        tr_running_loss = 0
 
         for batch_idx, data in enumerate(tqdm(trainloader)):
             # Make sure dtype is Tensor float
             try:
-                data, hmc, labels, true_seq_length = data
+                data, manner, labels, true_seq_length, audioid = data
             except:
                 print("Error in data, unexpected format")
 
             # ==== Forward pass ====
 
             if classifier:
-                input = (data + hmc).unsqueeze(2).to(model.device).float()
-                # Swap two last dimensions
-                input = input.permute(0, 1, 2, 4, 3)
-                labels = labels.to(model.device).float()
+                data = data.to(model.device).float()
+                manner = manner.to(model.device).long()
 
-                y_pred = model.forward(input, true_seq_length)
+                labels = labels.to(model.device).long()
+
+                softmax_output = model.forward(data, manner, true_seq_length)
+
+                y_soft_pre = softmax_output[:, 1]
+
+                y_pred_list = np.concatenate(
+                    (
+                        y_pred_list,
+                        y_soft_pre.cpu().detach().numpy().squeeze().reshape(-1),
+                    )
+                )
+
+                # Get only the unpaded labels
+                labels = labels.sum(axis=1)
+                labels = torch.where(labels > 0, 1, 0)
+
+                label_list = np.concatenate((label_list, labels.cpu().detach().numpy()))
+
+                class_loss = loss(softmax_output, labels)
 
             # ==== Backward pass ====
             optimizer.zero_grad()
-            complete_loss.backward()
+            class_loss.backward()
             optimizer.step()
 
             # ==== Update metrics ====
-            tr_running_loss += complete_loss.item()
-            if not classifier:
-                tr_rec_loss += recon_loss.item()
-                tr_gauss_loss += gaussian_loss.item()
-                tr_cat_loss += categorical_loss.item()
-                tr_metric_loss += metric_loss.item()
-                usage += torch.sum(y, dim=0).cpu().detach().numpy()
-                gaussian_component.append(y.cpu().detach().numpy())
-                true_manner_list.append(manner)
+            tr_running_loss += class_loss.item()
 
         # Scheduler step
         scheduler.step()
 
-        # Check reconstruction of X
-        if not classifier:
-            check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
-            # Check unsupervised cluster accuracy and NMI
-            true_manner = torch.tensor(np.concatenate(true_manner_list))
-            gaussian_component = torch.tensor(np.concatenate(gaussian_component))
-            acc = cluster_acc(gaussian_component, true_manner)
-            nmi_score = nmi(gaussian_component, true_manner)
-            print(
-                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
-                    e,
-                    tr_running_loss / len(trainloader.dataset),
-                    tr_rec_loss / len(trainloader.dataset),
-                    tr_gauss_loss / len(trainloader.dataset),
-                    tr_cat_loss / len(trainloader.dataset),
-                    tr_metric_loss / len(trainloader.dataset),
-                    acc,
-                    nmi_score,
-                )
+        best_th_youden, best_th_eer, auc = threshold_selection(
+            label_list, y_pred_list, verbose=0
+        )
+        y_pred = np.round(y_pred_list)
+        acc_super = accuracy_score(label_list, y_pred)
+        balanced_acc = balanced_accuracy_score(label_list, y_pred)
+        print(
+            "Epoch: {} Train Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f} AUC: {:.4f}".format(
+                e, tr_running_loss, acc_super, balanced_acc, auc
             )
-        else:
-            best_th_youden, best_th_eer, auc = threshold_selection(
-                label_list, y_pred_list, verbose=0
-            )
-            y_pred = np.round(y_pred_list)
-            acc_super = accuracy_score(label_list, y_pred)
-            balanced_acc = balanced_accuracy_score(label_list, y_pred)
-            print(
-                "Epoch: {} Train Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f} AUC: {:.4f}".format(
-                    e, tr_running_loss, acc_super, balanced_acc, auc
-                )
-            )
-
-        if wandb_flag:
-            if classifier:
-                wandb.log(
-                    {
-                        "train/Epoch": e,
-                        "train/Loss": tr_running_loss,
-                        "train/Acc": acc_super,
-                    }
-                )
-            else:
-                wandb.log(
-                    {
-                        "train/Epoch": e,
-                        "train/Loss": tr_running_loss / len(trainloader.dataset),
-                        "train/Rec Loss": tr_rec_loss / len(trainloader.dataset),
-                        "train/Gaussian Loss": tr_gauss_loss / len(trainloader.dataset),
-                        "train/Categorical usage": usage,
-                        "train/Metric Loss": tr_metric_loss / len(trainloader.dataset),
-                        "train/Acc": acc,
-                        "train/NMI": nmi_score,
-                        "train/usage": usage / len(trainloader.dataset),
-                    }
-                )
+        )
 
         if validloader is not None:
             model.eval()
             with torch.no_grad():
-                usage = np.zeros(model.k)
-                v_running_loss, v_rec_loss, v_gauss_loss, v_cat_loss, v_metric_loss = (
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                )
-                true_manner_list = []
-                gaussian_component = []
+                v_running_loss = 0
                 label_list = []
                 y_pred_list = []
 
-                for batch_idx, (data, labels, manner, dataset, id) in enumerate(
-                    tqdm(validloader)
-                ):
+                for batch_idx, data in enumerate(tqdm(validloader)):
                     # Make sure dtype is Tensor float
-                    data = data.to(model.device).float()
+                    try:
+                        data, manner, labels, true_seq_length, audioid = data
+                    except:
+                        print("Error in data, unexpected format")
+
+                    # ==== Forward pass ====
 
                     if classifier:
-                        # Remove Albayzin to validate
-                        # data = data[dataset != "albayzin"].squeeze(0)
-                        # manner = manner[dataset != "albayzin"].squeeze(0)
-                        # labels = labels[dataset != "albayzin"].squeeze(0)
-                        manner[manner > 7] = manner[manner > 7] - 8
-                        manner = manner.to(model.device).int()
-                        labels = labels.to(model.device).float()
-                        y_pred = model.classifier_forward(data, manner)
-                        y_pred = torch.sigmoid(y_pred)
-                        (
-                            complete_loss,
-                            recon_loss,
-                            gaussian_loss,
-                            categorical_loss,
-                            metric_loss,
-                        ) = model.classifier_loss(y_pred, labels)
+                        data = data.to(model.device).float()
+                        manner = manner.to(model.device).long()
+
+                        labels = labels.to(model.device).long()
+
+                        softmax_output = model.forward(data, manner, true_seq_length)
+
+                        y_soft_pre = softmax_output[:, 1]
+
                         y_pred_list = np.concatenate(
                             (
                                 y_pred_list,
-                                y_pred.cpu().detach().numpy().squeeze().reshape(-1),
+                                y_soft_pre.cpu().detach().numpy().squeeze().reshape(-1),
                             )
                         )
+
+                        # Get only the unpaded labels
+                        labels = labels.sum(axis=1)
+                        labels = torch.where(labels > 0, 1, 0)
+
                         label_list = np.concatenate(
                             (label_list, labels.cpu().detach().numpy())
                         )
-                    else:
-                        if not supervised:
-                            # Assert that any manner is no bigger than 7
-                            assert torch.max(manner) <= 7
-                        # ==== Forward pass ====
-                        (
-                            x,
-                            x_hat,
-                            pz_mu,
-                            pz_var,
-                            y_logits,
-                            y,
-                            qz_mu,
-                            qz_var,
-                            z_sample,
-                            e_s,
-                            e_hat_s,
-                        ) = model(data)
+                        class_loss = loss(softmax_output, labels)
 
-                        # ==== Loss ====
-                        (
-                            complete_loss,
-                            recon_loss,
-                            gaussian_loss,
-                            categorical_loss,
-                            metric_loss,
-                        ) = model.loss(
-                            data,
-                            manner,
-                            x_hat,
-                            z_sample,
-                            qz_mu,
-                            qz_var,
-                            pz_mu,
-                            pz_var,
-                            y,
-                            y_logits,
-                        )
+                    v_running_loss += class_loss.item()
 
-                    v_running_loss += complete_loss.item()
-
-                    if not classifier:
-                        v_rec_loss += recon_loss.item()
-                        v_gauss_loss += gaussian_loss.item()
-                        v_cat_loss += categorical_loss.item()
-                        v_metric_loss += metric_loss.item()
-                        usage += torch.sum(y, dim=0).cpu().detach().numpy()
-
-                        true_manner_list.append(manner)
-                        gaussian_component.append(y.cpu().detach().numpy())
-
-                # Check reconstruction of X
-                if not classifier:
-                    check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
-                    # Check unsupervised cluster accuracy and NMI
-                    true_manner = torch.tensor(np.concatenate(true_manner_list))
-                    gaussian_component = torch.tensor(
-                        np.concatenate(gaussian_component)
-                    )
-                    acc = cluster_acc(gaussian_component, true_manner)
-                    nmi_score = nmi(gaussian_component, true_manner)
-                else:
-                    best_th_youden, best_th_eer, auc = threshold_selection(
-                        label_list, y_pred_list, verbose=1
-                    )
-                    y_pred = np.round(y_pred_list)
-                    acc_super = accuracy_score(label_list, y_pred)
-                    bacc = balanced_accuracy_score(label_list, y_pred)
-                    print(
-                        "Epoch: {} Valid Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f} AUC: {:4f}".format(
-                            e, v_running_loss, acc_super, bacc, auc
-                        )
-                    )
-
-            if not classifier:
+                best_th_youden, best_th_eer, auc = threshold_selection(
+                    label_list, y_pred_list, verbose=1
+                )
+                y_pred = np.round(y_pred_list)
+                acc_super = accuracy_score(label_list, y_pred)
+                bacc = balanced_accuracy_score(label_list, y_pred)
                 print(
-                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
-                        e,
-                        v_running_loss / len(validloader.dataset),
-                        v_rec_loss / len(validloader.dataset),
-                        v_gauss_loss / len(validloader.dataset),
-                        v_cat_loss / len(validloader.dataset),
-                        v_metric_loss / len(validloader.dataset),
-                        acc,
-                        nmi_score,
+                    "Epoch: {} Valid Loss: {:.4f} Acc: {:.4f} Bacc: {:.4f} AUC: {:4f}".format(
+                        e, v_running_loss, acc_super, bacc, auc
                     )
                 )
-                print(len(validloader.dataset))
-                valid_loss_store.append(v_running_loss)
-            else:
-                # If supervised, use the balanced accuracy to store the best model. The greater the better
-                valid_loss_store.append(v_running_loss)
 
-            if wandb_flag:
-                if classifier:
-                    wandb.log(
-                        {
-                            "valid/Epoch": e,
-                            "valid/Loss": v_running_loss,
-                            "valid/Acc": acc_super,
-                        }
-                    )
-                else:
-                    wandb.log(
-                        {
-                            "valid/Epoch": e,
-                            "valid/Loss": v_running_loss / len(validloader.dataset),
-                            "valid/Rec Loss": v_rec_loss / len(validloader.dataset),
-                            "valid/Gaussian Loss": v_gauss_loss,
-                            "valid/Cat Loss": v_cat_loss / len(validloader.dataset),
-                            "valid/Metric Loss": v_metric_loss
-                            / len(validloader.dataset),
-                            "valid/Acc": acc,
-                            "valid/NMI": nmi_score,
-                            "valid/Categorical usage": usage / len(trainloader.dataset),
-                        }
-                    )
+            valid_loss_store.append(v_running_loss)
+
         # Store best model
         # If the validation loss is the best, save the model
         if valid_loss_store[-1] <= min(valid_loss_store):
@@ -1655,9 +1505,6 @@ def SpeechTherapist_trainer_TimeCNNLSTM(
                 with open(namefile, "w") as f:
                     f.write(str(best_th_youden))
 
-        if not classifier:
-            check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
-
         # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
         if e > 40:
             if not classifier:
@@ -1675,3 +1522,131 @@ def SpeechTherapist_trainer_TimeCNNLSTM(
                     model.load_state_dict(checkpoint["model_state_dict"])
                     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                     break
+
+
+def SpeechTherapist_tester_TimeCNNLSTM(
+    model,
+    testloader,
+    test_data,
+    supervised=False,
+    wandb_flag=False,
+    path_to_plot=None,
+    best_threshold=0.5,
+    label_encoder=None,
+):
+    # Set model in evaluation mode
+    model.eval()
+    print("Evaluating the VAE model")
+
+    with torch.no_grad():
+        # Get batch size from testloader
+        batch_size = testloader.batch_size
+        y_hat_array = []
+        y_array = []
+        audios_id = []
+
+        for batch_idx, data in enumerate(tqdm(testloader)):
+            # Move data to device
+            try:
+                data, manner, labels, true_seq_length, audioid = data
+            except:
+                print("Error in data, unexpected format")
+
+            if supervised:
+                # ==== Forward pass ====
+                data = data.to(model.device).float()
+                manner = manner.to(model.device).long()
+
+                labels = labels.to(model.device).long()
+
+                softmax_output = model.forward(data, manner, true_seq_length)
+
+                y_soft_pre = softmax_output[:, 1]
+                y_pred = torch.argmax(softmax_output, dim=1)
+
+                y_hat_array = np.concatenate(
+                    (
+                        y_hat_array,
+                        y_soft_pre.cpu().detach().numpy().squeeze().reshape(-1),
+                    )
+                )
+
+                audios_id = np.concatenate(
+                    (audios_id, audioid[:, 1].cpu().detach().numpy())
+                )
+
+                # Get only the unpaded labels
+                labels = labels.sum(axis=1)
+                labels = torch.where(labels > 0, 1, 0)
+
+                y_array = np.concatenate((y_array, labels.cpu().detach().numpy()))
+
+        print("Removing unused elements")
+        # Remove all from GPU to release memory
+        del (
+            manner,
+            labels,
+        )
+        from sklearn.metrics import roc_curve, roc_auc_score
+
+        # Calculate results in total
+        if supervised:
+            # Convert predictions and labels to PyTorch tensors
+            y_hat_tensor = torch.tensor(y_hat_array, dtype=torch.float)
+            y_tensor = torch.tensor(y_array, dtype=torch.long)
+
+            # Use label encoder to get the original labels
+            audio_id = label_encoder.inverse_transform(np.array(audios_id, dtype=int))
+            patients_id = [
+                audio_id.split("/")[-1].split("_")[0] for audio_id in audio_id
+            ]
+
+            mean_soft_odds, consensus_true, consensus_pred = soft_output_by_subject(
+                y_hat_tensor, y_tensor, patients_id
+            )
+
+            # Calculate metrics for consensus predictions
+            accuracy_consensus = accuracy_score(
+                consensus_true.numpy(), consensus_pred.numpy()
+            )
+            balanced_accuracy_consensus = balanced_accuracy_score(
+                consensus_true.numpy(), consensus_pred.numpy()
+            )
+
+            auc_consensus = roc_auc_score(
+                consensus_true.numpy(), mean_soft_odds.numpy()
+            )
+
+            # Print the consensus results
+            print("Consensus results:")
+            print(
+                f"Consensus Accuracy: {accuracy_consensus:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus:.2f}, Consensus AUC: {auc_consensus:.2f}"
+            )
+
+            print("====== Using best threshold (selected in validation) ======")
+            print("Best threshold: ", best_threshold)
+            y_pred_best_th = np.zeros_like(mean_soft_odds)
+            y_pred_best_th[mean_soft_odds >= best_threshold] = 1
+            accuracy_consensus_best_th = accuracy_score(
+                consensus_true.numpy(), y_pred_best_th
+            )
+            balanced_accuracy_consensus_best_th = balanced_accuracy_score(
+                consensus_true.numpy(), y_pred_best_th
+            )
+            print(
+                f"Consensus Accuracy: {accuracy_consensus_best_th:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_best_th:.2f}, Consensus AUC: {auc_consensus:.2f}"
+            )
+
+            print("====== Using 0.5 as threshold ======")
+            print("Results for all frames:")
+            y_pred = np.round(y_hat_array)
+            print(
+                "Value counts of y_predicted: ", np.unique(y_pred, return_counts=True)
+            )
+            print("Value counts of y: ", np.unique(y_array, return_counts=True))
+            accuracy = accuracy_score(y_array, y_pred)
+            balanced_accuracy = balanced_accuracy_score(y_array, y_pred)
+            auc = roc_auc_score(y_array, y_hat_array)
+            print(
+                f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
+            )

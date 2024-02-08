@@ -941,27 +941,30 @@ import math
 class HybridModel(torch.nn.Module):
     def __init__(
         self,
-        kernel_size_1=4,
-        kernel_size_2=9,
-        depth_CL=32,
+        ch_out=32,
+        kernel_cnn=[32, 3],
         hidden_LSTM=16,
         neurons_MLP=32,
         drop_out=0.2,
-        neurons_MLP_D=32,
+        manner=8,
+        z_dim=32,
+        device="cpu",
     ):
         super().__init__()
+
+        self.hmc = torch.nn.Embedding(manner, z_dim)
+
         # conv block
-        # 1. conv block
-        self.conv2Dblock_1 = TimeDistributed(
+        self.temporalCNN = TimeDistributed(
             torch.nn.Sequential(
                 torch.nn.Conv2d(
                     in_channels=1,
-                    out_channels=32,
-                    kernel_size=[32, 3],
+                    out_channels=ch_out,
+                    kernel_size=kernel_cnn,
                     stride=1,
                     padding=1,
                 ),
-                torch.nn.BatchNorm2d(depth_CL),
+                torch.nn.BatchNorm2d(ch_out),
                 torch.nn.ReLU(),
                 torch.nn.MaxPool2d(kernel_size=2),
                 torch.nn.Dropout(p=0.2),
@@ -976,37 +979,36 @@ class HybridModel(torch.nn.Module):
         )
 
         # Linear softmax layer
-        self.Class = torch.nn.Sequential(
+        self.classification = torch.nn.Sequential(
             torch.nn.Linear(hidden_LSTM * 2, neurons_MLP),
             torch.nn.ReLU(),
             torch.nn.Dropout(p=drop_out),
-        )
-        self.Class_2 = torch.nn.Sequential(
-            torch.nn.Linear(neurons_MLP, 2), torch.nn.Softmax(dim=1)
-        )
-
-        self.domain = torch.nn.Sequential(
-            torch.nn.Linear(hidden_LSTM * 2, neurons_MLP_D),
-            torch.nn.ReLU(),
-            torch.nn.Dropout(p=drop_out),
-            torch.nn.Linear(neurons_MLP_D, 4),
+            torch.nn.Linear(neurons_MLP, 2),
             torch.nn.Softmax(dim=1),
         )
 
-    def forward(self, x, seq_lengths, alpha):
-        X1 = self.conv2Dblock_1(x)
+        self.to(device)
+        self.device = device
+
+    def forward(self, x, manner, seq_lengths):
+
+        hmc = self.hmc(manner)
+
+        input = (x + hmc).unsqueeze(2).permute(0, 1, 2, 4, 3)
+
+        conv_out = self.temporalCNN(input)
+
         packed_embedded = torch.nn.utils.rnn.pack_padded_sequence(
-            X1,
+            conv_out,
             seq_lengths.cpu().numpy(),
-            batch_first=True,
+            batch_first=False,
             enforce_sorted=False,
         )
-        lstm_embedding, (hidden_state, cell_state) = self.lstm(
-            packed_embedded
-        )  # lstm_embedding (batch * time, 2*hidden_size)
+
+        lstm_embedding, (hidden_state, cell_state) = self.lstm(packed_embedded)
+
         hidden = torch.cat((hidden_state[-2, :, :], hidden_state[-1, :, :]), dim=1)
 
-        Class_output_1 = self.Class(hidden)
-        Class_output = self.Class_2(Class_output_1)
+        out = self.classification(hidden)
 
-        return Class_output, Class_output_1
+        return out
