@@ -1,8 +1,8 @@
 """
-Unsupervised GMVAE (SThVAE) for Parkinson's Disease Analysis
+Unsupervised GMVAE (MARTA) for Parkinson's Disease Analysis
 
 This script implements an unsupervised Gaussian Mixture Variational Autoencoder (GMVAE), 
-named SThVAE, for analyzing speech features related to Parkinson's Disease. The model is 
+named MARTA, for analyzing speech features related to Parkinson's Disease. The model is 
 trained exclusively on healthy patients and then used to evaluate the latent space 
 distances between healthy and Parkinsonian patients (who were never seen by the model 
 during training). This approach aims to identify distinct patterns in speech that could 
@@ -10,8 +10,8 @@ be indicative of Parkinson's Disease.
 
 Main Components:
 1. Data Preparation: Uses 'Dataset_AudioFeatures' for loading and preprocessing spectrogram data.
-2. Model Definition: Sets up the SThVAE model with specified hyperparameters.
-3. Training: Trains the SThVAE model in an unsupervised manner using healthy patient data.
+2. Model Definition: Sets up the MARTA model with specified hyperparameters.
+3. Training: Trains the MARTA model in an unsupervised manner using healthy patient data.
 4. Evaluation: Evaluates the model by computing distances in the latent space between healthy 
    and Parkinsonian spectrograms.
 5. Visualization: Plots and analyzes the results to understand the model's performance.
@@ -21,8 +21,8 @@ Usage:
 - Hyperparameters for the model and training process are adjustable.
 
 Key Functions:
-- SpeechTherapist_trainer: Handles the training loop of the SThVAE model.
-- SpeechTherapist_tester: Manages the testing and evaluation of the model.
+- MARTA_trainer: Handles the training loop of the MARTA model.
+- MARTA_tester: Manages the testing and evaluation of the model.
 - plot_logopeda_alb_neuro: Visualization utility for plotting model outputs and analysis.
 
 Output:
@@ -43,8 +43,8 @@ Note:
   of the input data and the computational resources available.
 """
 
-from models.pt_models import SpeechTherapist
-from training.pt_training import SpeechTherapist_trainer, SpeechTherapist_tester
+from models.pt_models import MARTA
+from training.pt_training import MARTA_trainer, MARTA_tester
 from utils.utils import (
     plot_logopeda_alb_neuro,
 )
@@ -122,7 +122,7 @@ def main(args, hyperparams):
 
     print("Defining models...")
     # Create the model
-    model = SpeechTherapist(
+    model = MARTA(
         x_dim=train_loader.dataset[0][0].shape,
         z_dim=hyperparams["latent_dim"],
         n_gaussians=hyperparams["n_gaussians"],
@@ -138,7 +138,7 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         print("Training GMVAE...")
         # Train the model
-        SpeechTherapist_trainer(
+        MARTA_trainer(
             model=model,
             trainloader=train_loader,
             validloader=val_loader,
@@ -163,7 +163,7 @@ def main(args, hyperparams):
     print("Testing GMVAE...")
 
     # Test the model
-    SpeechTherapist_tester(
+    MARTA_tester(
         model=model,
         testloader=test_loader,
         test_data=test_data,

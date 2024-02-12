@@ -314,12 +314,12 @@ def finetuning_model(embedding_input, freeze=True):
     return final_model(embedding_input, freeze=freeze)
 
 
-# ======================================= Speech Therapist =======================================
+# ======================================= MARTA =======================================
 
 
-class SpeechTherapist(torch.nn.Module):
-    """SpeechTherapist class. The purpose is to train with healthy patients to learn the latent space representation of each phoneme clusterized by manner class. Then, when we test with parkinsonian patients, we will use the latent space representation
-    to measure the distance between the latent space representation of each phoneme and the clusters learned by the SpeechTherapist. If the distance is too high, then the patient is parkinsonian. If the distance is low, then the patient is healthy. We are learning how the pronunciation of each manner class
+class MARTA(torch.nn.Module):
+    """MARTA class. The purpose is to train with healthy patients to learn the latent space representation of each phoneme clusterized by manner class. Then, when we test with parkinsonian patients, we will use the latent space representation
+    to measure the distance between the latent space representation of each phoneme and the clusters learned by the MARTA. If the distance is too high, then the patient is parkinsonian. If the distance is low, then the patient is healthy. We are learning how the pronunciation of each manner class
     differ between healthy and parkinsonian patients.
     This class will be wrapper composed by three main components:
     1. SpecEncoder: this network will encode the spectrograms of N, 1, 65, 24 into a feature representation of N*24, Channels*Height.
@@ -653,7 +653,7 @@ class SpeechTherapist(torch.nn.Module):
         return y_pred
 
     def forward(self, x):
-        """Forward function of the SpeechTherapist. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""
+        """Forward function of the MARTA. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""
         e_s = self.spec_encoder_forward(x)
         z_sample, y_logits, y, qz_mu, qz_var, pz_mu, pz_var = self.inference_forward(
             e_s
@@ -829,7 +829,7 @@ class SpeechTherapist(torch.nn.Module):
         return loss, 0, 0, 0, 0
 
 
-# ========================================= START of utils for SpeechTherapist =========================================
+# ========================================= START of utils for MARTA =========================================
 class ClassifierFlatten(torch.nn.Module):
     def forward(self, x):
         x = x.reshape(x.shape[0], -1)
@@ -912,4 +912,4 @@ class GumbelSoftmax(torch.nn.Module):
         return logits, prob, y
 
 
-# ========================================= END of util for SpeechTherapist =========================================
+# ========================================= END of util for MARTA =========================================

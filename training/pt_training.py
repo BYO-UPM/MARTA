@@ -564,7 +564,7 @@ def Training_model(project_name, dict_generators, args, wandb=[], freeze=False, 
     return model
 
 
-def SpeechTherapist_trainer(
+def MARTA_trainer(
     model,
     trainloader,
     validloader,
@@ -993,7 +993,7 @@ def check_reconstruction(x, x_hat, wandb_flag=False, train_flag=True):
     plt.close(fig)
 
 
-def SpeechTherapist_tester(
+def MARTA_tester(
     model,
     testloader,
     test_data,
