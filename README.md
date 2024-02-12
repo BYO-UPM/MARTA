@@ -6,8 +6,8 @@ This repository contains a series of Python scripts implementing the Manner of A
 
 The project includes the following key scripts:
 
-1. **MARTA:** Focuses on analyzing manner class articulationsof healthy individuals and evaluating latent space cluster distances between healthy subjects from differents datasets, such as Albayzin and NeuroVoz.
-2. **MARTA with Supervision:** A supervised variant of MARTA, maximizing distances between clusters in the latent space for different conditions (parkinsonian and nosomorphic speech).
+1. **MARTA:** Focuses on analyzing manner class articulations of healthy individuals and evaluating latent space cluster distances between healthy subjects from differents datasets, such as Albayzin and NeuroVoz. This is an unsupervised analysis and the script associated to it is __MARTA_unsupervised.py__
+2. **MARTA with Supervision:** A supervised variant of MARTA, maximizing distances between clusters in the latent space for different conditions (parkinsonian and nosomorphic speech). This study involves two experiments. The first is a supervised studio of the cluster distances (__MARTA_Supervised.py__). The second is a discriminative power studio based on the manner classes clusters (__MARTA-S_classifier.py__).
 
 Each script is designed to process speech data, train the MARTA model, and analyze the results, providing insights into the potential indicators of Parkinson's Disease in speech patterns.
 
