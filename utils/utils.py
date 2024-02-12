@@ -1566,24 +1566,27 @@ def calculate_distances_manner(
 
     for i in range(len(distances)):
         fig, ax = plt.subplots(figsize=(10, 10))
-        sns.heatmap(distances[i], annot=True, ax=ax, vmin=0, vmax=1)
+        sns.heatmap(
+            np.round(distances[i], 2),
+            annot=True,
+            ax=ax,
+            vmin=0,
+            vmax=1,
+            annot_kws={"size": 18},
+        )
         if i == 0:
-            title = "Jensen-Shannon distance Albayzin vs Albayzin"
             savename = "js_dist_Albayzin_Albayzin"
         elif i == 1:
-            title = "Jensen-Shannon distance Albayzin Healthy vs NeuroVoz Healthy"
             savename = "js_dist_Albayzin_h_Neurovoz_h"
         elif i == 2:
-            title = "Jensen-Shannon distance Albayzin Healthy vs NeuroVoz Parkinson"
             savename = "js_dist_Albayzin_h_Neurovoz_pd"
         else:
-            title = "Jensen-Shannon distance NeuroVoz Healthy vs NeuroVoz Parkinson"
             savename = "js_dist_Neurovoz_h_Neurovoz_pd"
-        ax.set_title(title)
+
         ax.set_xticklabels(
             [
                 "Plosives",
-                "Plosives voiced",
+                "Plosives\n voiced",
                 "Nasals",
                 "Fricatives",
                 "Liquids",
@@ -1596,7 +1599,7 @@ def calculate_distances_manner(
         ax.set_yticklabels(
             [
                 "Plosives",
-                "Plosives voiced",
+                "Plosives\n voiced",
                 "Nasals",
                 "Fricatives",
                 "Liquids",
@@ -1605,11 +1608,11 @@ def calculate_distances_manner(
                 # "Silence",
             ]
         )
-        ax.set_xlabel("Manner classes (Albayzin / Neurovoz)")
-        ax.set_ylabel("Manner classes (Albayzin / Neurovoz)")
+        ax.tick_params(axis="both", which="major", labelsize=16)
 
         cbar = ax.collections[0].colorbar
         cbar.set_ticks([0, 0.25, 0.5, 0.75, 1])
+        cbar.ax.tick_params(labelsize=18)
 
         save_path = path_to_plot + "/" + f"{savename}.png"
         fig.savefig(save_path)

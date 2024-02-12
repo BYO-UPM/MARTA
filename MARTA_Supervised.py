@@ -109,28 +109,28 @@ def main(args, hyperparams):
     else:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/folds/train_loader_supervised_True_frame_size_0.4spec_winsize_"
+            "local_results/folds/folds30ms/train_loader_supervised_True_frame_size_0.4spec_winsize_"
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         val_loader = torch.load(
-            "local_results/folds/val_loader_supervised_True_frame_size_0.4spec_winsize_"
+            "local_results/folds/folds30ms/val_loader_supervised_True_frame_size_0.4spec_winsize_"
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         test_loader = torch.load(
-            "local_results/folds/test_loader_supervised_True_frame_size_0.4spec_winsize_"
+            "local_results/folds/folds30ms/test_loader_supervised_True_frame_size_0.4spec_winsize_"
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         test_data = torch.load(
-            "local_results/folds/test_data_supervised_True_frame_size_0.4spec_winsize_"
+            "local_results/folds/folds30ms/test_data_supervised_True_frame_size_0.4spec_winsize_"
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
@@ -270,7 +270,7 @@ if __name__ == "__main__":
         "classifier": False,  # It must be False in this script.
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
-        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
