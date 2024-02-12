@@ -17,8 +17,8 @@ To set up the project using Conda, follow these steps:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-github-username/your-repo-name.git
-cd your-repo-name
+git clone https://github.com/BYO-UPM/MARTA.git
+cd MARTA
 
 # Create a Conda environment from the .yml file
 conda env create -f environment.yml
