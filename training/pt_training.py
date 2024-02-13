@@ -609,11 +609,6 @@ def MARTA_trainer(
             # ==== Forward pass ====
 
             if classifier:
-                # Remove all dataset=="albayzin"
-                # data = data[dataset != "albayzin"].squeeze(0)
-                # manner = manner[dataset != "albayzin"].squeeze(0)
-                # labels = labels[dataset != "albayzin"].squeeze(0)
-                # Remove all manner > 7
                 manner[manner > 7] = manner[manner > 7] - 8
                 manner = manner.to(model.device).int()
                 labels = labels.to(model.device).float()
@@ -1001,6 +996,7 @@ def MARTA_tester(
     wandb_flag=False,
     path_to_plot=None,
     best_threshold=0.5,
+    masked=8,
 ):
     # Set model in evaluation mode
     model.eval()
@@ -1014,6 +1010,7 @@ def MARTA_tester(
 
         # Create x_array of shape Batch x Output shape
         x_array = np.zeros((batch_size, 1, 65, 25))
+        manner_array = np.zeros((batch_size, 25))
 
         x_hat_array = np.zeros(x_array.shape)
         for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(testloader)):
@@ -1023,6 +1020,17 @@ def MARTA_tester(
             if supervised:
                 # ==== Forward pass ====
                 manner[manner > 7] = manner[manner > 7] - 8
+                if masked < 8:
+                    # Mask the data where the manner are equal to mask value
+                    mask = torch.ones_like(x)
+                    idx_to_mask = torch.where(manner == masked)
+                    # idx_to_mask is a tuple of (128, 25) and mask is (128, 1, 65, 25)
+                    mask[idx_to_mask[0], :, :, idx_to_mask[1]] = 0
+                    x = x * mask
+                manner_array = np.concatenate(
+                    (manner_array, manner.cpu().detach().numpy())
+                )
+
                 manner = manner.to(model.device).int()
                 labels = labels.to(model.device).float()
 

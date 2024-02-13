@@ -345,7 +345,7 @@ class MARTA(torch.nn.Module):
         n_gaussians=10,
         n_manner=8,
         weights=[1, 1, 1, 10],
-        classifier="mlp",
+        classifier="cnn",
         device="cpu",
         reducer="mean",
     ):
