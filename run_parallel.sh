@@ -1,5 +1,5 @@
 # Adjusted loop for distributing folds 0 to 9 across GPUs 0 and 1
-for FOLD in `seq 0 9`; do
+for FOLD in `seq 0 10`; do
     # Assign GPU 0 for even folds and GPU 1 for odd folds
     GPU_ID=$((FOLD % 2))
     MASKED=7
