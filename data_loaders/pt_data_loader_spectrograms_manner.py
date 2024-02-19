@@ -406,7 +406,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # Print unique values in manner_class
         print("Unique values in manner_class: ", np.unique(self.data["manner_class"]))
 
-        for f in range(10):
+        for f in range(11):
             print("Splitting train, val and test for fold: ", f)
             # Set all random seeds to "f"
             torch.manual_seed(f)
@@ -429,10 +429,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 # == Split nwurovoz healthy patients in 90-10 partitions ==
                 # Firt 90%
                 half_90_hp_neurovoz = healthy_patients_neurovoz[
-                    : int(len(healthy_patients_neurovoz) * 0.9)
+                    : int(len(healthy_patients_neurovoz) * 10 / 11)
                 ]
                 half_10_hp_neurovoz = healthy_patients_neurovoz[
-                    int(len(healthy_patients_neurovoz) * 0.9) :
+                    int(len(healthy_patients_neurovoz) * 10 / 11) :
                 ]
                 neurovoz_healthy_90_data = self.data[
                     (self.data["dataset"] == "neurovoz")
@@ -456,10 +456,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 # == Split neurovoz parkinsonian patients in two halfs: 90-10 ==
                 # Firt 90%
                 half_90_pk_neurovoz = parkinsonian_patients_neurovoz[
-                    : int(len(parkinsonian_patients_neurovoz) * 0.9)
+                    : int(len(parkinsonian_patients_neurovoz) * 10 / 11)
                 ]
                 half_10_pk_neurovoz = parkinsonian_patients_neurovoz[
-                    int(len(parkinsonian_patients_neurovoz) * 0.9) :
+                    int(len(parkinsonian_patients_neurovoz) * 10 / 11) :
                 ]
                 neurovoz_parkinson_90_data = self.data[
                     (self.data["dataset"] == "neurovoz")

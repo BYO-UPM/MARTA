@@ -180,7 +180,7 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "local_results/spectrograms/results_30ms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
+            "local_results/spectrograms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
             + str(hyperparams["fold"])
             + "/GMVAE_cnn_best_model_2d.pt"
         )
