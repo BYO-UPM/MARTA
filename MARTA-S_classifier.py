@@ -180,7 +180,7 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "local_results/spectrograms/results_30ms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
+            "local_results/spectrograms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
             + str(hyperparams["fold"])
             + "/GMVAE_cnn_best_model_2d.pt"
         )
@@ -290,7 +290,7 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         # ================ Classifier parameters ===================
-        "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
+        "classifier_type": "mlp",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": True,  # If true, train the classifier
         "supervised": True,  # It must be true
         # ================ Training parameters ===================

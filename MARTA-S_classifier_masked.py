@@ -61,10 +61,10 @@ def main(args, hyperparams):
     )
 
     hyperparams["path_to_load"] = (
-        "local_results/spectrograms/results_30ms/manner_gmvae_alb_neurovoz_"
+        "local_results/spectrograms/results_11_folds/manner_gmvae_alb_neurovoz_"
         + str(hyperparams["latent_dim"])
         + "final_model_classifier"
-        + "_LATENTSPACE+manner_CNN_fold"
+        + "_LATENTSPACE+manner_MLP_fold"
         + str(hyperparams["fold"])
     )
 
@@ -95,28 +95,28 @@ def main(args, hyperparams):
     if not hyperparams["new_data_partition"]:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/folds/folds30ms/train_loader_supervised_True_frame_size_0.4spec_winsize_"
+            "local_results/folds/train_loader_supervised_True_frame_size_0.4spec_winsize_"
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         val_loader = torch.load(
-            "local_results/folds/folds30ms/val_loader_supervised_True_frame_size_0.4spec_winsize_"
+            "local_results/folds/val_loader_supervised_True_frame_size_0.4spec_winsize_"
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         test_loader = torch.load(
-            "local_results/folds/folds30ms/test_loader_supervised_True_frame_size_0.4spec_winsize_"
+            "local_results/folds/test_loader_supervised_True_frame_size_0.4spec_winsize_"
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
             + ".pt"
         )
         test_data = torch.load(
-            "local_results/folds/folds30ms/test_data_supervised_True_frame_size_0.4spec_winsize_"
+            "local_results/folds/test_data_supervised_True_frame_size_0.4spec_winsize_"
             + str(hyperparams["spectrogram_win_size"])
             + "hopsize_0.5fold"
             + str(hyperparams["fold"])
@@ -204,7 +204,7 @@ def main(args, hyperparams):
         # Unfreeze the classifier
         for param in model.hmc.parameters():
             # Unfreezing the manner class embeddings
-            param.requires_grad = True
+            param.requires_grad = False
         for param in model.clf_cnn.parameters():
             # Unfreezing the cnn classifier
             param.requires_grad = True
