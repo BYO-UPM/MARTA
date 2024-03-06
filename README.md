@@ -4,7 +4,7 @@
 ![Logo](logo1.png)
 
 
-This repository contains a series of Python scripts implementing the Manner of ARTiculation Analysis (MARTA) based in a Gaussian Mixture Variational Autoencoder (GMVAE) model for speech feature analysis, specifically manner class articulation, in Parkinson's Disease (PD) research. These scripts focus on different aspects of speech analysis, ranging from unsupervised learning to supervised approaches emphasizing latent space distinctions.
+This repository contains a series of Python scripts implementing the Manner of ARTiculation Analysis (MARTA) based in a Gaussian Mixture Variational Autoencoder (GMVAE) with metric learning model for speech feature analysis, specifically manner class articulation, in Parkinson's Disease (PD) research. These scripts focus on different aspects of speech analysis, ranging from unsupervised learning to supervised approaches emphasizing latent space distinctions.
 
 ## Overview
 
@@ -50,6 +50,16 @@ Each script can be run independently, depending on the specific analysis you wis
 Detailed usage for each script is documented within the script files themselves.
 
 In case you want to train all folds, you can use __run_parallel.sh__ bash script.
+
+## Reproducibility
+
+In the reproducibility folder, a pickle file for each fold used in the experiments is provided. Each .pkl file is a dictionary with three keys: train_ids, val_ids, test_ids, indicating the patient IDs for each partition.
+
+## Final Models Weights
+The final_models_weights directory contains .pt files with the trained model weights. Four versions are available:
+
+* trained_with_albayzin: MARTA trained only with the Albayzin dataset, both unsupervised (MARTA) and supervised (MARTA-S).
+* trained_with_albayzin_and_neurovoz: MARTA trained with both the Albayzin and NeuroVoz datasets, in unsupervised (MARTA) and supervised modes (MARTA-S).
 
 ## Contributing
 
