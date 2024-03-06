@@ -1,0 +1,163 @@
+Reading train, val and test loaders from local_results/...
+Defining models...
+Training GMVAE...
+Epoch: 0 Train Loss: 4253.2922 Rec Loss: 409.4525 Gaussian Loss: 123.1198 Cat Loss: 7.1969 Metric Loss: 371.3523 UAcc: 0.3894 NMI: 0.0671
+Epoch: 0 Valid Loss: 4058.2002 Rec Loss: 275.6103 Gaussian Loss: 87.3974 Cat Loss : 11.7094 Metric Loss: 368.3483 UAcc: 0.4028 NMI: 0.1438
+13769
+Storing the best model at epoch  0
+Epoch: 1 Train Loss: 4027.0365 Rec Loss: 244.8267 Gaussian Loss: 84.5442 Cat Loss: 14.5944 Metric Loss: 368.3071 UAcc: 0.3894 NMI: 0.1651
+Epoch: 1 Valid Loss: 4012.8266 Rec Loss: 250.1446 Gaussian Loss: 78.1093 Cat Loss : 16.7192 Metric Loss: 366.7854 UAcc: 0.4028 NMI: 0.1920
+13769
+Storing the best model at epoch  1
+Epoch: 2 Train Loss: 3987.1613 Rec Loss: 222.9857 Gaussian Loss: 77.6162 Cat Loss: 19.8429 Metric Loss: 366.6716 UAcc: 0.3894 NMI: 0.2159
+Epoch: 2 Valid Loss: 3973.1171 Rec Loss: 224.4650 Gaussian Loss: 74.3158 Cat Loss : 23.5635 Metric Loss: 365.0773 UAcc: 0.4028 NMI: 0.2581
+13769
+Storing the best model at epoch  2
+Epoch: 3 Train Loss: 3960.1553 Rec Loss: 212.5096 Gaussian Loss: 71.1560 Cat Loss: 24.5039 Metric Loss: 365.1986 UAcc: 0.3894 NMI: 0.2587
+Epoch: 3 Valid Loss: 3950.2036 Rec Loss: 212.9493 Gaussian Loss: 71.6734 Cat Loss : 27.7218 Metric Loss: 363.7859 UAcc: 0.4028 NMI: 0.2896
+13769
+Storing the best model at epoch  3
+Epoch: 4 Train Loss: 3939.9849 Rec Loss: 205.4485 Gaussian Loss: 66.8671 Cat Loss: 27.7330 Metric Loss: 363.9936 UAcc: 0.3894 NMI: 0.2829
+Epoch: 4 Valid Loss: 3941.0672 Rec Loss: 217.6852 Gaussian Loss: 67.9859 Cat Loss : 28.9773 Metric Loss: 362.6419 UAcc: 0.4028 NMI: 0.3022
+13769
+Storing the best model at epoch  4
+Epoch: 5 Train Loss: 3923.8026 Rec Loss: 199.9551 Gaussian Loss: 64.3841 Cat Loss: 29.5476 Metric Loss: 362.9916 UAcc: 0.3894 NMI: 0.2950
+Epoch: 5 Valid Loss: 3915.0786 Rec Loss: 202.9251 Gaussian Loss: 63.9223 Cat Loss : 31.0780 Metric Loss: 361.7153 UAcc: 0.4028 NMI: 0.3113
+13769
+Storing the best model at epoch  5
+Epoch: 6 Train Loss: 3910.7445 Rec Loss: 196.2840 Gaussian Loss: 62.6314 Cat Loss: 30.5440 Metric Loss: 362.1285 UAcc: 0.3894 NMI: 0.2989
+Epoch: 6 Valid Loss: 3906.5348 Rec Loss: 202.7705 Gaussian Loss: 62.4060 Cat Loss : 31.0759 Metric Loss: 361.0283 UAcc: 0.4028 NMI: 0.3059
+13769
+Storing the best model at epoch  6
+Epoch: 7 Train Loss: 3899.8079 Rec Loss: 192.8789 Gaussian Loss: 61.2902 Cat Loss: 31.0909 Metric Loss: 361.4548 UAcc: 0.3894 NMI: 0.2992
+Epoch: 7 Valid Loss: 3895.1428 Rec Loss: 196.0184 Gaussian Loss: 61.9043 Cat Loss : 31.8066 Metric Loss: 360.5413 UAcc: 0.4028 NMI: 0.3079
+13769
+Storing the best model at epoch  7
+Epoch: 8 Train Loss: 3889.8638 Rec Loss: 190.4134 Gaussian Loss: 60.3273 Cat Loss: 31.4337 Metric Loss: 360.7689 UAcc: 0.3894 NMI: 0.2961
+Epoch: 8 Valid Loss: 3889.7139 Rec Loss: 194.1620 Gaussian Loss: 61.9846 Cat Loss : 32.3717 Metric Loss: 360.1196 UAcc: 0.4028 NMI: 0.3031
+13769
+Storing the best model at epoch  8
+Epoch: 9 Train Loss: 3880.9147 Rec Loss: 188.0941 Gaussian Loss: 59.4934 Cat Loss: 31.4743 Metric Loss: 360.1853 UAcc: 0.3894 NMI: 0.2918
+Epoch: 9 Valid Loss: 3885.0534 Rec Loss: 198.7199 Gaussian Loss: 58.9985 Cat Loss : 31.7219 Metric Loss: 359.5613 UAcc: 0.4028 NMI: 0.2966
+13769
+Storing the best model at epoch  9
+Epoch: 10 Train Loss: 3872.5797 Rec Loss: 185.8240 Gaussian Loss: 58.8861 Cat Loss: 31.4452 Metric Loss: 359.6424 UAcc: 0.3894 NMI: 0.2853
+Epoch: 10 Valid Loss: 3871.0931 Rec Loss: 188.9860 Gaussian Loss: 59.3958 Cat Loss : 31.8985 Metric Loss: 359.0813 UAcc: 0.4028 NMI: 0.2900
+13769
+Storing the best model at epoch  10
+Epoch: 11 Train Loss: 3865.2021 Rec Loss: 184.2038 Gaussian Loss: 58.3413 Cat Loss: 31.2793 Metric Loss: 359.1378 UAcc: 0.3894 NMI: 0.2764
+Epoch: 11 Valid Loss: 3867.2597 Rec Loss: 185.3140 Gaussian Loss: 62.0791 Cat Loss : 31.8355 Metric Loss: 358.8031 UAcc: 0.4028 NMI: 0.2830
+13769
+Storing the best model at epoch  11
+Epoch: 12 Train Loss: 3857.9084 Rec Loss: 182.5212 Gaussian Loss: 57.8617 Cat Loss: 31.0581 Metric Loss: 358.6467 UAcc: 0.3894 NMI: 0.2682
+Epoch: 12 Valid Loss: 3865.0908 Rec Loss: 189.2498 Gaussian Loss: 59.9773 Cat Loss : 31.7196 Metric Loss: 358.4144 UAcc: 0.4028 NMI: 0.2764
+13769
+Storing the best model at epoch  12
+Epoch: 13 Train Loss: 3850.4507 Rec Loss: 180.7380 Gaussian Loss: 57.2886 Cat Loss: 30.8208 Metric Loss: 358.1603 UAcc: 0.3894 NMI: 0.2592
+Epoch: 13 Valid Loss: 3855.8612 Rec Loss: 185.3248 Gaussian Loss: 57.3638 Cat Loss : 30.8909 Metric Loss: 358.2282 UAcc: 0.4028 NMI: 0.2586
+13769
+Storing the best model at epoch  13
+Epoch: 14 Train Loss: 3843.2870 Rec Loss: 179.2709 Gaussian Loss: 56.7265 Cat Loss: 30.6188 Metric Loss: 357.6671 UAcc: 0.3894 NMI: 0.2513
+Epoch: 14 Valid Loss: 3850.0071 Rec Loss: 179.1482 Gaussian Loss: 59.2426 Cat Loss : 30.8856 Metric Loss: 358.0731 UAcc: 0.4028 NMI: 0.2549
+13769
+Storing the best model at epoch  14
+Epoch: 15 Train Loss: 3836.5153 Rec Loss: 177.9731 Gaussian Loss: 56.4102 Cat Loss: 30.3420 Metric Loss: 357.1790 UAcc: 0.3894 NMI: 0.2427
+Epoch: 15 Valid Loss: 3850.2463 Rec Loss: 185.5123 Gaussian Loss: 56.8869 Cat Loss : 29.9971 Metric Loss: 357.7850 UAcc: 0.4028 NMI: 0.2367
+13769
+Epoch: 16 Train Loss: 3831.0915 Rec Loss: 176.7490 Gaussian Loss: 56.0340 Cat Loss: 30.1706 Metric Loss: 356.8138 UAcc: 0.3894 NMI: 0.2336
+Epoch: 16 Valid Loss: 3842.1821 Rec Loss: 177.3189 Gaussian Loss: 57.3681 Cat Loss : 30.0749 Metric Loss: 357.7420 UAcc: 0.4028 NMI: 0.2375
+13769
+Storing the best model at epoch  16
+Epoch: 17 Train Loss: 3823.7180 Rec Loss: 175.5987 Gaussian Loss: 55.6354 Cat Loss: 29.9319 Metric Loss: 356.2552 UAcc: 0.3894 NMI: 0.2263
+Epoch: 17 Valid Loss: 3841.4860 Rec Loss: 177.7856 Gaussian Loss: 57.4720 Cat Loss : 30.1694 Metric Loss: 357.6059 UAcc: 0.4028 NMI: 0.2288
+13769
+Storing the best model at epoch  17
+Epoch: 18 Train Loss: 3817.3625 Rec Loss: 174.5509 Gaussian Loss: 55.2002 Cat Loss: 29.6450 Metric Loss: 355.7966 UAcc: 0.3894 NMI: 0.2188
+Epoch: 18 Valid Loss: 3840.8366 Rec Loss: 176.6639 Gaussian Loss: 59.0855 Cat Loss : 29.1855 Metric Loss: 357.5902 UAcc: 0.4028 NMI: 0.2165
+13769
+Storing the best model at epoch  18
+Epoch: 19 Train Loss: 3810.4752 Rec Loss: 173.4437 Gaussian Loss: 54.8552 Cat Loss: 29.4137 Metric Loss: 355.2763 UAcc: 0.3894 NMI: 0.2120
+Epoch: 19 Valid Loss: 3835.5230 Rec Loss: 178.2231 Gaussian Loss: 54.1255 Cat Loss : 29.4631 Metric Loss: 357.3711 UAcc: 0.4028 NMI: 0.2107
+13769
+Storing the best model at epoch  19
+Epoch: 20 Train Loss: 3804.8363 Rec Loss: 172.8524 Gaussian Loss: 54.4489 Cat Loss: 29.3331 Metric Loss: 354.8202 UAcc: 0.3894 NMI: 0.2072
+Epoch: 20 Valid Loss: 3834.1927 Rec Loss: 176.2862 Gaussian Loss: 54.5889 Cat Loss : 29.0842 Metric Loss: 357.4233 UAcc: 0.4028 NMI: 0.2036
+13769
+Storing the best model at epoch  20
+Epoch: 21 Train Loss: 3797.6989 Rec Loss: 171.8203 Gaussian Loss: 54.1237 Cat Loss: 29.2535 Metric Loss: 354.2501 UAcc: 0.3894 NMI: 0.2033
+Epoch: 21 Valid Loss: 3832.0756 Rec Loss: 172.7985 Gaussian Loss: 56.0325 Cat Loss : 29.4620 Metric Loss: 357.3783 UAcc: 0.4028 NMI: 0.2068
+13769
+Storing the best model at epoch  21
+Epoch: 22 Train Loss: 3791.6459 Rec Loss: 171.1913 Gaussian Loss: 53.8085 Cat Loss: 29.1769 Metric Loss: 353.7469 UAcc: 0.3894 NMI: 0.2000
+Epoch: 22 Valid Loss: 3830.3947 Rec Loss: 171.7129 Gaussian Loss: 55.4342 Cat Loss : 28.9527 Metric Loss: 357.4295 UAcc: 0.4028 NMI: 0.2001
+13769
+Storing the best model at epoch  22
+Epoch: 23 Train Loss: 3785.4361 Rec Loss: 170.4711 Gaussian Loss: 53.4548 Cat Loss: 29.1442 Metric Loss: 353.2366 UAcc: 0.3894 NMI: 0.1969
+Epoch: 23 Valid Loss: 3838.3661 Rec Loss: 176.4556 Gaussian Loss: 58.0096 Cat Loss : 29.6800 Metric Loss: 357.4221 UAcc: 0.4028 NMI: 0.2031
+13769
+Epoch: 24 Train Loss: 3779.4191 Rec Loss: 169.9101 Gaussian Loss: 53.2530 Cat Loss: 29.1293 Metric Loss: 352.7127 UAcc: 0.3894 NMI: 0.1948
+Epoch: 24 Valid Loss: 3830.6901 Rec Loss: 169.3314 Gaussian Loss: 56.1346 Cat Loss : 29.2492 Metric Loss: 357.5975 UAcc: 0.4028 NMI: 0.1951
+13769
+Epoch: 25 Train Loss: 3773.5864 Rec Loss: 169.5276 Gaussian Loss: 52.9762 Cat Loss: 29.2118 Metric Loss: 352.1871 UAcc: 0.3894 NMI: 0.1930
+Epoch: 25 Valid Loss: 3829.7863 Rec Loss: 169.7386 Gaussian Loss: 54.3304 Cat Loss : 29.2120 Metric Loss: 357.6505 UAcc: 0.4028 NMI: 0.1934
+13769
+Storing the best model at epoch  25
+Epoch: 26 Train Loss: 3767.6364 Rec Loss: 168.7302 Gaussian Loss: 52.6728 Cat Loss: 29.1792 Metric Loss: 351.7054 UAcc: 0.3894 NMI: 0.1916
+Epoch: 26 Valid Loss: 3834.2579 Rec Loss: 170.3854 Gaussian Loss: 55.6021 Cat Loss : 29.7118 Metric Loss: 357.8559 UAcc: 0.4028 NMI: 0.1971
+13769
+Epoch: 27 Train Loss: 3761.5267 Rec Loss: 168.1023 Gaussian Loss: 52.4396 Cat Loss: 29.1845 Metric Loss: 351.1800 UAcc: 0.3894 NMI: 0.1897
+Epoch: 27 Valid Loss: 3831.9957 Rec Loss: 169.1306 Gaussian Loss: 54.1121 Cat Loss : 29.3564 Metric Loss: 357.9397 UAcc: 0.4028 NMI: 0.1972
+13769
+Epoch: 28 Train Loss: 3755.6567 Rec Loss: 167.4231 Gaussian Loss: 52.1665 Cat Loss: 29.1760 Metric Loss: 350.6891 UAcc: 0.3894 NMI: 0.1892
+Epoch: 28 Valid Loss: 3832.1670 Rec Loss: 169.1416 Gaussian Loss: 53.9926 Cat Loss : 29.3591 Metric Loss: 357.9674 UAcc: 0.4028 NMI: 0.1911
+13769
+Epoch: 29 Train Loss: 3750.6557 Rec Loss: 167.1367 Gaussian Loss: 51.9494 Cat Loss: 29.1910 Metric Loss: 350.2379 UAcc: 0.3894 NMI: 0.1881
+Epoch: 29 Valid Loss: 3832.8688 Rec Loss: 168.8716 Gaussian Loss: 53.5231 Cat Loss : 28.6811 Metric Loss: 358.1793 UAcc: 0.4028 NMI: 0.1826
+13769
+Epoch: 30 Train Loss: 3745.6628 Rec Loss: 166.6646 Gaussian Loss: 51.7551 Cat Loss: 29.2164 Metric Loss: 349.8027 UAcc: 0.3894 NMI: 0.1869
+Epoch: 30 Valid Loss: 3833.4675 Rec Loss: 168.4486 Gaussian Loss: 53.9626 Cat Loss : 29.4869 Metric Loss: 358.1569 UAcc: 0.4028 NMI: 0.1905
+13769
+Epoch: 31 Train Loss: 3741.0716 Rec Loss: 166.3146 Gaussian Loss: 51.6193 Cat Loss: 29.2114 Metric Loss: 349.3926 UAcc: 0.3894 NMI: 0.1857
+Epoch: 31 Valid Loss: 3832.0497 Rec Loss: 168.2220 Gaussian Loss: 52.9034 Cat Loss : 28.7452 Metric Loss: 358.2179 UAcc: 0.4028 NMI: 0.1817
+13769
+Epoch: 32 Train Loss: 3736.6488 Rec Loss: 165.7389 Gaussian Loss: 51.3956 Cat Loss: 29.2512 Metric Loss: 349.0263 UAcc: 0.3894 NMI: 0.1852
+Epoch: 32 Valid Loss: 3833.4447 Rec Loss: 167.4978 Gaussian Loss: 52.6099 Cat Loss : 29.5715 Metric Loss: 358.3766 UAcc: 0.4028 NMI: 0.1873
+13769
+Epoch: 33 Train Loss: 3731.5705 Rec Loss: 165.3199 Gaussian Loss: 51.1984 Cat Loss: 29.2464 Metric Loss: 348.5806 UAcc: 0.3894 NMI: 0.1848
+Epoch: 33 Valid Loss: 3832.5865 Rec Loss: 165.7954 Gaussian Loss: 52.8347 Cat Loss : 29.4642 Metric Loss: 358.4492 UAcc: 0.4028 NMI: 0.1850
+13769
+Epoch: 34 Train Loss: 3727.3097 Rec Loss: 165.0128 Gaussian Loss: 50.9834 Cat Loss: 29.2741 Metric Loss: 348.2039 UAcc: 0.3894 NMI: 0.1842
+Epoch: 34 Valid Loss: 3832.4818 Rec Loss: 166.1631 Gaussian Loss: 52.4064 Cat Loss : 29.0511 Metric Loss: 358.4861 UAcc: 0.4028 NMI: 0.1800
+13769
+Epoch: 35 Train Loss: 3723.0588 Rec Loss: 164.5836 Gaussian Loss: 50.8205 Cat Loss: 29.2950 Metric Loss: 347.8360 UAcc: 0.3894 NMI: 0.1836
+Epoch: 35 Valid Loss: 3835.0189 Rec Loss: 165.8502 Gaussian Loss: 52.9371 Cat Loss : 29.2966 Metric Loss: 358.6935 UAcc: 0.4028 NMI: 0.1811
+13769
+Epoch: 36 Train Loss: 3720.5808 Rec Loss: 164.0992 Gaussian Loss: 50.6261 Cat Loss: 29.2659 Metric Loss: 347.6590 UAcc: 0.3894 NMI: 0.1826
+Epoch: 36 Valid Loss: 3833.8711 Rec Loss: 164.3639 Gaussian Loss: 52.5876 Cat Loss : 29.3330 Metric Loss: 358.7587 UAcc: 0.4028 NMI: 0.1823
+13769
+Epoch: 37 Train Loss: 3715.9230 Rec Loss: 163.6584 Gaussian Loss: 50.4696 Cat Loss: 29.2975 Metric Loss: 347.2497 UAcc: 0.3894 NMI: 0.1827
+Epoch: 37 Valid Loss: 3833.7427 Rec Loss: 164.4748 Gaussian Loss: 52.0787 Cat Loss : 28.9944 Metric Loss: 358.8195 UAcc: 0.4028 NMI: 0.1785
+13769
+Epoch: 38 Train Loss: 3712.9843 Rec Loss: 163.3699 Gaussian Loss: 50.3431 Cat Loss: 29.3454 Metric Loss: 346.9926 UAcc: 0.3894 NMI: 0.1824
+Epoch: 38 Valid Loss: 3835.2490 Rec Loss: 163.8089 Gaussian Loss: 52.5316 Cat Loss : 29.2150 Metric Loss: 358.9693 UAcc: 0.4028 NMI: 0.1782
+13769
+Epoch: 39 Train Loss: 3710.2144 Rec Loss: 162.9983 Gaussian Loss: 50.1642 Cat Loss: 29.3443 Metric Loss: 346.7708 UAcc: 0.3894 NMI: 0.1820
+Epoch: 39 Valid Loss: 3835.1561 Rec Loss: 164.8710 Gaussian Loss: 51.2825 Cat Loss : 29.2113 Metric Loss: 358.9791 UAcc: 0.4028 NMI: 0.1791
+13769
+Epoch: 40 Train Loss: 3707.2374 Rec Loss: 162.6203 Gaussian Loss: 50.0319 Cat Loss: 29.3575 Metric Loss: 346.5228 UAcc: 0.3894 NMI: 0.1819
+Epoch: 40 Valid Loss: 3834.1486 Rec Loss: 163.3193 Gaussian Loss: 51.4196 Cat Loss : 29.4089 Metric Loss: 359.0001 UAcc: 0.4028 NMI: 0.1776
+13769
+Epoch: 41 Train Loss: 3704.4677 Rec Loss: 162.2488 Gaussian Loss: 49.9427 Cat Loss: 29.3322 Metric Loss: 346.2944 UAcc: 0.3894 NMI: 0.1808
+Epoch: 41 Valid Loss: 3835.5049 Rec Loss: 164.8929 Gaussian Loss: 50.3809 Cat Loss : 29.2183 Metric Loss: 359.1013 UAcc: 0.4028 NMI: 0.1773
+13769
+Epoch: 42 Train Loss: 3703.2193 Rec Loss: 162.0640 Gaussian Loss: 49.7038 Cat Loss: 29.3901 Metric Loss: 346.2061 UAcc: 0.3894 NMI: 0.1808
+Epoch: 42 Valid Loss: 3834.8745 Rec Loss: 162.4024 Gaussian Loss: 51.4797 Cat Loss : 29.3229 Metric Loss: 359.1669 UAcc: 0.4028 NMI: 0.1789
+13769
+Epoch: 43 Train Loss: 3701.0560 Rec Loss: 161.7917 Gaussian Loss: 49.6886 Cat Loss: 29.3921 Metric Loss: 346.0184 UAcc: 0.3894 NMI: 0.1803
+Epoch: 43 Valid Loss: 3835.4161 Rec Loss: 162.6411 Gaussian Loss: 51.5099 Cat Loss : 29.1906 Metric Loss: 359.2074 UAcc: 0.4028 NMI: 0.1775
+13769
+Epoch: 44 Train Loss: 3700.3274 Rec Loss: 161.4614 Gaussian Loss: 49.5276 Cat Loss: 29.4057 Metric Loss: 345.9933 UAcc: 0.3894 NMI: 0.1802
+Epoch: 44 Valid Loss: 3836.4223 Rec Loss: 163.1683 Gaussian Loss: 51.0901 Cat Loss : 29.0667 Metric Loss: 359.3097 UAcc: 0.4028 NMI: 0.1752
+13769
+Early stopping
+Training finished!

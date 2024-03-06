@@ -1,10 +1,10 @@
-*.pt
+
 /model_checkpoints
 /wandb
 .DS_Store
 local_results/
 old/
-*.txt
+
 /labeled/
 
 .vscode/

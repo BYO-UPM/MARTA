@@ -1194,21 +1194,7 @@ def MARTA_tester(
                 f"Consensus Accuracy: {accuracy_consensus:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus:.2f}, Consensus AUC: {auc_consensus:.2f}"
             )
 
-            print("====== Using best threshold (selected in validation) ======")
-            print("Best threshold: ", best_threshold)
-            y_pred_best_th = np.zeros_like(mean_soft_odds)
-            y_pred_best_th[mean_soft_odds >= best_threshold] = 1
-            accuracy_consensus_best_th = accuracy_score(
-                consensus_true.numpy(), y_pred_best_th
-            )
-            balanced_accuracy_consensus_best_th = balanced_accuracy_score(
-                consensus_true.numpy(), y_pred_best_th
-            )
-            print(
-                f"Consensus Accuracy: {accuracy_consensus_best_th:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_best_th:.2f}, Consensus AUC: {auc_consensus:.2f}"
-            )
-
-            print("====== Using best threshold (selected in test) ======")
+            print("====== Using best threshold ======")
             # Get best threshold via Youden's J statistic
             fpr, tpr, thresholds = roc_curve(
                 consensus_true.numpy(), mean_soft_odds.numpy()
