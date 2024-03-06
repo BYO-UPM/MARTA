@@ -3,9 +3,9 @@
 
 This repository contains a series of Python scripts implementing the Manner of ARTiculation Analysis (MARTA) based in a Gaussian Mixture Variational Autoencoder (GMVAE) with metric learning model for speech feature analysis, specifically manner class articulation, in Parkinson's Disease (PD) research. These scripts focus on different aspects of speech analysis, ranging from unsupervised learning to supervised approaches emphasizing latent space distinctions.
 
-<div style="text-align: center;">
+<p align="center" width="100%">
     <img src="logo1.png" alt="Logo" width="30%" />
-</div>
+</p>
 
 ## Overview
 
