@@ -6,6 +6,7 @@ local_results/
 old/
 *.txt
 /labeled/
+/fasealign/gita_htk_forced_alignment/
 
 .vscode/
 

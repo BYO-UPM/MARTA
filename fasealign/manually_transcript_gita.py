@@ -56,8 +56,41 @@ import pandas as pd
 df = pd.read_excel("manual_transcriptions.xlsx")
 
 # The fisrt column is the ID. If the id is less than 1000, it is a patient with PD, then, add to the number "AVPEPUDEA00" to the filename to match the filename in the txt file
-df["ID"] = df["Unnamed: 0"].apply(lambda x: "AVPEPUDEA00" + str(x) if x < 1000 else x)
-# If the id is more than 1000, it is a control patient, add "AVPEPUDEAC00" and the last two numbers of the id
 df["ID"] = df["Unnamed: 0"].apply(
-    lambda x: "AVPEPUDEAC00" + str(x)[-2:] if x > 1000 else x
+    lambda x: (
+        "AVPEPUDEA" + str(x).zfill(4)
+        if x < 1000
+        else ("AVPEPUDEAC" + str(x)[-2:].zfill(4) if x >= 1000 else x)
+    )
 )
+
+
+# Rename LauraNorm column to "laura"
+df.rename(columns={"LauraNorm": "laura"}, inplace=True)
+# Rename LosLibros norm column to "loslibros"
+df.rename(columns={"LosLibrosNorm": "loslibros"}, inplace=True)
+# Rename LuisaNorm column to "luisa"
+df.rename(columns={"LuisaNorm": "luisa"}, inplace=True)
+# Rename MiCasaNorm column to "micasa"
+df.rename(columns={"MiCasaNorm": "micasa"}, inplace=True)
+# Rename OmarNorm column to "omar"
+df.rename(columns={"OmarNorm": "omar"}, inplace=True)
+# Rename RositaNorm column to "rosita"
+df.rename(columns={"RositaNorm": "rosita"}, inplace=True)
+
+
+# For these columns, check for every filename if the cell is Na.
+# If it is not NA, replace the old transcription with the new one in the wav_filenames.txt
+for column in df.columns[2:]:
+    for index, row in df.iterrows():
+        if not pd.isna(row[column]):
+            with open(output_txt_path, "r") as file:
+                lines = file.readlines()
+            for i in range(len(lines)):
+                if row["ID"] == lines[i].split("_")[0] and column in lines[i]:
+                    lines[i] = row["ID"] + "_" + column + ".wav- " + row[column] + "\n"
+                    break
+            with open(output_txt_path, "w") as file:
+                file.writelines(lines)
+
+print("Done writing manual transcriptions to wav_filenames.txt")
