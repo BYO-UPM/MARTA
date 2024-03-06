@@ -603,6 +603,7 @@ def MARTA_trainer(
         )
 
         for batch_idx, (data, labels, manner, dataset) in enumerate(tqdm(trainloader)):
+
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
 

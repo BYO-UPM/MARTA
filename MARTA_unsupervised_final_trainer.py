@@ -63,7 +63,7 @@ print("Device being used:", device)
 def main(args, hyperparams):
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
+            "local_results/spectrograms/manner_gmvae_albayzin_"
             + str(hyperparams["latent_dim"])
             + "unsupervised"
             + "final_complete_model"
