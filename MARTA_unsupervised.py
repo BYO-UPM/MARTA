@@ -61,13 +61,13 @@ print("Device being used:", device)
 
 
 def main(args, hyperparams):
-    if hyperparams["train_albayzin"]:
-        hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
-            + str(hyperparams["latent_dim"])
-            + "unsupervised"
-            + "32d_final_model2"
-        )
+
+    hyperparams["path_to_save"] = (
+        "local_results/spectrograms/marta_"
+        + str(hyperparams["latent_dim"])
+        + "unsupervised"
+        + "32d_final_model2"
+    )
 
     # Create the path if does not exist
     if not os.path.exists(hyperparams["path_to_save"]):
@@ -77,24 +77,10 @@ def main(args, hyperparams):
     log_file = open(hyperparams["path_to_save"] + "/log.txt", "w")
     sys.stdout = log_file
 
-    if hyperparams["wandb_flag"]:
-        gname = (
-            "SPECTROGRAMS_GMVAE_"
-            + hyperparams["material"]
-            + "_final_model_unsupervised"
-        )
-        wandb.finish()
-        wandb.init(
-            project="parkinson",
-            config=hyperparams,
-            group=gname,
-        )
-
     if hyperparams["train"] and hyperparams["new_data_partition"]:
         print("Reading data...")
         # Read the data
         dataset = Dataset_AudioFeatures(
-            "labeled/NeuroVoz",
             hyperparams,
         )
         (
@@ -104,7 +90,7 @@ def main(args, hyperparams):
             _,  # train_data, not used
             _,  # val_data, not used
             test_data,
-        ) = dataset.get_dataloaders(train_albayzin=hyperparams["train_albayzin"])
+        ) = dataset.get_dataloaders()
     else:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
@@ -209,7 +195,7 @@ if __name__ == "__main__":
 
     hyperparams = {
         # ================ Spectrogram parameters ===================
-        "spectrogram": True,  # If true, use spectrogram. If false, use plp (In this study we only use spectrograms)
+        "spectrogram": True,  # If true, use spectrogram.
         "frame_size_ms": 0.400,  # Size of each spectrogram frame
         "spectrogram_win_size": 0.030,  # Window size of each window in the spectrogram
         "hop_size_percent": 0.5,  # Hop size (0.5 means 50%) between each window in the spectrogram
@@ -236,15 +222,7 @@ if __name__ == "__main__":
         "supervised": False,  # Here no classifier is used
         # ================ Training parameters ===================
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
-        "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": True,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
-        # ================ UNUSED PARAMETERS (we should fix this) ===================
-        # These parameters are not used at all and they are from all versions of the code, we should fix this.
-        "material": "MANNER",  # not used here
-        "n_plps": 0,  # Not used here
-        "n_mfccs": 0,  # Not used here
-        "wandb_flag": False,  # Not used here
-        "semisupervised": False,  # Not used here
     }
 
     main(args, hyperparams)

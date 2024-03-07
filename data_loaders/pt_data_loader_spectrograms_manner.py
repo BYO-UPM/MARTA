@@ -65,12 +65,9 @@ def collapse_to_most_repeated(row):
 
 
 class Dataset_AudioFeatures(torch.utils.data.Dataset):
-    def __init__(self, data_path, hyperparams):
+    def __init__(self, hyperparams):
         self.hyperparams = hyperparams
-        self.plps = self.hyperparams["n_plps"] > 0
-        self.mfcc = self.hyperparams["n_mfccs"] > 0
         self.spectrogram = self.hyperparams["spectrogram"]
-        self.data_path = data_path
 
         # Check if the data has been already processed and saved
         name_save = (
@@ -91,14 +88,68 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.data)
 
-    def read_neurovoz(self, dataset="albayzin"):
+    def read_gita(self):
         file_paths = []
         labels = []
         id_patient = []
         texts = []
         phonemes = []
 
-        datapath = "labeled/NeuroVoz"
+        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/gita_htk_forced_alignment/texts"
+
+        for file in os.listdir(datapath):
+            # If the file does not end with .wav, skip it
+            if not file.endswith(".wav"):
+                continue
+            file_path = os.path.join(datapath, file)
+            file_paths.append(file_path)
+            # Each file is named as follows: XXXXXXXXAC0001_text.wav where XXXXXXXX is not important, A or AC is the condition (A =PD, AC = HC), the id patient is the four digits, and text is the text
+            labels_raw = file.split("0")[0]
+            if labels_raw == "AVPEPUDEA":
+                labels.append(1)
+            elif labels_raw == "AVPEPUDEAC":
+                labels.append(0)
+            id_patitent_raw = file.split("_")[0][-4:]
+            id_patient.append(int(id_patitent_raw))
+            texts.append(file.split("_")[1].split(".")[0])
+
+            # Read the text grid file
+            tg_file = os.path.join(datapath, file).replace(".wav", ".TextGrid")
+            # Check if the file exists
+            if not os.path.exists(tg_file):
+                print("File does not exist: ", tg_file)
+                phonemes.append(None)
+                continue
+            tg_file = tg.TextGrid(tg_file)
+            phonemes.append(tg_file["speaker : phones"])
+
+        # Generate a dataframe with all the data
+        data = pd.DataFrame(
+            {
+                "file_path": file_paths,
+                "label": labels,
+                "text": texts,
+                "phonemes": phonemes,
+                "id_patient": id_patient,
+            }
+        )
+        # Drop na
+        data = data.dropna()
+        # sort by id_patient
+        data = data.sort_values(by=["id_patient"])
+        # reset index
+        data = data.reset_index(drop=True)
+
+        return data
+
+    def read_neurovoz(self):
+        file_paths = []
+        labels = []
+        id_patient = []
+        texts = []
+        phonemes = []
+
+        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/neurovoz_htk_forced_alignment/texts"
 
         for file in os.listdir(datapath):
             # If the file does not end with .wav, skip it
@@ -148,7 +199,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         phonemes = []
 
         datapath_wav = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
-        datapath_textgrid = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
 
         i = 0
         for file in os.listdir(datapath_wav):
@@ -163,7 +213,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             texts.append(file.split(".")[0][4:])
 
             # Read the text grid file
-            tg_file = os.path.join(datapath_textgrid, file.split(".")[0] + ".TextGrid")
+            tg_file = os.path.join(datapath_wav, file.split(".")[0] + ".TextGrid")
             # Check if the file exists
             if not os.path.exists(tg_file):
                 print("File does not exist: ", tg_file)
@@ -174,7 +224,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             phonemes.append(tg_file["speaker : phones"])
 
         print("Total WAV files: ", len(os.listdir(datapath_wav)))
-        print("Total TextGrid files: ", len(os.listdir(datapath_textgrid)))
+        print("Total TextGrid files: ", len(os.listdir(datapath_wav)))
         print("Total files without textgrid: ", i)
 
         # Generate a dataframe with all the data
@@ -220,14 +270,17 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
     def read_dataset(self):
         print("Reading the data...")
 
-        data_train = self.read_albayzin()
+        data_alb = self.read_albayzin()
         # add a column with the dataset name
-        data_train["dataset"] = "albayzin"
-        data_test = self.read_neurovoz()
-        # add a column with the dataset name
-        data_test["dataset"] = "neurovoz"
+        data_alb["dataset"] = "albayzin"
 
-        data = pd.concat([data_train, data_test])
+        data_neuro = self.read_neurovoz()
+        data_neuro["dataset"] = "neurovoz"
+
+        data_gita = self.read_gita()
+        data_gita["dataset"] = "gita"
+
+        data = pd.concat([data_alb, data_neuro, data_gita])
 
         # Categorise label to 0 and 1
         data["label"] = data["label"].astype("category").cat.codes
