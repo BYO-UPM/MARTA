@@ -397,7 +397,12 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
-    def get_dataloaders(self, train_albayzin=False, verbose=True, supervised=False):
+    def get_dataloaders(
+        self,
+        scenario="a-ng",
+        supervised=False,
+        verbose=True,
+    ):
         # Map phonemes to manner classes
         manner_classes = {
             "p": 0,  # plosives
@@ -465,66 +470,125 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             torch.manual_seed(f)
             np.random.seed(f)
 
-            # Split the data into train and test.
+            # =============== Prepare HEALTHY data ===============
+            # Get all data from Albayzin
+            albayzin_data = self.data[self.data["dataset"] == "albayzin"]
+
+            # Get all healthy patients from Neurovoz
+            healthy_patients_neurovoz = self.data[
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
+            ]["id_patient"].unique()
+
+            # Get all healthy patients from GITA
+            healthy_patients_gita = self.data[
+                (self.data["dataset"] == "gita") & (self.data["label"] == 0)
+            ]["id_patient"].unique()
+
+            # Shuffle all patients
+            np.random.shuffle(healthy_patients_neurovoz)
+            np.random.shuffle(healthy_patients_gita)
+            np.random.shuffle(albayzin_data)
+
+            # Split NeuroVoz and GITA healthy patients in 11 folds
+            healthy_patients_neurovoz_folds = np.array_split(
+                healthy_patients_neurovoz, 11
+            )
+            healthy_patients_gita_folds = np.array_split(healthy_patients_gita, 11)
+
+            # Get the fold f
+            healthy_patients_neurovoz_test = healthy_patients_neurovoz_folds[f]
+            healthy_patients_gita_test = healthy_patients_gita_folds[f]
+
+            # Get the healthy patients for training
+            healthy_patients_neurovoz_train = np.concatenate(
+                [healthy_patients_neurovoz_folds[i] for i in range(11) if i != f]
+            )
+            healthy_patients_gita_train = np.concatenate(
+                [healthy_patients_gita_folds[i] for i in range(11) if i != f]
+            )
+
+            # =============== Prepare PARKINSONIAN data ===============
+            parkinson_patients_neurovoz = self.data[
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+            ]["id_patient"].unique()
+            parkinson_patients_gita = self.data[
+                (self.data["dataset"] == "gita") & (self.data["label"] == 1)
+            ]["id_patient"].unique()
+
+            # Shuffle all patients
+            np.random.shuffle(parkinson_patients_neurovoz)
+            np.random.shuffle(parkinson_patients_gita)
+
+            # Split NeuroVoz and GITA parkinsonian patients in 11 folds
+            parkinson_patients_neurovoz_folds = np.array_split(
+                parkinson_patients_neurovoz, 11
+            )
+            parkinson_patients_gita_folds = np.array_split(parkinson_patients_gita, 11)
+
+            # Get the fold f
+            parkinson_patients_neurovoz_test = parkinson_patients_neurovoz_folds[f]
+            parkinson_patients_gita_test = parkinson_patients_gita_folds[f]
+
+            # Get the parkinsonian patients for training
+            parkinson_patients_neurovoz_train = np.concatenate(
+                [parkinson_patients_neurovoz_folds[i] for i in range(11) if i != f]
+            )
+            parkinson_patients_gita_train = np.concatenate(
+                [parkinson_patients_gita_folds[i] for i in range(11) if i != f]
+            )
+
+            # =============== CONSTRUCT THE TRAIN AND TEST SPLITS based on the scenario ===============
             if (
-                train_albayzin
-            ):  # If we want to train with albayzin + 0.9 of neurovoz healthy patients
-                # =============== Prepare data ===============
-                albayzin_data = self.data[self.data["dataset"] == "albayzin"]
+                scenario == "a-ng"
+            ):  # a-ng stands for Albayzin (training) - all Neurovoz (testing) + all GITA (testing)
 
-                # Get all healthy patients from neurovoz and shuffle them
-                healthy_patients_neurovoz = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-                ]["id_patient"].unique()
-                # Suffle the numpy array
-                np.random.shuffle(healthy_patients_neurovoz)
+                train_data = pd.concat(
+                    [
+                        albayzin_data,
+                    ]
+                )
 
-                # == Split nwurovoz healthy patients in 90-10 partitions ==
-                # Firt 90%
-                half_90_hp_neurovoz = healthy_patients_neurovoz[
-                    : int(len(healthy_patients_neurovoz) * 10 / 11)
-                ]
-                half_10_hp_neurovoz = healthy_patients_neurovoz[
-                    int(len(healthy_patients_neurovoz) * 10 / 11) :
-                ]
-                neurovoz_healthy_90_data = self.data[
-                    (self.data["dataset"] == "neurovoz")
-                    & (self.data["label"] == 0)
-                    & (self.data["id_patient"].isin(half_90_hp_neurovoz))
-                ]
-                # Second half
-                neurovoz_healthy_10_data = self.data[
-                    (self.data["dataset"] == "neurovoz")
-                    & (self.data["label"] == 0)
-                    & (self.data["id_patient"].isin(half_10_hp_neurovoz))
-                ]
-
-                # Get all parkinsonian patients from neurovoz and shuffle
-                parkinsonian_patients_neurovoz = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
-                ]["id_patient"].unique()
-                # Suffle the numpy array
-                np.random.shuffle(parkinsonian_patients_neurovoz)
-
-                # == Split neurovoz parkinsonian patients in two halfs: 90-10 ==
-                # Firt 90%
-                half_90_pk_neurovoz = parkinsonian_patients_neurovoz[
-                    : int(len(parkinsonian_patients_neurovoz) * 10 / 11)
-                ]
-                half_10_pk_neurovoz = parkinsonian_patients_neurovoz[
-                    int(len(parkinsonian_patients_neurovoz) * 10 / 11) :
-                ]
-                neurovoz_parkinson_90_data = self.data[
-                    (self.data["dataset"] == "neurovoz")
-                    & (self.data["label"] == 1)
-                    & (self.data["id_patient"].isin(half_90_pk_neurovoz))
-                ]
-                # Second 10%
-                neurovoz_parkinson_10_data = self.data[
-                    (self.data["dataset"] == "neurovoz")
-                    & (self.data["label"] == 1)
-                    & (self.data["id_patient"].isin(half_10_pk_neurovoz))
-                ]
+                test_data = pd.concat(
+                    [
+                        self.data[
+                            (self.data["dataset"] == "neurovoz")
+                            & (self.data["label"] == 0)
+                        ],
+                        self.data[
+                            (self.data["dataset"] == "gita") & (self.data["label"] == 0)
+                        ],
+                    ]
+                )
+            elif (
+                scenario == "an-ng"
+            ):  # an-ng stands for Albayzin (training) +  10 folds Neurovoz (training) - one fold Neurovoz (testing) + all GITA (testing)
+                train_data = pd.concat(
+                    [
+                        albayzin_data,
+                        self.data[
+                            (self.data["dataset"] == "neurovoz")
+                            & (self.data["label"] == 0)
+                            & (
+                                self.data["id_patient"].isin(
+                                    healthy_patients_neurovoz_train
+                                )
+                            )
+                        ],
+                    ]
+                )
+                test_data = pd.concat(
+                    [
+                        self.data[
+                            (self.data["dataset"] == "neurovoz")
+                            & (self.data["label"] == 0)
+                            & (
+                                self.data["id_patient"].isin(healthy_patients_neurovoz_test)
+                            )
+                        ],
+                        self.data[
+                            (self.data["dataset"] == "gita") & (self.data["label"] == 0)
+                        ],
+                    ]
 
                 # =========================================== TRAIN DATA ===========================================
                 if supervised:
