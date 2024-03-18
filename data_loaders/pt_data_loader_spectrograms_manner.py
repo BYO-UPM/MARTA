@@ -95,23 +95,36 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         texts = []
         phonemes = []
 
-        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/gita_htk_forced_alignment/texts"
+        datapath = (
+            "/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/gita_htk_forced_alignment"
+        )
 
-        for file in os.listdir(datapath):
-            # If the file does not end with .wav, skip it
-            if not file.endswith(".wav"):
-                continue
-            file_path = os.path.join(datapath, file)
-            file_paths.append(file_path)
-            # Each file is named as follows: XXXXXXXXAC0001_text.wav where XXXXXXXX is not important, A or AC is the condition (A =PD, AC = HC), the id patient is the four digits, and text is the text
-            labels_raw = file.split("0")[0]
-            if labels_raw == "AVPEPUDEA":
-                labels.append(1)
-            elif labels_raw == "AVPEPUDEAC":
-                labels.append(0)
-            id_patitent_raw = file.split("_")[0][-4:]
-            id_patient.append(int(id_patitent_raw))
-            texts.append(file.split("_")[1].split(".")[0])
+        for root, dirs, files in os.walk(datapath):
+            for file in files:
+                # If the file does not end with .wav, skip it
+                if not file.endswith(".wav"):
+                    continue
+                file_path = os.path.join(datapath, file)
+                file_paths.append(file_path)
+                # Each file is named as follows: XXXXXXXXAC0001_text.wav where XXXXXXXX is not important, A or AC is the condition (A =PD, AC = HC), the id patient is the four digits, and text is the text
+                # ID patient is always a 4 digit number
+                keys = file.split(".")[0].split("_")
+                if len(keys) == 0:
+                    keys = file.split(".")[0].split("-")
+                # Remove duplicated keys
+                keys = set(keys)
+                for key in keys:
+                    # if the key is PD or HC, then it is the label
+                    if key == "PD":
+                        labels.append(1)
+                    elif key == "HC":
+                        labels.append(0)
+                    # if the key is a number, then it is the id_patient
+                    elif key.isdigit() and len(key) == 4:
+                        id_patient.append(int(key))
+                    # in any other case, it should be the name of the "task" performed
+                    else:
+                        texts.append(key)
 
             # Read the text grid file
             tg_file = os.path.join(datapath, file).replace(".wav", ".TextGrid")
@@ -149,28 +162,42 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         texts = []
         phonemes = []
 
-        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/neurovoz_htk_forced_alignment/texts"
+        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/neurovoz_htk_forced_alignment/"
 
-        for file in os.listdir(datapath):
-            # If the file does not end with .wav, skip it
-            if not file.endswith(".wav"):
-                continue
-            file_path = os.path.join(datapath, file)
-            file_paths.append(file_path)
-            # Each file is named as follows: <speakerid>_<idpatient>_<text>_<condition>.wav
-            labels.append(file.split("_")[3].split(".")[0])
-            id_patient.append(file.split("_")[1])
-            texts.append(file.split("_")[2])
+        for root, dirs, files in os.walk(datapath):
+            for file in files:
+                # If the file does not end with .wav, skip it
+                if not file.endswith(".wav"):
+                    continue
+                file_path = os.path.join(datapath, file)
+                file_paths.append(file_path)
 
-            # Read the text grid file
-            tg_file = os.path.join(datapath, file + ".TextGrid")
-            # Check if the file exists
-            if not os.path.exists(tg_file):
-                print("File does not exist: ", tg_file)
-                phonemes.append(None)
-                continue
-            tg_file = tg.TextGrid(tg_file)
-            phonemes.append(tg_file["speaker : phones"])
+                # ID patient is always a 4 digit number
+                keys = file.split(".")[0].split("_")
+                # Remove duplicated keys
+                keys = set(keys)
+                for key in keys:
+                    # if the key is PD or HC, then it is the label
+                    if key == "PD":
+                        labels.append(1)
+                    elif key == "HC":
+                        labels.append(0)
+                    # if the key is a number, then it is the id_patient
+                    elif key.isdigit() and len(key) == 4:
+                        id_patient.append(int(key))
+                    # in any other case, it should be the name of the "task" performed
+                    else:
+                        texts.append(key)
+
+                # Read the text grid file
+                tg_file = os.path.join(datapath, file + ".TextGrid")
+                # Check if the file exists
+                if not os.path.exists(tg_file):
+                    print("File does not exist: ", tg_file)
+                    phonemes.append(None)
+                    continue
+                tg_file = tg.TextGrid(tg_file)
+                phonemes.append(tg_file["speaker : phones"])
 
         # Generate a dataframe with all the data
         data = pd.DataFrame(
@@ -582,13 +609,16 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                             (self.data["dataset"] == "neurovoz")
                             & (self.data["label"] == 0)
                             & (
-                                self.data["id_patient"].isin(healthy_patients_neurovoz_test)
+                                self.data["id_patient"].isin(
+                                    healthy_patients_neurovoz_test
+                                )
                             )
                         ],
                         self.data[
                             (self.data["dataset"] == "gita") & (self.data["label"] == 0)
                         ],
                     ]
+                )
 
                 # =========================================== TRAIN DATA ===========================================
                 if supervised:

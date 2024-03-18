@@ -83,6 +83,7 @@ def main(args, hyperparams):
         dataset = Dataset_AudioFeatures(
             hyperparams,
         )
+        raise ValueError("The data partition is not implemented yet")
         (
             train_loader,
             val_loader,
