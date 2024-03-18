@@ -15,7 +15,6 @@ For more information on how to use this script and the FaseAlign tool, please re
 documentation and the FaseAlign documentation: https://fasealign.readthedocs.io/en/latest/aligning.html
 """
 
-import textgrids
 import os
 
 
