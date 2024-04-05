@@ -66,7 +66,12 @@ def main(args, hyperparams):
         "local_results/spectrograms/marta_"
         + str(hyperparams["latent_dim"])
         + "unsupervised"
-        + "32d_final_model2"
+        + "_latentdim_"
+        + str(hyperparams["latent_dim"])
+        + "_gaussians_"
+        + str(hyperparams["n_gaussians"])
+        + "_experiment_"
+        + str(hyperparams["experiment"])
     )
 
     # Create the path if does not exist
@@ -83,7 +88,6 @@ def main(args, hyperparams):
         dataset = Dataset_AudioFeatures(
             hyperparams,
         )
-        raise ValueError("The data partition is not implemented yet")
         (
             train_loader,
             val_loader,
@@ -91,20 +95,20 @@ def main(args, hyperparams):
             _,  # train_data, not used
             _,  # val_data, not used
             test_data,
-        ) = dataset.get_dataloaders()
+        ) = dataset.get_dataloaders(experiment=hyperparams["experiment"])
     else:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/folds/folds30ms/train_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
+            "local_results/folds/train_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldfirst_experiment.pt"
         )
         val_loader = torch.load(
-            "local_results/folds/folds30ms/val_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
+            "local_results/folds/val_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldfirst_experiment.pt"
         )
         test_loader = torch.load(
-            "local_results/folds/folds30ms/test_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
+            "local_results/folds/test_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldfirst_experiment.pt"
         )
         test_data = torch.load(
-            "local_results/folds/folds30ms/test_data_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
+            "local_results/folds/test_data_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldfirst_experiment.pt"
         )
 
     print("Defining models...")
@@ -130,8 +134,8 @@ def main(args, hyperparams):
             trainloader=train_loader,
             validloader=val_loader,
             epochs=hyperparams["epochs"],
+            wandb_flag=None,
             lr=hyperparams["lr"],
-            wandb_flag=hyperparams["wandb_flag"],
             path_to_save=hyperparams["path_to_save"],
             supervised=False,
             classifier=False,
@@ -155,7 +159,7 @@ def main(args, hyperparams):
         testloader=test_loader,
         test_data=test_data,
         supervised=False,
-        wandb_flag=hyperparams["wandb_flag"],
+        wandb_flag=None,
         path_to_plot=hyperparams["path_to_save"],
     )
     print("Testing finished!")
@@ -177,15 +181,12 @@ def main(args, hyperparams):
         model,
         df_train,
         df_test,
-        hyperparams["wandb_flag"],
+        None,
         name="test",
         supervised=hyperparams["supervised"],
         samples=5000,
         path_to_plot=hyperparams["path_to_save"],
     )
-
-    if hyperparams["wandb_flag"]:
-        wandb.finish()
 
     sys.stdout = old_stdout
     log_file.close()
@@ -218,12 +219,14 @@ if __name__ == "__main__":
             1,  # w3 is categorical kl loss,
             10,  # w5 is metric loss
         ],
+        # ================ Experiment parameters ===================
+        "experiment": "first",  # Experiment name, from 1 to 6. It is used to load the correct data.
         # ================ Classifier parameters ===================
         "cnn_classifier": False,  # Here no classifier is used
         "supervised": False,  # Here no classifier is used
         # ================ Training parameters ===================
-        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
-        "new_data_partition": True,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
+        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
     }
 
     main(args, hyperparams)

@@ -311,8 +311,6 @@ def plot_logopeda_alb_neuro(
 
         train_mu_shape = latent_mu_train.shape
 
-        print("Fitting UMAP")
-
         # Train the UMAP model with only "samples"  samples
         idx = np.random.choice(len(latent_mu_train), samples)
 
