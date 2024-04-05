@@ -256,10 +256,14 @@ def plot_logopeda_alb_neuro(
     labels_train = np.array(data_train["label"].values, dtype=int)
     labels_test = np.array(data_test["label"].values, dtype=int)
 
+    dataset_train = np.array(data_train["dataset"].values)
+    dataset_test = np.array(data_test["dataset"].values)
+
     # Repeat labels manner.shape[1] times
     latent_mu_train = copy.copy(latent_mu_train_original_space)
     lm_train_original = latent_mu_train_original_space
     labels_train = np.repeat(labels_train, manner_train.shape[1], axis=0)
+    dataset_train = np.repeat(dataset_train, manner_train.shape[1], axis=0)
     manner_train = manner_train.reshape(-1)
     # Remove all affricates
     idx = np.argwhere(manner_train == 6).ravel()
@@ -267,17 +271,20 @@ def plot_logopeda_alb_neuro(
     labels_train = np.delete(labels_train, idx)
     latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
     lm_train_original = np.delete(lm_train_original, idx, axis=0)
+    dataset_train = np.delete(dataset_train, idx)
     # Remove all silence
     idx = np.argwhere(manner_train == 7).ravel()
     manner_train = np.delete(manner_train, idx)
     labels_train = np.delete(labels_train, idx)
     latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
     lm_train_original = np.delete(lm_train_original, idx, axis=0)
+    dataset_train = np.delete(dataset_train, idx)
 
     # Repeat labels manner.shape[1] times
     latent_mu_test = copy.copy(latent_mu_test_original_space)
     lm_test_original = latent_mu_test_original_space
     labels_test = np.repeat(labels_test, manner_test.shape[1], axis=0)
+    dataset_test = np.repeat(dataset_test, manner_test.shape[1], axis=0)
     manner_test = manner_test.reshape(-1)
     # Remove all affricates
     idx = np.argwhere(manner_test == 6).ravel()
@@ -285,221 +292,16 @@ def plot_logopeda_alb_neuro(
     labels_test = np.delete(labels_test, idx)
     latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
     lm_test_original = np.delete(lm_test_original, idx, axis=0)
+    dataset_test = np.delete(dataset_test, idx)
     # Remove all silence
     idx = np.argwhere(manner_test == 7).ravel()
     manner_test = np.delete(manner_test, idx)
     labels_test = np.delete(labels_test, idx)
     latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
     lm_test_original = np.delete(lm_test_original, idx, axis=0)
+    dataset_test = np.delete(dataset_test, idx)
 
-    # Select randomly samples of each dataset
-    # idx = np.random.choice(len(latent_mu_train), samples)
-    # manner_train = manner_train[idx]
-    # labels_train = labels_train[idx]
-    # latent_mu_train = latent_mu_train[idx]
-
-    # # Select only SAMPLES from test
-    # idx = np.random.choice(len(latent_mu_test), samples)
-    # manner_test = manner_test[idx]
-    # labels_test = labels_test[idx]
-    # latent_mu_test = latent_mu_test[idx]
-
-    # Check latent_mu shape, if greater than 2 do a t-SNE
-    if latent_mu_train.shape[1] > 2:
-        # Import UMAP
-        import umap
-
-        train_mu_shape = latent_mu_train.shape
-
-        # Train the UMAP model with only "samples"  samples
-        idx = np.random.choice(len(latent_mu_train), samples)
-
-        # # TSNE only albayzin
-        # umapmodel = umap.UMAP(
-        #     n_components=2, metric="mahalanobis", n_neighbors=200
-        # ).fit(latent_mu_train[idx])
-        umapmodel = None
-
-        # Convert test to 2d
-        print("Calculating UMAP...")
-        # latent_mu_train = umapmodel.transform(latent_mu_train)
-        # latent_mu_test = umapmodel.transform(latent_mu_test)
-
-        print("The shape of the train latent space is now: ", latent_mu_train.shape)
-        print("The shape of the test latent space is now: ", latent_mu_test.shape)
-
-        xlabel = "t-SNE dim 1"
-        ylabel = "t-SNE dim 2"
-
-    else:
-        umapmodel = None
-        xlabel = "Latent dim 1"
-        ylabel = "Latent dim 2"
-
-    # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ===========================================
-    import matplotlib
-
-    # cmap = matplotlib.cm.get_cmap("Set1")
-
-    # fig, ax = plt.subplots(figsize=(20, 20))
-    # class_labels = {
-    #     0: "Plosives",
-    #     1: "Plosives voiced",
-    #     2: "Nasals",
-    #     3: "Fricatives",
-    #     4: "Liquids",
-    #     5: "Vowels",
-    #     # 6: "Affricates",
-    #     # 7: "Silence",
-    #     # 8: "Short pause",
-    # }
-    # for i in range(5):
-    #     ax.scatter(
-    #         latent_mu_train[:, 0][np.where(manner_train == i)],
-    #         latent_mu_train[:, 1][np.where(manner_train == i)],
-    #         color=cmap(i),
-    #         label=class_labels[i],
-    #     )
-    # # Add labels and title
-    # ax.set_xlabel(xlabel)
-    # ax.set_ylabel(ylabel)
-    # ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
-    # ax.legend()
-    # fig.savefig(
-    #     path_to_plot + f"/latent_space_albayzin_wo_vowels.png",
-    # )
-    # ax.scatter(
-    #     latent_mu_train[:, 0][np.where(manner_train == 5)],
-    #     latent_mu_train[:, 1][np.where(manner_train == 5)],
-    #     color=cmap(5),
-    #     label=class_labels[5],
-    # )
-    # ax.legend()
-    # fig.savefig(
-    #     path_to_plot + f"/latent_space_albayzin_w_vowels.png",
-    # )
-
-    # if wandb_flag:
-    #     wandb.log({str(name) + "/latent_space": wandb.Image(fig)})
-
-    # # =========================================== HEALTHY TEST SAMPLES from NEUROVOZ. We are going to do 7 plots. One per phoneme. ===========================================
-    # # select only latent_mu_test with labels_test = 0
-    # idx = np.argwhere(labels_test == 0).ravel()
-    # latent_mu_test_healthy = latent_mu_test[idx]
-    # manner_test_copy = copy.copy(manner_test[idx])
-
-    # for i in range(5):
-    #     i = int(i)
-
-    #     idx = np.argwhere(manner_train == i).ravel()
-
-    #     fig, ax = plt.subplots(figsize=(20, 20))
-
-    #     # Scatter ax
-
-    #     # Divide the scatter in two scatters: frst all healhty samples.
-    #     for j in range(5):
-    #         ax.scatter(
-    #             latent_mu_train[:, 0][np.where(manner_train == j)],
-    #             latent_mu_train[:, 1][np.where(manner_train == j)],
-    #             color=cmap(j),
-    #             label=class_labels[j],
-    #             alpha=0.2,
-    #         )
-
-    #     idx = np.argwhere(manner_test_copy == i).ravel()
-
-    #     ax.scatter(
-    #         latent_mu_test_healthy[idx, 0],
-    #         latent_mu_test_healthy[idx, 1],
-    #         alpha=1,
-    #         color=cmap(i),
-    #         label=class_labels[i],
-    #     )
-    #     # Add labels and title
-    #     ax.set_xlabel(xlabel)
-    #     ax.set_ylabel(ylabel)
-    #     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
-    #     ax.legend()
-    #     fig.savefig(
-    #         path_to_plot + f"/latent_space_healthy_albayzin_vs_neurovoz_class_{i}.png",
-    #     )
-
-    #     if wandb_flag:
-    #         wandb.log(
-    #             {
-    #                 str(name)
-    #                 + "/latent_space_healthy_albayzin_vs_neurovoz_class_"
-    #                 + str(i): wandb.Image(fig)
-    #             }
-    #         )
-
-    #     plt.close()
-
-    # # =========================================== PARKINSONIAN TEST SAMPLES from NEUROVOZ. We are going to do 7 plots. One per phoneme. ===========================================
-
-    # # select only latent_mu_test with ["label"] = 1
-    # idx = np.argwhere(labels_test == 1).ravel()
-    # latent_mu_test_park = latent_mu_test[idx]
-    # manner_test_copy = copy.copy(manner_test[idx])
-
-    # for i in range(5):
-    #     i = int(i)
-    #     fig, ax = plt.subplots(figsize=(20, 20))
-
-    #     # Scatter ax
-    #     # Divide the scatter in two scatters: frst all healhty samples.
-    #     for j in range(5):
-    #         sct = ax.scatter(
-    #             latent_mu_train[:, 0][np.where(manner_train == j)],
-    #             latent_mu_train[:, 1][np.where(manner_train == j)],
-    #             color=cmap(j),
-    #             label=class_labels[j],
-    #             alpha=0.2,
-    #         )
-    #     idx = np.argwhere(manner_test_copy == i).ravel()
-
-    #     ax.scatter(
-    #         latent_mu_test_park[idx, 0],
-    #         latent_mu_test_park[idx, 1],
-    #         alpha=1,
-    #         color=cmap(i),
-    #         label=class_labels[i],
-    #     )
-    #     # Add labels and title
-    #     ax.set_xlabel(xlabel)
-    #     ax.set_ylabel(ylabel)
-    #     ax.set_title(f"Latent space in " + str(name) + " for fold {fold}")
-
-    #     ax.legend()
-
-    #     fig.savefig(
-    #         path_to_plot + f"/latent_space_park_albayzin_vs_neurovoz_class_{i}.png",
-    #     )
-
-    #     if wandb_flag:
-    #         wandb.log(
-    #             {
-    #                 str(name)
-    #                 + "/latent_space_park_albayzin_vs_neurovoz_class_"
-    #                 + str(i): wandb.Image(fig)
-    #             }
-    #         )
-
-    #     plt.close()
-
-    # print("Calculating distance in a space of dimensions: ", lm_train_original.shape[1])
-
-    # calculate_euclidean_distances_manner(
-    #     lm_train_original,
-    #     lm_test_original,
-    #     manner_train,
-    #     manner_test,
-    #     labels_train,
-    #     labels_test,
-    #     wandb_flag,
-    #     path_to_plot=path_to_plot,
-    # )
+    # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ==========================================
 
     print("Calculating jensen shannon")
     print("Calculating distances in a space of dimensions: ", lm_test_original.shape[1])
@@ -511,7 +313,9 @@ def plot_logopeda_alb_neuro(
         manner_test,
         labels_train,
         labels_test,
-        umapmodel,
+        dataset_train,
+        dataset_test,
+        None,
         wandb_flag,
         path_to_plot=path_to_plot,
     )
@@ -1359,6 +1163,8 @@ def calculate_distances_manner(
     manner_test,
     labels_train,
     labels_test,
+    dataset_train,
+    dataset_test,
     umapmodel,
     wandb_flag,
     path_to_plot,
@@ -1388,24 +1194,6 @@ def calculate_distances_manner(
     def calculate_cluster_distance(
         latent_mu_one, latent_mu_two, kde_train, kde_test, umapmodel
     ):
-        # Sample from the GMM of the generative model
-        # First generate uniformly distributed samples up to model.k
-        cat_samples = np.random.choice(
-            model.k, size=1000 * latent_mu_one.shape[1], replace=True
-        )
-        # # Convert them to one-hot-encoder
-        # positions = (
-        #     torch.chunk(
-        #         model.generative_pz_y(torch.eye(model.k)[cat_samples].to(model.device)),
-        #         2,
-        #         dim=1,
-        #     )[0]
-        #     .cpu()
-        #     .detach()
-        #     .numpy()
-        # )
-        # UMAP to 2D
-        # positions = umapmodel.transform(positions)
 
         # Uniformly sampling from the latent space restricted to the min and max of the classes we are comparing
         positions = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
@@ -1432,33 +1220,60 @@ def calculate_distances_manner(
     distances_neuropark_neurosanos = np.zeros(
         (len(unique_manner_train), len(unique_manner_test))
     )
+    distances_healthy_gita = np.zeros(
+        (len(unique_manner_train), len(unique_manner_test))
+    )
+    distances_healthy_parkinson_gita = np.zeros(
+        (len(unique_manner_train), len(unique_manner_test))
+    )
+    distances_gitapark_gitasanos = np.zeros(
+        (len(unique_manner_train), len(unique_manner_test))
+    )
+    distances_gitasanos_neurosanos = np.zeros(
+        (len(unique_manner_train), len(unique_manner_test))
+    )
+    distance_gitapark_neuropark = np.zeros(
+        (len(unique_manner_train), len(unique_manner_test))
+    )
 
     kde_albayzin = [
         calculate_kde(latent_mu_train[(labels_train == 0) & (manner_train == manner)])
         for manner in unique_manner_train
     ]
     kde_neurovoz_healhty = [
-        calculate_kde(latent_mu_test[(labels_test == 0) & (manner_test == manner)])
+        calculate_kde(
+            latent_mu_test[
+                (labels_test == 0)
+                & (manner_test == manner)
+                & (dataset_test == "neurovoz")
+            ]
+        )
         for manner in unique_manner_test
     ]
-    # latent_park = latent_mu_test[(labels_test == 1)]
-    # manner_test = manner_test[(labels_test == 1)]
-    # # assert that latent_park and manner_test have the same shape
-    # assert latent_park.shape[0] == manner_test.shape[0]
-    # # Sample randomly to have the same amount as healthy
-    # latent_park = latent_park[
-    #     np.random.choice(
-    #         latent_park.shape[0],
-    #         size=latent_mu_test[(labels_test == 0)].shape[0],
-    #         replace=False,
-    #     )
-    # ]
-    # kde_neurovoz_parkinson = [
-    #     calculate_kde(latent_park[manner_test == manner])
-    #     for manner in unique_manner_test
-    # ]
+    kde_gita_healhty = [
+        calculate_kde(
+            latent_mu_test[
+                (labels_test == 0) & (manner_test == manner) & (dataset_test == "gita")
+            ]
+        )
+        for manner in unique_manner_test
+    ]
     kde_neurovoz_parkinson = [
-        calculate_kde(latent_mu_test[(labels_test == 1) & (manner_test == manner)])
+        calculate_kde(
+            latent_mu_test[
+                (labels_test == 1)
+                & (manner_test == manner)
+                & (dataset_test == "neurovoz")
+            ]
+        )
+        for manner in unique_manner_test
+    ]
+    kde_gita_parkinson = [
+        calculate_kde(
+            latent_mu_test[
+                (labels_test == 1) & (manner_test == manner) & (dataset_test == "gita")
+            ]
+        )
         for manner in unique_manner_test
     ]
 
@@ -1487,9 +1302,31 @@ def calculate_distances_manner(
             )
             distances_healthy[i, j] = calculate_cluster_distance(
                 latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
-                latent_mu_test[(labels_test == 0) & (manner_test == manner_j)],
+                latent_mu_test[
+                    (labels_test == 0)
+                    & (manner_test == manner_j)
+                    & (dataset_test == "neurovoz")
+                ],
                 kde_albayzin[i],
                 kde_neurovoz_healhty[j],
+                umapmodel=umapmodel,
+            )
+            print(
+                "Calculating distance from Albayzin Healthy vs GITA Healthy for manner classes "
+                + str(manner_i)
+                + " and "
+                + str(manner_j)
+                + "..."
+            )
+            distances_healthy[i, j] = calculate_cluster_distance(
+                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
+                latent_mu_test[
+                    (labels_test == 0)
+                    & (manner_test == manner_j)
+                    & (dataset_test == "gita")
+                ],
+                kde_albayzin[i],
+                kde_gita_healhty[j],
                 umapmodel=umapmodel,
             )
             print(
@@ -1501,53 +1338,153 @@ def calculate_distances_manner(
             )
             distances_healthy_parkinson[i, j] = calculate_cluster_distance(
                 latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
-                latent_mu_test[(labels_test == 1) & (manner_test == manner_j)],
+                latent_mu_test[
+                    (labels_test == 1)
+                    & (manner_test == manner_j)
+                    & (dataset_test == "neurovoz")
+                ],
                 kde_albayzin[i],
                 kde_neurovoz_parkinson[j],
                 umapmodel=umapmodel,
             )
-
+            print(
+                "Calculating distance for Albayzin Healthy vs GITA Parkinson for manner classes "
+                + str(manner_i)
+                + " and "
+                + str(manner_j)
+                + "..."
+            )
+            distances_healthy_parkinson_gita[i, j] = calculate_cluster_distance(
+                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
+                latent_mu_test[
+                    (labels_test == 1)
+                    & (manner_test == manner_j)
+                    & (dataset_test == "gita")
+                ],
+                kde_albayzin[i],
+                kde_gita_parkinson[j],
+                umapmodel=umapmodel,
+            )
             print("Caculating distance for Neurovoz Healthy vs Neurovoz Parkinson")
             distances_neuropark_neurosanos[i, j] = calculate_cluster_distance(
-                latent_mu_test[(labels_test == 0) & (manner_test == manner_i)],
-                latent_mu_test[(labels_test == 1) & (manner_test == manner_j)],
+                latent_mu_test[
+                    (labels_test == 0)
+                    & (manner_test == manner_i)
+                    & (dataset_test == "neurovoz")
+                ],
+                latent_mu_test[
+                    (labels_test == 1)
+                    & (manner_test == manner_j)
+                    & (dataset_test == "neurovoz")
+                ],
                 kde_neurovoz_healhty[i],
                 kde_neurovoz_parkinson[j],
                 umapmodel=umapmodel,
             )
-
-    distances = [
-        distances_albayzin,
-        distances_healthy,
-        distances_healthy_parkinson,
-        distances_neuropark_neurosanos,
-    ]
+            print("Caculating distance for GITA Healthy vs GITA Parkinson")
+            distances_gitapark_gitasanos[i, j] = calculate_cluster_distance(
+                latent_mu_test[
+                    (labels_test == 0)
+                    & (manner_test == manner_i)
+                    & (dataset_test == "gita")
+                ],
+                latent_mu_test[
+                    (labels_test == 1)
+                    & (manner_test == manner_j)
+                    & (dataset_test == "gita")
+                ],
+                kde_gita_healhty[i],
+                kde_gita_parkinson[j],
+                umapmodel=umapmodel,
+            )
+            print("Calculating idstance for GITA Healthy vs Neurovoz Healthy")
+            distances_gitasanos_neurosanos[i, j] = calculate_cluster_distance(
+                latent_mu_test[
+                    (labels_test == 0)
+                    & (manner_test == manner_i)
+                    & (dataset_test == "gita")
+                ],
+                latent_mu_test[
+                    (labels_test == 0)
+                    & (manner_test == manner_j)
+                    & (dataset_test == "neurovoz")
+                ],
+                kde_gita_healhty[i],
+                kde_neurovoz_healhty[j],
+                umapmodel=umapmodel,
+            )
+            print("Calculating distance for GITA Parkinson vs Neurovoz Parkinson")
+            distance_gitapark_neuropark[i, j] = calculate_cluster_distance(
+                latent_mu_test[
+                    (labels_test == 1)
+                    & (manner_test == manner_i)
+                    & (dataset_test == "gita")
+                ],
+                latent_mu_test[
+                    (labels_test == 1)
+                    & (manner_test == manner_j)
+                    & (dataset_test == "neurovoz")
+                ],
+                kde_gita_parkinson[i],
+                kde_neurovoz_parkinson[j],
+                umapmodel=umapmodel,
+            )
 
     # Calculate the mean and std of the diagonals
     alb_diag = np.diag(distances_albayzin)
     healthy_diag = np.diag(distances_healthy)
     parkinson_diag = np.diag(distances_healthy_parkinson)
     neuro_diag = np.diag(distances_neuropark_neurosanos)
+    healthy_diag_gita = np.diag(distances_healthy_gita)
+    parkinson_diag_gita = np.diag(distances_healthy_parkinson_gita)
+    gita_diag = np.diag(distances_gitapark_gitasanos)
+    neurogita_healthy_diag = np.diag(distances_gitasanos_neurosanos)
+    neurogita_park_diag = np.diag(distance_gitapark_neuropark)
 
     print("Diagonal distances in train vs train:")
     print("Diagonal: " + str(alb_diag))
     print("Mean: " + str(np.mean(alb_diag)))
     print("Std: " + str(np.std(alb_diag)))
 
-    print("Diagonal distance in train vs healthy test")
+    print("Diagonal distance in train vs healthy test NEUROVOZ")
     print("Diagonal: " + str(healthy_diag))
     print("Mean: " + str(np.mean(healthy_diag)))
     print("Std: " + str(np.std(healthy_diag)))
 
-    print("Diagonal distance in train vs parkinson test")
+    print("Diagonal distance in train vs parkinson test NEUROVOZ")
     print("Diagonal: " + str(parkinson_diag))
     print("Mean: " + str(np.mean(parkinson_diag)))
     print("Std: " + str(np.std(parkinson_diag)))
+
+    print("Diagonal distance in train vs healthy test GITA")
+    print("Diagonal: " + str(healthy_diag_gita))
+    print("Mean: " + str(np.mean(healthy_diag_gita)))
+    print("Std: " + str(np.std(healthy_diag_gita)))
+
+    print("Diagonal distance in train vs parkinson test GITA")
+    print("Diagonal: " + str(parkinson_diag_gita))
+    print("Mean: " + str(np.mean(parkinson_diag_gita)))
+    print("Std: " + str(np.std(parkinson_diag_gita)))
 
     print("Diagonal distance in healthy neurovoz test vs parkinson neurovoz test")
     print("Diagonal: " + str(neuro_diag))
     print("Mean: " + str(np.mean(neuro_diag)))
     print("Std: " + str(np.std(neuro_diag)))
+
+    print("Diagonal distance in healthy gita test vs parkinson gita test")
+    print("Diagonal: " + str(gita_diag))
+    print("Mean: " + str(np.mean(gita_diag)))
+    print("Std: " + str(np.std(gita_diag)))
+
+    print("Diagonal distance in healthy gita test vs healthy neurovoz test")
+    print("Diagonal: " + str(neurogita_healthy_diag))
+    print("Mean: " + str(np.mean(neurogita_healthy_diag)))
+    print("Std: " + str(np.std(neurogita_healthy_diag)))
+
+    print("Diagonal distance in parkinson gita test vs parkinson neurovoz test")
+    print("Diagonal: " + str(neurogita_park_diag))
+    print("Mean: " + str(np.mean(neurogita_park_diag)))
+    print("Std: " + str(np.std(neurogita_park_diag)))
 
     print("Difference between train vs parkinson and train vs healthy")
     print("Diagonal: " + str(parkinson_diag - healthy_diag))
@@ -1561,6 +1498,18 @@ def calculate_distances_manner(
     # Plot the distances as a heatmap using seaborn
     print("Plotting distances...")
     import seaborn as sns
+
+    distances = [
+        distances_albayzin,  # 0
+        distances_healthy,  # 1
+        distances_healthy_parkinson,  # 2
+        distances_neuropark_neurosanos,  # 3
+        distances_healthy_gita,  # 4
+        distances_healthy_parkinson_gita,  # 5
+        distances_gitapark_gitasanos,  # 6
+        distances_gitasanos_neurosanos,  # 7
+        distance_gitapark_neuropark,  # 8
+    ]
 
     for i in range(len(distances)):
         fig, ax = plt.subplots(figsize=(10, 10))
@@ -1578,8 +1527,18 @@ def calculate_distances_manner(
             savename = "js_dist_Albayzin_h_Neurovoz_h"
         elif i == 2:
             savename = "js_dist_Albayzin_h_Neurovoz_pd"
-        else:
+        elif i == 3:
             savename = "js_dist_Neurovoz_h_Neurovoz_pd"
+        elif i == 4:
+            savename = "js_dist_Albayzin_h_Gita_h"
+        elif i == 5:
+            savename = "js_dist_Albayzin_h_Gita_pd"
+        elif i == 6:
+            savename = "js_dist_Gita_h_Gita_pd"
+        elif i == 7:
+            savename = "js_dist_Gita_h_Neurovoz_h"
+        elif i == 8:
+            savename = "js_dist_Gita_pd_Neurovoz_pd"
 
         ax.set_xticklabels(
             [

@@ -169,12 +169,14 @@ def main(args, hyperparams):
     df_train[audio_features] = [t[0] for t in train_loader.dataset]
     df_train["label"] = [t[1] for t in train_loader.dataset]
     df_train["manner"] = [t[2] for t in train_loader.dataset]
+    df_train["dataset"] = [t[3] for t in train_loader.dataset]
 
     # Create an empty pd dataframe with three columns: data, label and manner
     df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
     df_test[audio_features] = [t[0] for t in test_loader.dataset]
     df_test["label"] = [t[1] for t in test_loader.dataset]
     df_test["manner"] = [t[2] for t in test_loader.dataset]
+    df_test["dataset"] = [t[3] for t in test_loader.dataset]
 
     print("Starting to calculate distances...")
     plot_logopeda_alb_neuro(
