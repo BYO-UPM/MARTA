@@ -320,6 +320,140 @@ def plot_logopeda_alb_neuro(
         path_to_plot=path_to_plot,
     )
 
+    # Check the latent space dimension, if its 3D, plot it
+    if latent_mu_train.shape[1] == 3:
+        # Plot the albayzin latent space
+        albayzin_idx = np.argwhere(dataset_train == "albayzin").ravel()
+        albayzin_latent_mu = latent_mu_train[albayzin_idx]
+        albayzin_labels = labels_train[albayzin_idx]
+        albayzin_manner = manner_train[albayzin_idx]
+
+        plot_latent_space3D(
+            albayzin_latent_mu,
+            albayzin_labels,
+            albayzin_manner,
+            1000,
+            path_to_plot,
+            "Albayzin",
+        )
+
+        # Plot the neurovoz latent space
+        neurovoz_idx = np.argwhere(dataset_test == "neurovoz").ravel()
+        neurovoz_latent_mu = latent_mu_test[neurovoz_idx]
+        neurovoz_labels = labels_test[neurovoz_idx]
+        neurovoz_manner = manner_test[neurovoz_idx]
+
+        plot_latent_space3D(
+            neurovoz_latent_mu,
+            neurovoz_labels,
+            neurovoz_manner,
+            1000,
+            path_to_plot,
+            "Neurovoz",
+        )
+
+        # Plot the gita latent space
+        gita_idx = np.argwhere(dataset_test == "gita").ravel()
+        gita_latent_mu = latent_mu_test[gita_idx]
+        gita_labels = labels_test[gita_idx]
+        gita_manner = manner_test[gita_idx]
+
+        plot_latent_space3D(
+            gita_latent_mu, gita_labels, gita_manner, 1000, path_to_plot, "Gita"
+        )
+
+
+def plot_latent_space3D(
+    dataset_latent, dataset_labels, dataset_manner, N, path_to_plot, datasetname
+):
+    """
+    Plots a 3D scatter plot of N random samples from the dataset.
+
+    Parameters:
+    - dataset_latent: 3D matrix with the x, y, z position of the latent space samples
+    - dataset_labels: vector indicating for each point if they are Parkinson or healthy
+    - dataset_manner: vector indicating the manner of articulation for each point
+    - N: number of random samples to select for plotting
+
+    The function will color the points based on the label and manner of articulation.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    # Ensure N is not larger than the dataset size
+    N = min(N, len(dataset_labels))
+
+    # Randomly select N samples
+    indices = np.random.choice(len(dataset_labels), size=N, replace=False)
+    selected_latent = dataset_latent[indices]
+    selected_labels = dataset_labels[indices]
+    selected_manner = dataset_manner[indices]
+
+    # Create a 3D scatter plot
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Define markers and get colormap
+    markers = {1: "s", 0: "o"}
+    manner_name = {
+        0: "Plosives",
+        1: "Plosives voiced",
+        2: "Nasals",
+        3: "Fricatives",
+        4: "Liquids",
+        5: "Vowels",
+    }
+    cmap = plt.get_cmap("Set1")
+    unique_manners = np.unique(dataset_manner)
+
+    # Plot each point with its corresponding color and marker
+    for i in range(N):
+        label = selected_labels[i]
+        manner = selected_manner[i]
+        color = cmap(manner / max(dataset_manner))
+        alpha = 1 if label == 1 else 0.5
+        marker = markers[1] if label == 1 else markers[0]
+
+        ax.scatter(
+            selected_latent[i, 0],
+            selected_latent[i, 1],
+            selected_latent[i, 2],
+            color=color,
+            marker=marker,
+            alpha=alpha,
+        )
+
+    # Create legend for colors (manner of articulation)
+    color_legend = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color=cmap(i / max(unique_manners)),
+            label=manner_name[i],
+            linestyle="",
+        )
+        for i in unique_manners
+    ]
+
+    # Create legend for markers (condition)
+    marker_legend = [
+        Line2D([0], [0], marker="s", color="gray", label="Parkinson", linestyle=""),
+        Line2D([0], [0], marker="o", color="gray", label="Healthy", linestyle=""),
+    ]
+
+    ax.legend(
+        handles=color_legend + marker_legend, bbox_to_anchor=(1.05, 1), loc="best"
+    )
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    plt.title("3D Scatter Plot of Latent Space Samples")
+    plt.savefig(path_to_plot + "/3D_scatter_plot_ " + str(datasetname) + ".png")
+    plt.show()
+
 
 def plot_logopeda(
     model,
@@ -1318,7 +1452,7 @@ def calculate_distances_manner(
                 + str(manner_j)
                 + "..."
             )
-            distances_healthy[i, j] = calculate_cluster_distance(
+            distances_healthy_gita[i, j] = calculate_cluster_distance(
                 latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
                 latent_mu_test[
                     (labels_test == 0)

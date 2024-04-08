@@ -538,8 +538,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 ]
             )
 
-            # Now, get only healthy patietns from GITA and create teh test set
-            test_data = gita_data[gita_data["label"] == 0]
+            # Now, get patietns from GITA and create teh test set
+            test_data = gita_data
 
             f = "second_experiment"
 

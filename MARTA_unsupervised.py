@@ -222,13 +222,13 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         # ================ Experiment parameters ===================
-        "experiment": "first",  # Experiment name, from 1 to 6. It is used to load the correct data.
+        "experiment": "second",  # Experiment name, from 1 to 6. It is used to load the correct data.
         # ================ Classifier parameters ===================
         "cnn_classifier": False,  # Here no classifier is used
         "supervised": False,  # Here no classifier is used
         # ================ Training parameters ===================
-        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
-        "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
+        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "new_data_partition": True,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
     }
 
     main(args, hyperparams)
