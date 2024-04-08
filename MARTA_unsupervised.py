@@ -99,16 +99,16 @@ def main(args, hyperparams):
     else:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/folds/train_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldfirst_experiment.pt"
+            "local_results/folds/train_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldsecond_experiment.pt"
         )
         val_loader = torch.load(
-            "local_results/folds/val_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldfirst_experiment.pt"
+            "local_results/folds/val_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldsecond_experiment.pt"
         )
         test_loader = torch.load(
-            "local_results/folds/test_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldfirst_experiment.pt"
+            "local_results/folds/test_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldsecond_experiment.pt"
         )
         test_data = torch.load(
-            "local_results/folds/test_data_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldfirst_experiment.pt"
+            "local_results/folds/test_data_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldsecond_experiment.pt"
         )
 
     print("Defining models...")
@@ -207,7 +207,7 @@ if __name__ == "__main__":
         "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 128,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
-        "latent_dim": 32,  # Latent dimension of the z vector (remember it is also the input to the classifier)
+        "latent_dim": 3,  # Latent dimension of the z vector (remember it is also the input to the classifier)
         "n_gaussians": 16,  # Number of gaussians in the GMVAE
         "hidden_dims_enc": [
             64,
@@ -228,7 +228,7 @@ if __name__ == "__main__":
         "supervised": False,  # Here no classifier is used
         # ================ Training parameters ===================
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
-        "new_data_partition": True,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
+        "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
     }
 
     main(args, hyperparams)

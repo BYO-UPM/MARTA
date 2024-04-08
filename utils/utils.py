@@ -338,10 +338,10 @@ def plot_logopeda_alb_neuro(
         )
 
         # Plot the neurovoz latent space
-        neurovoz_idx = np.argwhere(dataset_test == "neurovoz").ravel()
-        neurovoz_latent_mu = latent_mu_test[neurovoz_idx]
-        neurovoz_labels = labels_test[neurovoz_idx]
-        neurovoz_manner = manner_test[neurovoz_idx]
+        neurovoz_idx = np.concatenate(np.argwhere(dataset_train == "neurovoz").ravel(), np.argwhere(dataset_test == "neurovoz").ravel())
+        neurovoz_latent_mu = np.concatenate((latent_mu_train[neurovoz_idx], latent_mu_test[neurovoz_idx]), axis=0)
+        neurovoz_labels = np.concatenate((labels_train[neurovoz_idx], labels_test[neurovoz_idx]), axis=0)
+        neurovoz_manner = np.concatenate((manner_train[neurovoz_idx], manner_test[neurovoz_idx]), axis=0)
 
         plot_latent_space3D(
             neurovoz_latent_mu,
@@ -353,10 +353,10 @@ def plot_logopeda_alb_neuro(
         )
 
         # Plot the gita latent space
-        gita_idx = np.argwhere(dataset_test == "gita").ravel()
-        gita_latent_mu = latent_mu_test[gita_idx]
-        gita_labels = labels_test[gita_idx]
-        gita_manner = manner_test[gita_idx]
+        gita_idx = np.concatenate((np.argwhere(dataset_train == "gita").ravel(), np.argwhere(dataset_test == "gita").ravel()))
+        gita_latent_mu = np.concatenate((latent_mu_train[gita_idx], latent_mu_test[gita_idx]), axis=0)
+        gita_labels = np.concatenate((labels_train[gita_idx], labels_test[gita_idx]), axis=0)
+        gita_manner = np.concatenate((manner_train[gita_idx], manner_test[gita_idx]), axis=0)
 
         plot_latent_space3D(
             gita_latent_mu, gita_labels, gita_manner, 1000, path_to_plot, "Gita"
