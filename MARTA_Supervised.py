@@ -92,7 +92,6 @@ def main(args, hyperparams):
         print("Reading data...")
         # Read the data
         dataset = Dataset_AudioFeatures(
-            "labeled/NeuroVoz",
             hyperparams,
         )
         (
@@ -103,8 +102,7 @@ def main(args, hyperparams):
             _,  # val_data, not used
             test_data,
         ) = dataset.get_dataloaders(
-            train_albayzin=hyperparams["train_albayzin"],
-            supervised=hyperparams["supervised"],
+            experiment=hyperparams["experiment"], supervised=hyperparams["supervised"]
         )
     else:
         print("Reading train, val and test loaders from local_results/...")
@@ -170,61 +168,63 @@ def main(args, hyperparams):
     else:
         print("Loading model...")
 
-    # # Restoring best model
-    # name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
-    # tmp = torch.load(name)
-    # model.load_state_dict(tmp["model_state_dict"])
+    # Restoring best model
+    name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
+    tmp = torch.load(name)
+    model.load_state_dict(tmp["model_state_dict"])
 
-    # audio_features = "spectrogram"
-    # print("Testing GMVAE...")
+    audio_features = "spectrogram"
+    print("Testing GMVAE...")
 
-    # # Test the model
-    # MARTA_tester(
-    #     model=model,
-    #     testloader=test_loader,
-    #     test_data=test_data,
-    #     supervised=False,  # Not implemented yet
-    #     wandb_flag=hyperparams["wandb_flag"],
-    #     path_to_plot=hyperparams["path_to_save"],
-    # )
-    # print("Testing finished!")
+    # Test the model
+    MARTA_tester(
+        model=model,
+        testloader=test_loader,
+        test_data=test_data,
+        supervised=False,  # Not implemented yet
+        wandb_flag=hyperparams["wandb_flag"],
+        path_to_plot=hyperparams["path_to_save"],
+    )
+    print("Testing finished!")
 
-    # # Create an empty pd dataframe with three columns: data, label and manner
-    # df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    # df_train[audio_features] = [t[0] for t in train_loader.dataset]
-    # df_train["label"] = [t[1] for t in train_loader.dataset]
-    # df_train["manner"] = [t[2] for t in train_loader.dataset]
+    # Create an empty pd dataframe with three columns: data, label and manner
+    df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
+    df_train[audio_features] = [t[0] for t in train_loader.dataset]
+    df_train["label"] = [t[1] for t in train_loader.dataset]
+    df_train["manner"] = [t[2] for t in train_loader.dataset]
+    df_train["dataset"] = [t[3] for t in train_loader.dataset]
 
-    # # Substract 8 to manner if their corresponidng label is 1
-    # df_train["manner"] = df_train.apply(
-    #     lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
-    # )
+    # Substract 8 to manner if their corresponidng label is 1
+    df_train["manner"] = df_train.apply(
+        lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
+    )
 
-    # # Create an empty pd dataframe with three columns: data, label and manner
-    # df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    # df_test[audio_features] = [t[0] for t in test_loader.dataset]
-    # df_test["label"] = [t[1] for t in test_loader.dataset]
-    # df_test["manner"] = [t[2] for t in test_loader.dataset]
+    # Create an empty pd dataframe with three columns: data, label and manner
+    df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
+    df_test[audio_features] = [t[0] for t in test_loader.dataset]
+    df_test["label"] = [t[1] for t in test_loader.dataset]
+    df_test["manner"] = [t[2] for t in test_loader.dataset]
+    df_test["dataset"] = [t[3] for t in test_loader.dataset]
 
-    # # Substract 8 to manner if their corresponidng label is 1
-    # df_test["manner"] = df_test.apply(
-    #     lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
-    # )
+    # Substract 8 to manner if their corresponidng label is 1
+    df_test["manner"] = df_test.apply(
+        lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
+    )
 
-    # print("Starting to calculate distances...")
-    # plot_logopeda_alb_neuro(
-    #     model,
-    #     df_train,
-    #     df_test,
-    #     hyperparams["wandb_flag"],
-    #     name="test",
-    #     supervised=hyperparams["supervised"],
-    #     samples=5000,
-    #     path_to_plot=hyperparams["path_to_save"],
-    # )
+    print("Starting to calculate distances...")
+    plot_logopeda_alb_neuro(
+        model,
+        df_train,
+        df_test,
+        hyperparams["wandb_flag"],
+        name="test",
+        supervised=hyperparams["supervised"],
+        samples=5000,
+        path_to_plot=hyperparams["path_to_save"],
+    )
 
-    # if hyperparams["wandb_flag"]:
-    #     wandb.finish()
+    if hyperparams["wandb_flag"]:
+        wandb.finish()
 
     sys.stdout = old_stdout
     log_file.close()
@@ -233,7 +233,7 @@ def main(args, hyperparams):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script configuration")
     parser.add_argument(
-        "--fold", type=int, default=1, help="Fold number for the experiment"
+        "--fold", type=int, default=0, help="Fold number for the experiment"
     )
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number to use in the experiment"
@@ -269,6 +269,8 @@ if __name__ == "__main__":
         "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": False,  # It must be False in this script.
         "supervised": True,  # It must be true
+        # ================ Experiment parameters ===================
+        "experiment": "fourth",  # Experiment name
         # ================ Training parameters ===================
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.

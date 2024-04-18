@@ -1011,6 +1011,7 @@ def MARTA_tester(
         # Create x_array of shape Batch x Output shape
         x_array = np.zeros((batch_size, 1, 65, 25))
         manner_array = np.zeros((batch_size, 25))
+        dataset_array = np.zeros((batch_size))
 
         x_hat_array = np.zeros(x_array.shape)
         for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(testloader)):
@@ -1030,6 +1031,7 @@ def MARTA_tester(
                 manner_array = np.concatenate(
                     (manner_array, manner.cpu().detach().numpy())
                 )
+                dataset_array = np.concatenate((dataset_array, np.array(dataset)))
 
                 manner = manner.to(model.device).int()
                 labels = labels.to(model.device).float()
@@ -1073,6 +1075,7 @@ def MARTA_tester(
                     _,  # e_s,
                     _,  # e_hat_s,
                 ) = model(x)
+                dataset_array = np.concatenate((dataset_array, np.array(dataset)))
 
             # Concatenate predictions
             x_hat_array = np.concatenate(
@@ -1089,189 +1092,216 @@ def MARTA_tester(
             x_hat,
             _,
         )
-        from sklearn.metrics import roc_curve, roc_auc_score
 
-        print("Calculating MSE")
         # Remove the first batch_size elements
         x_array = x_array[batch_size:]
         x_hat_array = x_hat_array[batch_size:]
+        dataset_array = dataset_array[batch_size:]
 
-        # Calculate mse between x and x_hat
-        mse = ((x_array - x_hat_array) ** 2).mean(axis=None)
-        # Results for all frames
-        print(f"Reconstruction loss: {mse}")
+        tasks = ["running_speech", "texts", "all"]
 
-        # Plot randomly a test sample and its reconstruction
-        idx = np.random.randint(0, x_array.shape[0])
-        x_sample = x_array[idx].squeeze()
-        x_hat_sample = x_hat_array[idx].squeeze()
-        # plot using imshow
-        fig, axs = plt.subplots(2, 1, figsize=(20, 20))
-        cmap = cm.get_cmap("viridis")
-        axs[0].set_title("Original")
-        axs[0].imshow(x_sample, cmap=cmap)
-        axs[1].set_title("Reconstruction")
-        axs[1].imshow(x_hat_sample, cmap=cmap)
-        plt.savefig(path_to_plot + "/rec_img.png")
-        if wandb_flag:
-            wandb.log({"test/rec_img": fig})
+        print("Calculating MSE")
+        for dataset_i in np.unique(dataset_array):
+            if dataset_i != "neurovoz" and dataset_i != "gita":
+                continue
+            print("==============================================================")
+            print("Calculating results for dataset ", dataset_i)
+            idx = dataset_array == dataset_i
+            x_array_dataset = x_array[idx]
+            x_hat_array_dataset = x_hat_array[idx]
+            test_data_dataset = test_data[test_data["dataset"] == dataset_i]
+            if supervised:
+                y_hat_array_dataset = y_hat_array[idx]
+                y_array_dataset = y_array[idx]
 
-        # Results per patient
-        rec_loss_per_patient = []
-        for i in test_data["id_patient"].unique():
-            idx = test_data["id_patient"] == i
-            rec_loss_per_patient.append(((x_array[idx] - x_hat_array[idx]) ** 2).mean())
+            for task in tasks:
+                print("-----------------------------------------")
+                print("Calculating results for task ", task)
+                if task == "running_speech":
+                    idx = (test_data_dataset["text"] == "Monologo") | (
+                        test_data_dataset["text"] == "ESPONTANEA"
+                    ).astype(bool)
+                elif task == "texts":
+                    idx = (test_data_dataset["text"] != "Monologo") & (
+                        test_data_dataset["text"] != "ESPONTANEA"
+                    ).astype(bool)
+                else:
+                    idx = np.ones(len(test_data_dataset)).astype(bool)
 
+                calculate_classification_metrics(
+                    x_array_dataset[idx],
+                    x_hat_array_dataset[idx],
+                    test_data_dataset[idx],
+                    y_hat_array_dataset[idx],
+                    y_array_dataset[idx],
+                    supervised,
+                    path_to_plot,
+                    dataset_i,
+                    best_threshold,
+                )
+
+
+def calculate_classification_metrics(
+    x_array_dataset,
+    x_hat_array_dataset,
+    test_data_dataset,
+    y_hat_array_dataset,
+    y_array_dataset,
+    supervised,
+    path_to_plot,
+    dataset_i,
+    best_threshold,
+):
+    from sklearn.metrics import roc_curve, roc_auc_score
+
+    # Calculate mse between x and x_hat
+    mse = ((x_array_dataset - x_hat_array_dataset) ** 2).mean(axis=None)
+    # Results for all frames
+    print(f"Reconstruction loss: {mse}")
+
+    # Plot randomly a test sample and its reconstruction
+    idx = np.random.randint(0, x_array_dataset.shape[0])
+    x_sample = x_array_dataset[idx].squeeze()
+    x_hat_sample = x_hat_array_dataset[idx].squeeze()
+    # plot using imshow
+    fig, axs = plt.subplots(2, 1, figsize=(20, 20))
+    cmap = cm.get_cmap("viridis")
+    axs[0].set_title("Original")
+    axs[0].imshow(x_sample, cmap=cmap)
+    axs[1].set_title("Reconstruction")
+    axs[1].imshow(x_hat_sample, cmap=cmap)
+    plt.savefig(path_to_plot + "/rec_img_" + dataset_i + ".png")
+
+    if supervised:
+        # Convert predictions and labels to PyTorch tensors
+        y_hat_tensor = torch.tensor(y_hat_array_dataset, dtype=torch.float)
+        y_tensor = torch.tensor(y_array_dataset, dtype=torch.long)
+
+        print("====== Using 0.5 as threshold ======")
+        print("Results for all frames:")
+        y_pred = np.round(y_hat_array_dataset)
+        print(
+            "Value counts of y_predicted: ",
+            np.unique(y_pred, return_counts=True),
+        )
+        print(
+            "Value counts of y: ",
+            np.unique(y_array_dataset, return_counts=True),
+        )
+        accuracy = accuracy_score(y_array_dataset, y_pred)
+        balanced_accuracy = balanced_accuracy_score(y_array_dataset, y_pred)
+        auc = roc_auc_score(y_array_dataset, y_hat_array_dataset)
+        print(
+            f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
+        )
+        # Consensus methods with logits
+        (
+            mean_log_odds,
+            consensus_true,
+            consensus_pred,
+        ) = soft_output_by_subject_logits(
+            y_hat_tensor, y_tensor, test_data_dataset["id_patient"].to_numpy()
+        )
+
+        # Calculate metrics for consensus predictions
+        accuracy_consensus_logits = accuracy_score(
+            consensus_true.numpy(), consensus_pred.numpy()
+        )
+        balanced_accuracy_consensus_logits = balanced_accuracy_score(
+            consensus_true.numpy(), consensus_pred.numpy()
+        )
+        auc_consensus_logits = roc_auc_score(
+            consensus_true.numpy(), torch.sigmoid(mean_log_odds).numpy()
+        )
+
+        # Print the consensus results
+        print("Consensus results with logits:")
+        print(
+            f"Consensus Accuracy: {accuracy_consensus_logits:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_logits:.2f}, Consensus AUC: {auc_consensus_logits:.2f}"
+        )
+
+        # Implementing consensus method
+        mean_soft_odds, consensus_true, consensus_pred = soft_output_by_subject(
+            y_hat_tensor, y_tensor, test_data_dataset["id_patient"].to_numpy()
+        )
+
+        # Calculate metrics for consensus predictions
+        accuracy_consensus = accuracy_score(
+            consensus_true.numpy(), consensus_pred.numpy()
+        )
+        balanced_accuracy_consensus = balanced_accuracy_score(
+            consensus_true.numpy(), consensus_pred.numpy()
+        )
+
+        auc_consensus = roc_auc_score(consensus_true.numpy(), mean_soft_odds.numpy())
+
+        # Print the consensus results
+        print("Consensus results:")
+        print(
+            f"Consensus Accuracy: {accuracy_consensus:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus:.2f}, Consensus AUC: {auc_consensus:.2f}"
+        )
+
+        print("====== Using best threshold (selected in validation) ======")
+        print("Best threshold: ", best_threshold)
+        y_pred_best_th = np.zeros_like(mean_soft_odds)
+        y_pred_best_th[mean_soft_odds >= best_threshold] = 1
+        accuracy_consensus_best_th = accuracy_score(
+            consensus_true.numpy(), y_pred_best_th
+        )
+        balanced_accuracy_consensus_best_th = balanced_accuracy_score(
+            consensus_true.numpy(), y_pred_best_th
+        )
+        print(
+            f"Consensus Accuracy: {accuracy_consensus_best_th:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_best_th:.2f}, Consensus AUC: {auc_consensus:.2f}"
+        )
+
+        print("====== Using best threshold (selected in test) ======")
+        # Get best threshold via Youden's J statistic
+        fpr, tpr, thresholds = roc_curve(consensus_true.numpy(), mean_soft_odds.numpy())
+        j_scores = tpr - fpr
+        best_threshold = thresholds[np.argmax(j_scores)]
+
+        auc_consensus = roc_auc_score(consensus_true.numpy(), mean_soft_odds.numpy())
+        print("Best threshold: ", best_threshold)
+        y_pred_best_th = np.zeros_like(mean_soft_odds)
+        y_pred_best_th[mean_soft_odds >= best_threshold] = 1
+        accuracy_consensus_best_th = accuracy_score(
+            consensus_true.numpy(), y_pred_best_th
+        )
+        balanced_accuracy_consensus_best_th = balanced_accuracy_score(
+            consensus_true.numpy(), y_pred_best_th
+        )
+        print(
+            f"Consensus Accuracy: {accuracy_consensus_best_th:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_best_th:.2f}, Consensus AUC: {auc_consensus:.2f}"
+        )
+
+        # Calculate results per patient
+        accuracy_per_patient = []
+        balanced_accuracy_per_patient = []
+        for i in test_data_dataset["id_patient"].unique():
+            # Get the predictions for the patient
+            y_patient = y_array_dataset[test_data_dataset.id_patient == i]
+            y_hat_patient = y_hat_array_dataset[test_data_dataset.id_patient == i]
+
+            # Calculate the metrics
+            accuracy_patient = accuracy_score(y_patient, np.round(y_hat_patient))
+            balanced_accuracy_patient = balanced_accuracy_score(
+                y_patient, np.round(y_hat_patient)
+            )
+
+            # Store the results
+            accuracy_per_patient.append(accuracy_patient)
+            balanced_accuracy_per_patient.append(balanced_accuracy_patient)
+
+        # Print the results
         print("Results per patient in mean and std:")
         print(
-            f"Reconstruction loss: {np.mean(rec_loss_per_patient)} +- {np.std(rec_loss_per_patient)}"
+            f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
         )
-        # Calculate results in total
-        if supervised:
-            # Convert predictions and labels to PyTorch tensors
-            y_hat_tensor = torch.tensor(y_hat_array, dtype=torch.float)
-            y_tensor = torch.tensor(y_array, dtype=torch.long)
-
-            print("====== Using 0.5 as threshold ======")
-            print("Results for all frames:")
-            y_pred = np.round(y_hat_array)
-            print(
-                "Value counts of y_predicted: ", np.unique(y_pred, return_counts=True)
-            )
-            print("Value counts of y: ", np.unique(y_array, return_counts=True))
-            accuracy = accuracy_score(y_array, y_pred)
-            balanced_accuracy = balanced_accuracy_score(y_array, y_pred)
-            auc = roc_auc_score(y_array, y_hat_array)
-            print(
-                f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
-            )
-            # Consensus methods with logits
-            (
-                mean_log_odds,
-                consensus_true,
-                consensus_pred,
-            ) = soft_output_by_subject_logits(
-                y_hat_tensor, y_tensor, test_data["id_patient"].to_numpy()
-            )
-
-            # Calculate metrics for consensus predictions
-            accuracy_consensus_logits = accuracy_score(
-                consensus_true.numpy(), consensus_pred.numpy()
-            )
-            balanced_accuracy_consensus_logits = balanced_accuracy_score(
-                consensus_true.numpy(), consensus_pred.numpy()
-            )
-            auc_consensus_logits = roc_auc_score(
-                consensus_true.numpy(), torch.sigmoid(mean_log_odds).numpy()
-            )
-
-            # Print the consensus results
-            print("Consensus results with logits:")
-            print(
-                f"Consensus Accuracy: {accuracy_consensus_logits:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_logits:.2f}, Consensus AUC: {auc_consensus_logits:.2f}"
-            )
-
-            # Implementing consensus method
-            mean_soft_odds, consensus_true, consensus_pred = soft_output_by_subject(
-                y_hat_tensor, y_tensor, test_data["id_patient"].to_numpy()
-            )
-
-            # Calculate metrics for consensus predictions
-            accuracy_consensus = accuracy_score(
-                consensus_true.numpy(), consensus_pred.numpy()
-            )
-            balanced_accuracy_consensus = balanced_accuracy_score(
-                consensus_true.numpy(), consensus_pred.numpy()
-            )
-
-            auc_consensus = roc_auc_score(
-                consensus_true.numpy(), mean_soft_odds.numpy()
-            )
-
-            # Print the consensus results
-            print("Consensus results:")
-            print(
-                f"Consensus Accuracy: {accuracy_consensus:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus:.2f}, Consensus AUC: {auc_consensus:.2f}"
-            )
-
-            print("====== Using best threshold (selected in validation) ======")
-            print("Best threshold: ", best_threshold)
-            y_pred_best_th = np.zeros_like(mean_soft_odds)
-            y_pred_best_th[mean_soft_odds >= best_threshold] = 1
-            accuracy_consensus_best_th = accuracy_score(
-                consensus_true.numpy(), y_pred_best_th
-            )
-            balanced_accuracy_consensus_best_th = balanced_accuracy_score(
-                consensus_true.numpy(), y_pred_best_th
-            )
-            print(
-                f"Consensus Accuracy: {accuracy_consensus_best_th:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_best_th:.2f}, Consensus AUC: {auc_consensus:.2f}"
-            )
-
-            print("====== Using best threshold (selected in test) ======")
-            # Get best threshold via Youden's J statistic
-            fpr, tpr, thresholds = roc_curve(
-                consensus_true.numpy(), mean_soft_odds.numpy()
-            )
-            j_scores = tpr - fpr
-            best_threshold = thresholds[np.argmax(j_scores)]
-
-            auc_consensus = roc_auc_score(
-                consensus_true.numpy(), mean_soft_odds.numpy()
-            )
-            print("Best threshold: ", best_threshold)
-            y_pred_best_th = np.zeros_like(mean_soft_odds)
-            y_pred_best_th[mean_soft_odds >= best_threshold] = 1
-            accuracy_consensus_best_th = accuracy_score(
-                consensus_true.numpy(), y_pred_best_th
-            )
-            balanced_accuracy_consensus_best_th = balanced_accuracy_score(
-                consensus_true.numpy(), y_pred_best_th
-            )
-            print(
-                f"Consensus Accuracy: {accuracy_consensus_best_th:.2f}, Consensus Balanced Accuracy: {balanced_accuracy_consensus_best_th:.2f}, Consensus AUC: {auc_consensus:.2f}"
-            )
-
-            # Calculate results per patient
-            accuracy_per_patient = []
-            balanced_accuracy_per_patient = []
-            for i in test_data["id_patient"].unique():
-                # Get the predictions for the patient
-                y_patient = y_array[test_data.id_patient == i]
-                y_hat_patient = y_hat_array[test_data.id_patient == i]
-
-                # Calculate the metrics
-                accuracy_patient = accuracy_score(y_patient, np.round(y_hat_patient))
-                balanced_accuracy_patient = balanced_accuracy_score(
-                    y_patient, np.round(y_hat_patient)
-                )
-
-                # Store the results
-                accuracy_per_patient.append(accuracy_patient)
-                balanced_accuracy_per_patient.append(balanced_accuracy_patient)
-
-            # Print the results
-            print("Results per patient in mean and std:")
-            print(
-                f"Accuracy: {np.mean(accuracy_per_patient):.2f} +- {np.std(accuracy_per_patient):.2f}, Balanced accuracy: {np.mean(balanced_accuracy_per_patient):.2f} +- {np.std(balanced_accuracy_per_patient):.2f}"
-            )
-
-            if wandb_flag:
-                wandb.log(
-                    {
-                        "test/accuracy": accuracy,
-                        "test/balanced_accuracy": balanced_accuracy,
-                        "test/auc": auc,
-                        "test/accuracy_per_patient": np.mean(accuracy_per_patient),
-                        "test/balanced_accuracy_per_patient": np.mean(
-                            balanced_accuracy_per_patient
-                        ),
-                    }
-                )
 
 
 def threshold_selection(y_true, y_pred_soft, verbose=0):
-    from sklearn.metrics import roc_curve, accuracy_score
+    from sklearn.metrics import roc_curve
 
     # Select best threshold by youden index
     fpr, tpr, thresholds = roc_curve(y_true, y_pred_soft)

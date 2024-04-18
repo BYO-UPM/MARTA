@@ -115,10 +115,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     # if they key contains "AC" then it is the label
                     if "AVPEPUDEAC" in key:
                         labels.append(0)
-                        id_patient.append(int(key[-4:]))
+                        id_patient.append(int("0" + key[-4:]))
                     elif "AVPEPUDEA" in key:
                         labels.append(1)
-                        id_patient.append(int(key[-4:]))
+                        id_patient.append(int("1" + key[-4:]))
                     # in any other case, it should be the name of the "task" performed
                     else:
                         texts.append(key)
@@ -510,554 +510,125 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
             f = "first_experiment"
 
-        elif experiment == "second":
-            # Second experiment is train with all albayzin and neurovoz healthy patients and test with all gita (only healthy patients)
-            # Remove parkinsonian patients
-            neurovoz_healthy_data = neurovoz_data[neurovoz_data["label"] == 0]
-            # Split Neurovoz in train and val based on patients
-            neurovoz_patients = neurovoz_healthy_data["id_patient"].unique()
-            np.random.shuffle(neurovoz_patients)
-
-            # Split in 80% train and 20% val
-            neurovoz_train = neurovoz_patients[: int(len(neurovoz_patients) * 0.8)]
-            neurovoz_val = neurovoz_patients[int(len(neurovoz_patients) * 0.8) :]
-            train_data = pd.concat(
-                [
-                    train_data,
-                    neurovoz_healthy_data[
-                        neurovoz_healthy_data["id_patient"].isin(neurovoz_train)
-                    ],
-                ]
+            self.create_dataloader(
+                train_data,
+                val_data,
+                test_data,
+                f,
             )
-            val_data = pd.concat(
-                [
-                    val_data,
-                    neurovoz_healthy_data[
-                        neurovoz_healthy_data["id_patient"].isin(neurovoz_val)
-                    ],
-                ]
-            )
-
-            # Now, get patietns from GITA and create teh test set
-            test_data = gita_data
-
-            f = "second_experiment"
 
         elif experiment == "fourth":
-            # Same as second but including parkinsonian patients
-            # Split Neurovoz in train and val based on patients
-            neurovoz_patients = neurovoz_data["id_patient"].unique()
-            np.random.shuffle(neurovoz_patients)
+            # Create 10 folds of neurovoz and gita patients
+            healthy_gita_patients = gita_data[gita_data["label"] == 0][
+                "id_patient"
+            ].unique()
+            pd_gita_patients = gita_data[gita_data["label"] == 1]["id_patient"].unique()
+            healthy_neurovoz_patients = neurovoz_data[neurovoz_data["label"] == 0][
+                "id_patient"
+            ].unique()
+            pd_neurovoz_patients = neurovoz_data[neurovoz_data["label"] == 1][
+                "id_patient"
+            ].unique()
+            # Randomly shuffle the patients
+            np.random.shuffle(healthy_gita_patients)
+            np.random.shuffle(pd_gita_patients)
+            np.random.shuffle(healthy_neurovoz_patients)
+            np.random.shuffle(pd_neurovoz_patients)
 
-            # Split in 80% train and 20% val
-            neurovoz_train = neurovoz_patients[: int(len(neurovoz_patients) * 0.8)]
-            neurovoz_val = neurovoz_patients[int(len(neurovoz_patients) * 0.8) :]
-            train_data = pd.concat(
-                [
+            # Split in 10 folds all lists
+            healthy_gita_patients = np.array_split(healthy_gita_patients, 10)
+            pd_gita_patients = np.array_split(pd_gita_patients, 10)
+            healthy_neurovoz_patients = np.array_split(healthy_neurovoz_patients, 10)
+            pd_neurovoz_patients = np.array_split(pd_neurovoz_patients, 10)
+
+            # Create the 10 folds
+            for f in range(10):
+                # Get the test patients (just 1 fold)
+                test_patients = np.concatenate(
+                    [
+                        healthy_gita_patients[f],
+                        pd_gita_patients[f],
+                        healthy_neurovoz_patients[f],
+                        pd_neurovoz_patients[f],
+                    ]
+                )
+                # Get the val patients, the fold just before the test fold (if it is the first fold, then the last fold is the val fold)
+                if f == 0:
+                    val_patients = np.concatenate(
+                        [
+                            healthy_gita_patients[-1],
+                            pd_gita_patients[-1],
+                            healthy_neurovoz_patients[-1],
+                            pd_neurovoz_patients[-1],
+                        ]
+                    )
+                else:
+                    val_patients = np.concatenate(
+                        [
+                            healthy_gita_patients[f - 1],
+                            pd_gita_patients[f - 1],
+                            healthy_neurovoz_patients[f - 1],
+                            pd_neurovoz_patients[f - 1],
+                        ]
+                    )
+
+                # Get the train patients, which are the rest of the patients (not in test not in val)
+                train_patients = np.concatenate(
+                    [
+                        np.concatenate(healthy_gita_patients),
+                        np.concatenate(pd_gita_patients),
+                        np.concatenate(healthy_neurovoz_patients),
+                        np.concatenate(pd_neurovoz_patients),
+                    ]
+                )
+                # Drop now the patients athat already are in test and val
+                train_patients = np.concatenate(
+                    [np.setdiff1d(x, test_patients) for x in train_patients]
+                )
+                train_patients = np.concatenate(
+                    [np.setdiff1d(x, val_patients) for x in train_patients]
+                )
+
+                # Check that train, val and test are all diferent (no patient is repeated)
+                assert len(np.intersect1d(train_patients, val_patients)) == 0
+                assert len(np.intersect1d(train_patients, test_patients)) == 0
+                assert len(np.intersect1d(val_patients, test_patients)) == 0
+
+                # The train data then is all albayzin + the train patients of the other datasets
+                train_data = albayzin_data
+                train_data = pd.concat(
+                    [
+                        train_data,
+                        neurovoz_data[neurovoz_data["id_patient"].isin(train_patients)],
+                        gita_data[gita_data["id_patient"].isin(train_patients)],
+                    ]
+                )
+
+                # The val data is the val patients of the other datasets
+                val_data = pd.concat(
+                    [
+                        neurovoz_data[neurovoz_data["id_patient"].isin(val_patients)],
+                        gita_data[gita_data["id_patient"].isin(val_patients)],
+                    ]
+                )
+
+                # The test data is the test patients of the other datasets
+                test_data = pd.concat(
+                    [
+                        neurovoz_data[neurovoz_data["id_patient"].isin(test_patients)],
+                        gita_data[gita_data["id_patient"].isin(test_patients)],
+                    ]
+                )
+
+                self.create_dataloader(
                     train_data,
-                    neurovoz_data[neurovoz_data["id_patient"].isin(neurovoz_train)],
-                ]
-            )
-            val_data = pd.concat(
-                [
                     val_data,
-                    neurovoz_data[neurovoz_data["id_patient"].isin(neurovoz_val)],
-                ]
-            )
-
-            # Now, get all patients from GITA and create the test set
-            test_data = gita_data
-
-            f = "fourth_experiment"
-
-        elif experiment == "fifth" or experiment == "sixth":
-            raise NotImplementedError("Experiments 5 and 6 are not implemented yet")
-            for f in range(11):
-                print("Splitting train, val and test for fold: ", f)
-                # Set all random seeds to "f"
-                torch.manual_seed(f)
-                np.random.seed(f)
-
-                # =============== Prepare HEALTHY data ===============
-                # Get all data from Albayzin
-                albayzin_data = self.data[self.data["dataset"] == "albayzin"]
-
-                # Get all healthy patients from Neurovoz
-                healthy_patients_neurovoz = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-                ]["id_patient"].unique()
-
-                # Get all healthy patients from GITA
-                healthy_patients_gita = self.data[
-                    (self.data["dataset"] == "gita") & (self.data["label"] == 0)
-                ]["id_patient"].unique()
-
-                # Shuffle all patients
-                np.random.shuffle(healthy_patients_neurovoz)
-                np.random.shuffle(healthy_patients_gita)
-                np.random.shuffle(albayzin_data)
-
-                # Split NeuroVoz and GITA healthy patients in 11 folds
-                healthy_patients_neurovoz_folds = np.array_split(
-                    healthy_patients_neurovoz, 11
-                )
-                healthy_patients_gita_folds = np.array_split(healthy_patients_gita, 11)
-
-                # Get the fold f
-                healthy_patients_neurovoz_test = healthy_patients_neurovoz_folds[f]
-                healthy_patients_gita_test = healthy_patients_gita_folds[f]
-
-                # Get the healthy patients for training
-                healthy_patients_neurovoz_train = np.concatenate(
-                    [healthy_patients_neurovoz_folds[i] for i in range(11) if i != f]
-                )
-                healthy_patients_gita_train = np.concatenate(
-                    [healthy_patients_gita_folds[i] for i in range(11) if i != f]
+                    test_data,
+                    supervised,
+                    f,
                 )
 
-                # =============== Prepare PARKINSONIAN data ===============
-                parkinson_patients_neurovoz = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
-                ]["id_patient"].unique()
-                parkinson_patients_gita = self.data[
-                    (self.data["dataset"] == "gita") & (self.data["label"] == 1)
-                ]["id_patient"].unique()
-
-                # Shuffle all patients
-                np.random.shuffle(parkinson_patients_neurovoz)
-                np.random.shuffle(parkinson_patients_gita)
-
-                # Split NeuroVoz and GITA parkinsonian patients in 11 folds
-                parkinson_patients_neurovoz_folds = np.array_split(
-                    parkinson_patients_neurovoz, 11
-                )
-                parkinson_patients_gita_folds = np.array_split(
-                    parkinson_patients_gita, 11
-                )
-
-                # Get the fold f
-                parkinson_patients_neurovoz_test = parkinson_patients_neurovoz_folds[f]
-                parkinson_patients_gita_test = parkinson_patients_gita_folds[f]
-
-                # Get the parkinsonian patients for training
-                parkinson_patients_neurovoz_train = np.concatenate(
-                    [parkinson_patients_neurovoz_folds[i] for i in range(11) if i != f]
-                )
-                parkinson_patients_gita_train = np.concatenate(
-                    [parkinson_patients_gita_folds[i] for i in range(11) if i != f]
-                )
-
-                # =============== CONSTRUCT THE TRAIN AND TEST SPLITS based on the scenario ===============
-                if (
-                    scenario == "a-ng"
-                ):  # a-ng stands for Albayzin (training) - all Neurovoz (testing) + all GITA (testing)
-
-                    train_data = pd.concat(
-                        [
-                            albayzin_data,
-                        ]
-                    )
-
-                    test_data = pd.concat(
-                        [
-                            self.data[
-                                (self.data["dataset"] == "neurovoz")
-                                & (self.data["label"] == 0)
-                            ],
-                            self.data[
-                                (self.data["dataset"] == "gita")
-                                & (self.data["label"] == 0)
-                            ],
-                        ]
-                    )
-                elif (
-                    scenario == "an-ng"
-                ):  # an-ng stands for Albayzin (training) +  10 folds Neurovoz (training) - one fold Neurovoz (testing) + all GITA (testing)
-                    train_data = pd.concat(
-                        [
-                            albayzin_data,
-                            self.data[
-                                (self.data["dataset"] == "neurovoz")
-                                & (self.data["label"] == 0)
-                                & (
-                                    self.data["id_patient"].isin(
-                                        healthy_patients_neurovoz_train
-                                    )
-                                )
-                            ],
-                        ]
-                    )
-                    test_data = pd.concat(
-                        [
-                            self.data[
-                                (self.data["dataset"] == "neurovoz")
-                                & (self.data["label"] == 0)
-                                & (
-                                    self.data["id_patient"].isin(
-                                        healthy_patients_neurovoz_test
-                                    )
-                                )
-                            ],
-                            self.data[
-                                (self.data["dataset"] == "gita")
-                                & (self.data["label"] == 0)
-                            ],
-                        ]
-                    )
-
-                    # =========================================== TRAIN DATA ===========================================
-                    if supervised:
-                        # Albayzin + 90% of healthy neurovoz + 90% of parkinson neurovoz
-                        train_data = pd.concat(
-                            [
-                                albayzin_data,
-                                neurovoz_healthy_90_data,
-                                neurovoz_parkinson_90_data,
-                            ]
-                        )
-                    else:
-                        # Albayzin + 90% of healthy neurovoz
-                        train_data = pd.concat(
-                            [albayzin_data, neurovoz_healthy_90_data]
-                        )
-
-                    # =========================================== VALIDATION DATA ===========================================
-                    if supervised:
-                        # Get 20% of train data ensuring that: 20% of albayzin PATIENTS + 20% of healthy neurovoz PATIENTS + 20% of parkinson neurovoz PATIENTS
-                        # Get 20% of albayzin
-                        albayzin_patients = albayzin_data["id_patient"].unique()
-                        # Shuffle it
-                        np.random.shuffle(albayzin_patients)
-                        # Select 20% of the patients
-                        albayzin_val = albayzin_data[
-                            albayzin_data["id_patient"].isin(
-                                albayzin_patients[: int(len(albayzin_patients) * 0.2)]
-                            )
-                        ]
-                        # Get 20% of healthy neurovoz
-                        neurovoz_healthy_patients = neurovoz_healthy_90_data[
-                            "id_patient"
-                        ].unique()
-                        # Shuffle it
-                        np.random.shuffle(neurovoz_healthy_patients)
-                        # Select 20% of the patients
-                        neurovoz_healthy_val = neurovoz_healthy_90_data[
-                            neurovoz_healthy_90_data["id_patient"].isin(
-                                neurovoz_healthy_patients[
-                                    : int(len(neurovoz_healthy_patients) * 0.2)
-                                ]
-                            )
-                        ]
-
-                        # Get 20% of parkinson neurovoz
-                        neurovoz_parkinson_patients = neurovoz_parkinson_90_data[
-                            "id_patient"
-                        ].unique()
-                        # Shuffle it
-                        np.random.shuffle(neurovoz_parkinson_patients)
-                        # Select 20% of the patients
-                        neurovoz_parkinson_val = neurovoz_parkinson_90_data[
-                            neurovoz_parkinson_90_data["id_patient"].isin(
-                                neurovoz_parkinson_patients[
-                                    : int(len(neurovoz_parkinson_patients) * 0.2)
-                                ]
-                            )
-                        ]
-
-                        # Concatenate all
-                        val_data = pd.concat(
-                            [
-                                albayzin_val,
-                                neurovoz_healthy_val,
-                                neurovoz_parkinson_val,
-                            ]
-                        )
-                        # Remove from train_data the val_data
-                        train_data = train_data.drop(val_data.index)
-                    else:
-                        # Get 20% of train data ensuring that: 20% of albayzin PATIENTS + 20· of healthy neurovoz PATIENTS
-                        # Get 20% of albayzin
-                        albayzin_patients = albayzin_data["id_patient"].unique()
-                        albayzin_val = albayzin_data[
-                            albayzin_data["id_patient"].isin(
-                                np.random.choice(
-                                    albayzin_patients, int(len(albayzin_patients) * 0.2)
-                                )
-                            )
-                        ]
-                        # Get 20% of healthy neurovoz
-                        neurovoz_healthy_patients = neurovoz_healthy_90_data[
-                            "id_patient"
-                        ].unique()
-                        neurovoz_healthy_val = neurovoz_healthy_90_data[
-                            neurovoz_healthy_90_data["id_patient"].isin(
-                                np.random.choice(
-                                    neurovoz_healthy_patients,
-                                    int(len(neurovoz_healthy_patients) * 0.2),
-                                )
-                            )
-                        ]
-
-                        # Concatenate all
-                        val_data = pd.concat(
-                            [
-                                albayzin_val,
-                                neurovoz_healthy_val,
-                            ]
-                        )
-
-                        # Remove from train_data the val_data
-                        train_data = train_data.drop(val_data.index)
-
-                    # =========================================== TEST DATA ===========================================
-                    # Test data is alway: 10% of healthy neurovoz + 10% of parkinson neurovoz
-                    test_data = pd.concat(
-                        [
-                            neurovoz_healthy_10_data,
-                            neurovoz_parkinson_10_data,
-                        ]
-                    )
-
-                    # =========================================== ASSERTIONS ===========================================
-                    # Get all id patients from train, val and test data
-                    train_patients = train_data["id_patient"].unique()
-                    val_patients = val_data["id_patient"].unique()
-                    test_patients = test_data["id_patient"].unique()
-
-                    # Assert that there are no patients shared between train, val and test
-                    assert (
-                        len(np.intersect1d(train_patients, val_patients)) == 0
-                    ), "There are patients in both train and val data!"
-                    assert (
-                        len(np.intersect1d(train_patients, test_patients)) == 0
-                    ), "There are patients in both train and test data!"
-                    assert (
-                        len(np.intersect1d(val_patients, test_patients)) == 0
-                    ), "There are patients in both val and test data!"
-
-                else:  # If we want to train with only neurovoz healthy patients and not use albayzin for enriching the training data
-                    # Train data will be 0.8 of neurovoz healthy patients
-                    train_data = self.data[
-                        (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-                    ].sample(frac=0.8, random_state=f)
-                    # Get the rest healhty patients not used for training
-                    rest_data = self.data[
-                        (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-                    ].drop(train_data.index)
-                    test_data = self.data[
-                        (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
-                    ]
-                    # Concatenate the rest of healthy patients with the test data
-                    test_data = pd.concat([test_data, rest_data])
-
-                if verbose:
-                    # Print the number of patients in each set
-                    print("Number of patients in train set: ", len(train_patients))
-                    print("Number of patients in val set: ", len(val_patients))
-                    print(
-                        "Number of patients in test set: ",
-                        len(test_data["id_patient"].unique()),
-                    )
-
-                    # Get nº of patients of dataset per set
-                    albayzin_train = len(
-                        train_data[train_data["dataset"] == "albayzin"][
-                            "id_patient"
-                        ].unique()
-                    )
-                    albayzin_val = len(
-                        val_data[val_data["dataset"] == "albayzin"][
-                            "id_patient"
-                        ].unique()
-                    )
-                    albayzin_test = len(
-                        test_data[test_data["dataset"] == "albayzin"][
-                            "id_patient"
-                        ].unique()
-                    )
-
-                    print(
-                        "Number of patients in train set from albayzin: ",
-                        albayzin_train,
-                    )
-                    print("Number of patients in val set from albayzin: ", albayzin_val)
-                    print(
-                        "Number of patients in test set from albayzin: ", albayzin_test
-                    )
-
-                    neurovoz_train = len(
-                        train_data[train_data["dataset"] == "neurovoz"][
-                            "id_patient"
-                        ].unique()
-                    )
-                    neurovoz_val = len(
-                        val_data[val_data["dataset"] == "neurovoz"][
-                            "id_patient"
-                        ].unique()
-                    )
-                    neurovoz_test = len(
-                        test_data[test_data["dataset"] == "neurovoz"][
-                            "id_patient"
-                        ].unique()
-                    )
-
-                    print(
-                        "Number of patients in train set from neurovoz: ",
-                        neurovoz_train,
-                    )
-                    print("Number of patients in val set from neurovoz: ", neurovoz_val)
-                    print(
-                        "Number of patients in test set from neurovoz: ", neurovoz_test
-                    )
-
-                # Create the dataloaders
-                if self.plps:
-                    audio_features = "plps"
-                if self.mfcc:
-                    audio_features = "mfccs"
-                if self.spectrogram:
-                    audio_features = "spectrogram"
-
-                # Make sure that x_train is shape N, Channels, Height, Width (N,C,H,W) where C is 1
-                x_train = np.stack(train_data[audio_features].values)
-                x_train = np.expand_dims(x_train, axis=1)
-                y_train = train_data["label"].values
-                p_train = np.array([np.array(x) for x in train_data["manner_class"]])
-                # Make a new label that is the combination of p and y. That is: p has 7 classes and y has 2 classes. So the new label will have 14 classes
-                z_train = np.array(
-                    [
-                        np.array([np.repeat(x, len(y)), y])
-                        for x, y in zip(y_train, p_train)
-                    ]
-                )
-                n_classes = np.unique(p_train).shape[0]
-                z_train = np.array([np.array(x[1] + n_classes * x[0]) for x in z_train])
-                d_train = np.array([np.array(x) for x in train_data["dataset"]])
-
-                x_val = np.stack(val_data[audio_features].values)
-                x_val = np.expand_dims(x_val, axis=1)
-                y_val = val_data["label"].values
-                p_val = np.array([np.array(x) for x in val_data["manner_class"]])
-                z_val = np.array(
-                    [np.array([np.repeat(x, len(y)), y]) for x, y in zip(y_val, p_val)]
-                )
-                z_val = np.array([np.array(x[1] + n_classes * x[0]) for x in z_val])
-                d_val = np.array([np.array(x) for x in val_data["dataset"]])
-                id_val = np.array([np.array(x) for x in val_data["id_patient"]])
-
-                x_test = np.stack(test_data[audio_features].values)
-                x_test = np.expand_dims(x_test, axis=1)
-                y_test = test_data["label"].values
-                p_test = np.array([np.array(x) for x in test_data["manner_class"]])
-                z_test = np.array(
-                    [
-                        np.array([np.repeat(x, len(y)), y])
-                        for x, y in zip(y_test, p_test)
-                    ]
-                )
-                z_test = np.array([np.array(x[1] + n_classes * x[0]) for x in z_test])
-                d_test = np.array([np.array(x) for x in test_data["dataset"]])
-
-                print("Creating dataloaders...")
-                train_loader = torch.utils.data.DataLoader(
-                    dataset=list(
-                        zip(
-                            x_train,
-                            y_train,
-                            p_train,
-                            d_train,
-                        )
-                    ),
-                    drop_last=False,
-                    batch_size=self.hyperparams["batch_size"],
-                    shuffle=True,
-                )
-                val_loader = torch.utils.data.DataLoader(
-                    dataset=list(
-                        zip(
-                            x_val,
-                            y_val,
-                            p_val,
-                            d_val,
-                            id_val,
-                        )
-                    ),
-                    drop_last=False,
-                    batch_size=self.hyperparams["batch_size"],
-                    shuffle=True,
-                )
-                test_loader = torch.utils.data.DataLoader(
-                    dataset=list(
-                        zip(
-                            x_test,
-                            y_test,
-                            p_test,
-                            d_test,
-                        )
-                    ),
-                    drop_last=False,
-                    batch_size=self.hyperparams["batch_size"],
-                    shuffle=False,
-                )
-
-                # Save the dataloaders to a file
-                train_name = (
-                    "local_results/folds/train_loader_supervised_"
-                    + str(self.hyperparams["supervised"])
-                    + "_frame_size_"
-                    + str(self.hyperparams["frame_size_ms"])
-                    + "spec_winsize_"
-                    + str(self.hyperparams["spectrogram_win_size"])
-                    + "hopsize_"
-                    + str(self.hyperparams["hop_size_percent"])
-                    + "fold"
-                    + str(f)
-                    + ".pt"
-                )
-                val_name = (
-                    "local_results/folds/val_loader_supervised_"
-                    + str(self.hyperparams["supervised"])
-                    + "_frame_size_"
-                    + str(self.hyperparams["frame_size_ms"])
-                    + "spec_winsize_"
-                    + str(self.hyperparams["spectrogram_win_size"])
-                    + "hopsize_"
-                    + str(self.hyperparams["hop_size_percent"])
-                    + "fold"
-                    + str(f)
-                    + ".pt"
-                )
-                test_name = (
-                    "local_results/folds/test_loader_supervised_"
-                    + str(self.hyperparams["supervised"])
-                    + "_frame_size_"
-                    + str(self.hyperparams["frame_size_ms"])
-                    + "spec_winsize_"
-                    + str(self.hyperparams["spectrogram_win_size"])
-                    + "hopsize_"
-                    + str(self.hyperparams["hop_size_percent"])
-                    + "fold"
-                    + str(f)
-                    + ".pt"
-                )
-                test_data_name = (
-                    "local_results/folds/test_data_supervised_"
-                    + str(self.hyperparams["supervised"])
-                    + "_frame_size_"
-                    + str(self.hyperparams["frame_size_ms"])
-                    + "spec_winsize_"
-                    + str(self.hyperparams["spectrogram_win_size"])
-                    + "hopsize_"
-                    + str(self.hyperparams["hop_size_percent"])
-                    + "fold"
-                    + str(f)
-                    + ".pt"
-                )
-
-                torch.save(train_loader, train_name)
-                torch.save(val_loader, val_name)
-                torch.save(test_loader, test_name)
-                torch.save(test_data, test_data_name)
+    def create_dataloader(self, train_data, val_data, test_data, supervised, f=0):
 
         audio_features = "spectrogram"
 

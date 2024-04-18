@@ -56,7 +56,9 @@ def main(args, hyperparams):
         "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
         + str(hyperparams["latent_dim"])
         + "final_model_classifier"
-        + "_LATENTSPACE+manner_MLP_fold"
+        + "_LATENTSPACE+manner_"
+        + str(hyperparams["classifier_type"])
+        + "_fold"
         + str(hyperparams["fold"])
     )
 
@@ -67,19 +69,6 @@ def main(args, hyperparams):
     old_stdout = sys.stdout
     log_file = open(hyperparams["path_to_save"] + "/log.txt", "w")
     sys.stdout = log_file
-
-    if hyperparams["wandb_flag"]:
-        gname = (
-            "SPECTROGRAMS_GMVAE_"
-            + hyperparams["material"]
-            + "_final_model_unsupervised"
-        )
-        wandb.finish()
-        wandb.init(
-            project="parkinson",
-            config=hyperparams,
-            group=gname,
-        )
 
     # First check in local_results/ if there eist any .pt file with the dataloaders
     # If not, create them and save them in local_results/
@@ -290,7 +279,7 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         # ================ Classifier parameters ===================
-        "classifier_type": "mlp",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
+        "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": True,  # If true, train the classifier
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
