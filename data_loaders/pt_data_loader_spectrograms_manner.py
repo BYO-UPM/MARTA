@@ -95,9 +95,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         texts = []
         phonemes = []
 
-        datapath = (
-            "/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/gita_htk_forced_alignment"
-        )
+        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/ "
 
         for root, dirs, files in os.walk(datapath):
             for file in files:

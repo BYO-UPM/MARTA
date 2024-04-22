@@ -106,11 +106,15 @@ def main(args, hyperparams):
 
         # Remove all albayzin samples from train_loader
         if not hyperparams["train_albayzin"]:
-            new_train = [data for data in train_loader.dataset if data[3] == "neurovoz"]
-            new_val = [data for data in val_loader.dataset if data[3] == "neurovoz"]
+            new_train = [data for data in train_loader.dataset if data[3] != "albayzin"]
+            new_val = [data for data in val_loader.dataset if data[3] != "albayzin"]
         else:
             new_train = train_loader.dataset
             new_val = val_loader.dataset
+
+        # Assert that in the dataset there is almost one sample of "gita" and one sample of "neurovoz"
+        assert len([data for data in new_train if data[3] == "gita"]) > 0
+        assert len([data for data in new_train if data[3] == "neurovoz"]) > 0
 
         # Augment the train dataset
         extended_dataset = augment_data(new_train)
@@ -124,12 +128,12 @@ def main(args, hyperparams):
         # Create new dataloaders
         new_train_loader = torch.utils.data.DataLoader(
             balanced_dataset,
-            batch_size=val_loader.batch_size,
+            batch_size=2048,
             sampler=train_sampler,
         )
         val2_loader = torch.utils.data.DataLoader(
             new_val,
-            batch_size=val_loader.batch_size,
+            batch_size=2048,
             sampler=val_sampler,
         )
 

@@ -20,6 +20,8 @@ def augment_data(dataset, validation=False):
 
         spectrogram_to_modify1 = copy.deepcopy(spectrogram)
         spectrogram_to_modify2 = copy.deepcopy(spectrogram)
+        spectrogram_to_modify3 = copy.deepcopy(spectrogram)
+        spectrogram_to_modify4 = copy.deepcopy(spectrogram)
 
         # First augmentation
         augmented_spectrogram_1 = augment_spectrogram(
@@ -32,12 +34,30 @@ def augment_data(dataset, validation=False):
 
         # Second augmentation
         augmented_spectrogram_2 = augment_spectrogram(
-            spectrogram_to_modify2, p=0.8, q=0.8, r=0.2
+            spectrogram_to_modify2, p=0.8, q=0.8, r=0.2, mask_percentage=0.25
         )
         if validation:
             augmented_data.append((augmented_spectrogram_2, label, manner, ds, id))
         else:
             augmented_data.append((augmented_spectrogram_2, label, manner, ds))
+
+        # Third augmentation
+        augmented_spectrogram_3 = augment_spectrogram(
+            spectrogram_to_modify3, p=0.8, q=0.8, r=0.2, mask_percentage=0.35
+        )
+        if validation:
+            augmented_data.append((augmented_spectrogram_3, label, manner, ds, id))
+        else:
+            augmented_data.append((augmented_spectrogram_3, label, manner, ds))
+
+        # Fourth augmentation
+        augmented_spectrogram_4 = augment_spectrogram(
+            spectrogram_to_modify4, p=0.8, q=0.8, r=0.2, mask_percentage=0.45
+        )
+        if validation:
+            augmented_data.append((augmented_spectrogram_4, label, manner, ds, id))
+        else:
+            augmented_data.append((augmented_spectrogram_4, label, manner, ds))
 
     dataset += augmented_data
 
@@ -45,19 +65,17 @@ def augment_data(dataset, validation=False):
 
 
 # Function for frequency-based data augmentation
-def augment_spectrogram(spectrogram, p=0.5, q=0.5, r=0.2):
+def augment_spectrogram(spectrogram, p=0.5, q=0.5, r=0.2, mask_percentage=0.15):
     _, freq_dimension, time_dimension = spectrogram.shape
 
-    # With probability p, mask 15% of frequency bands
+    # With probability p, mask mask_percentage% of frequency bands
     if random.random() < p:
-        mask_percentage = 0.15
         mask_size = int(freq_dimension * mask_percentage)
         mask_start = random.randint(0, freq_dimension - mask_size)
         spectrogram[0, mask_start : mask_start + mask_size, :] = 0
 
-    # With probability q, mask 15% of time windows
+    # With probability q, mask mask_percentage% of time windows
     if random.random() < q:
-        mask_percentage = 0.15
         mask_size = int(time_dimension * mask_percentage)
         mask_start = random.randint(0, time_dimension - mask_size)
         spectrogram[0, :, mask_start : mask_start + mask_size] = 0
