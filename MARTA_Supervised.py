@@ -51,6 +51,7 @@ import pandas as pd
 import sys
 import os
 import argparse
+from utils.utils import make_balanced_sampler, augment_data, stratify_dataset
 
 
 def main(args, hyperparams):
@@ -134,6 +135,27 @@ def main(args, hyperparams):
             + str(hyperparams["fold"])
             + ".pt"
         )
+
+    # Data augmentation
+    extended_train_set = augment_data(
+        train_loader.dataset, validation=False, p=0.8, q=0, r=0.2
+    )
+    # Stratify the dataset
+    balanced_train_set = stratify_dataset(extended_train_set)
+
+    train_sampler = make_balanced_sampler(balanced_train_set)
+    val_sampler = make_balanced_sampler(val_loader.dataset, validation=True)
+
+    train_loader = torch.utils.data.DataLoader(
+        balanced_train_set,
+        batch_size=512,
+        sampler=train_sampler,
+    )
+    val_loader = torch.utils.data.DataLoader(
+        val_loader.dataset,
+        batch_size=512,
+        sampler=val_sampler,
+    )
 
     print("Defining models...")
     # Create the model
