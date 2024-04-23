@@ -100,7 +100,7 @@ def find_minority_class(dataset):
     return minority_class, label_counts
 
 
-def stratify_dataset(dataset):
+def stratify_dataset(dataset, validation=False):
     # Check stratification of labels (they are the second element of the triplet)
     minority_class, label_counts = find_minority_class(dataset)
     majority_class_count = max(label_counts.values())
@@ -114,15 +114,22 @@ def stratify_dataset(dataset):
             for data in minority_class_data:
                 if augmentations_needed <= 0:
                     break
-                spectrogram, label, manner, ds = data
+                if validation:
+                    spectrogram, label, manner, ds, id = data
+                else:
+                    spectrogram, label, manner, ds = data
 
                 spectrogram_to_modify3 = copy.deepcopy(spectrogram)
 
                 augmented_spectrogram = augment_spectrogram(spectrogram_to_modify3)
-
-                additional_augmented_data.append(
-                    (augmented_spectrogram, label, manner, ds)
-                )
+                if validation:
+                    additional_augmented_data.append(
+                        (augmented_spectrogram, label, manner, ds, id)
+                    )
+                else:
+                    additional_augmented_data.append(
+                        (augmented_spectrogram, label, manner, ds)
+                    )
                 augmentations_needed -= 1
 
         # Combine additional augmented data
