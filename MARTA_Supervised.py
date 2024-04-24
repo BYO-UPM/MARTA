@@ -61,7 +61,7 @@ def main(args, hyperparams):
 
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
+            "local_results/spectrograms/results_domain_adversarial/manner_gmvae_alb_neurovoz_"
             + str(hyperparams["latent_dim"])
             + "supervised"
             + "90-10-fold"
@@ -136,18 +136,11 @@ def main(args, hyperparams):
             + ".pt"
         )
 
-    # Data augmentation
-    extended_train_set = augment_data(
-        train_loader.dataset, validation=False, p=0.8, q=0, r=0.2
-    )
-    # Stratify the dataset
-    balanced_train_set = stratify_dataset(extended_train_set)
-
-    train_sampler = make_balanced_sampler(balanced_train_set)
+    train_sampler = make_balanced_sampler(train_loader.dataset, validation=False)
     val_sampler = make_balanced_sampler(val_loader.dataset, validation=True)
 
     train_loader = torch.utils.data.DataLoader(
-        balanced_train_set,
+        train_loader.dataset,
         batch_size=512,
         sampler=train_sampler,
     )
@@ -169,6 +162,7 @@ def main(args, hyperparams):
         weights=hyperparams["weights"],
         device=device,
         reducer="sum",
+        domain_adversarial_bool=True,
     )
 
     if hyperparams["train"]:
@@ -273,7 +267,7 @@ if __name__ == "__main__":
         "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 128,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
-        "latent_dim": 32,  # Latent dimension of the z vector (remember it is also the input to the classifier)
+        "latent_dim": 3,  # Latent dimension of the z vector (remember it is also the input to the classifier)
         "n_gaussians": 16,  # Number of gaussians in the GMVAE
         "hidden_dims_enc": [
             64,

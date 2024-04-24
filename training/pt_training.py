@@ -574,6 +574,7 @@ def MARTA_trainer(
     path_to_save,
     supervised,
     classifier,
+    domain_adversarial=False,
 ):
     # ============================= LR scheduler =============================
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -594,17 +595,25 @@ def MARTA_trainer(
         y_pred_list = []
         label_list = []
 
-        tr_running_loss, tr_rec_loss, tr_gauss_loss, tr_cat_loss, tr_metric_loss = (
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
+        (
+            tr_running_loss,
+            tr_rec_loss,
+            tr_gauss_loss,
+            tr_cat_loss,
+            tr_metric_loss,
+            tr_domain_loss,
+        ) = (0, 0, 0, 0, 0, 0)
 
         for batch_idx, (data, labels, manner, dataset) in enumerate(tqdm(trainloader)):
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
+            # Dataset is "albayzin", "neurovoz" or "gita". Map them to 0, 1 and 2 respectively
+            mapping = {"albayzin": 0, "neurovoz": 1, "gita": 2}
+            dataset = torch.tensor([mapping[dataset[i]] for i in range(len(dataset))])
+            # Repeat each dataset window_size times
+            dataset = (
+                dataset.repeat_interleave(manner.shape[1]).to(model.device).float()
+            )
 
             # ==== Forward pass ====
 
@@ -642,6 +651,7 @@ def MARTA_trainer(
                     z_sample,
                     e_s,
                     e_hat_s,
+                    domain_pred,
                 ) = model(data)
                 # ==== Loss ====
                 (
@@ -650,6 +660,7 @@ def MARTA_trainer(
                     gaussian_loss,
                     categorical_loss,
                     metric_loss,
+                    domain_loss,
                 ) = model.loss(
                     data,
                     manner,
@@ -661,6 +672,8 @@ def MARTA_trainer(
                     pz_var,
                     y,
                     y_logits,
+                    domain_pred,
+                    dataset,
                 )
             # ==== Backward pass ====
             optimizer.zero_grad()
@@ -674,6 +687,7 @@ def MARTA_trainer(
                 tr_gauss_loss += gaussian_loss.item()
                 tr_cat_loss += categorical_loss.item()
                 tr_metric_loss += metric_loss.item()
+                tr_domain_loss += domain_loss.item()
                 usage += torch.sum(y, dim=0).cpu().detach().numpy()
                 gaussian_component.append(y.cpu().detach().numpy())
                 true_manner_list.append(manner)
@@ -690,13 +704,14 @@ def MARTA_trainer(
             acc = cluster_acc(gaussian_component, true_manner)
             nmi_score = nmi(gaussian_component, true_manner)
             print(
-                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} Domain Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                     e,
                     tr_running_loss / len(trainloader.dataset),
                     tr_rec_loss / len(trainloader.dataset),
                     tr_gauss_loss / len(trainloader.dataset),
                     tr_cat_loss / len(trainloader.dataset),
                     tr_metric_loss / len(trainloader.dataset),
+                    tr_domain_loss / len(trainloader.dataset),
                     acc,
                     nmi_score,
                 )
@@ -742,13 +757,14 @@ def MARTA_trainer(
             model.eval()
             with torch.no_grad():
                 usage = np.zeros(model.k)
-                v_running_loss, v_rec_loss, v_gauss_loss, v_cat_loss, v_metric_loss = (
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                )
+                (
+                    v_running_loss,
+                    v_rec_loss,
+                    v_gauss_loss,
+                    v_cat_loss,
+                    v_metric_loss,
+                    v_domain_loss,
+                ) = (0, 0, 0, 0, 0, 0)
                 true_manner_list = []
                 gaussian_component = []
                 label_list = []
@@ -759,6 +775,17 @@ def MARTA_trainer(
                 ):
                     # Make sure dtype is Tensor float
                     data = data.to(model.device).float()
+                    # Dataset is "albayzin", "neurovoz" or "gita". Map them to 0, 1 and 2 respectively
+                    mapping = {"albayzin": 0, "neurovoz": 1, "gita": 2}
+                    dataset = torch.tensor(
+                        [mapping[dataset[i]] for i in range(len(dataset))]
+                    )
+                    # Repeat each dataset window_size times
+                    dataset = (
+                        dataset.repeat_interleave(manner.shape[1])
+                        .to(model.device)
+                        .float()
+                    )
 
                     if classifier:
                         # Remove Albayzin to validate
@@ -803,6 +830,7 @@ def MARTA_trainer(
                             z_sample,
                             e_s,
                             e_hat_s,
+                            domain_pred,
                         ) = model(data)
 
                         # ==== Loss ====
@@ -812,6 +840,7 @@ def MARTA_trainer(
                             gaussian_loss,
                             categorical_loss,
                             metric_loss,
+                            domain_loss,
                         ) = model.loss(
                             data,
                             manner,
@@ -823,6 +852,8 @@ def MARTA_trainer(
                             pz_var,
                             y,
                             y_logits,
+                            domain_pred,
+                            dataset,
                         )
 
                     v_running_loss += complete_loss.item()
@@ -832,6 +863,7 @@ def MARTA_trainer(
                         v_gauss_loss += gaussian_loss.item()
                         v_cat_loss += categorical_loss.item()
                         v_metric_loss += metric_loss.item()
+                        v_domain_loss += domain_loss.item()
                         usage += torch.sum(y, dim=0).cpu().detach().numpy()
 
                         true_manner_list.append(manner)
@@ -862,13 +894,14 @@ def MARTA_trainer(
 
             if not classifier:
                 print(
-                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} Domain Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                         e,
                         v_running_loss / len(validloader.dataset),
                         v_rec_loss / len(validloader.dataset),
                         v_gauss_loss / len(validloader.dataset),
                         v_cat_loss / len(validloader.dataset),
                         v_metric_loss / len(validloader.dataset),
+                        v_domain_loss / len(validloader.dataset),
                         acc,
                         nmi_score,
                     )
@@ -1074,6 +1107,7 @@ def MARTA_tester(
                     _,  # z_sample,
                     _,  # e_s,
                     _,  # e_hat_s,
+                    _,  # domain_pred
                 ) = model(x)
                 dataset_array = np.concatenate((dataset_array, np.array(dataset)))
 
@@ -1128,17 +1162,30 @@ def MARTA_tester(
                 else:
                     idx = np.ones(len(test_data_dataset)).astype(bool)
 
-                calculate_classification_metrics(
-                    x_array_dataset[idx],
-                    x_hat_array_dataset[idx],
-                    test_data_dataset[idx],
-                    y_hat_array_dataset[idx],
-                    y_array_dataset[idx],
-                    supervised,
-                    path_to_plot,
-                    dataset_i,
-                    best_threshold,
-                )
+                if supervised:
+                    calculate_classification_metrics(
+                        x_array_dataset[idx],
+                        x_hat_array_dataset[idx],
+                        test_data_dataset[idx],
+                        y_hat_array_dataset[idx],
+                        y_array_dataset[idx],
+                        supervised,
+                        path_to_plot,
+                        dataset_i,
+                        best_threshold,
+                    )
+                else:
+                    calculate_classification_metrics(
+                        x_array_dataset[idx],
+                        x_hat_array_dataset[idx],
+                        test_data_dataset[idx],
+                        None,
+                        None,
+                        supervised,
+                        path_to_plot,
+                        dataset_i,
+                        best_threshold,
+                    )
 
 
 def calculate_classification_metrics(

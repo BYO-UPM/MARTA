@@ -2,6 +2,7 @@ import torch
 import timm
 from utils.utils import log_normal, KL_cat
 from pytorch_metric_learning import miners, losses, reducers
+from torch.autograd import Function
 
 
 width = 64
@@ -348,6 +349,7 @@ class MARTA(torch.nn.Module):
         classifier="cnn",
         device="cpu",
         reducer="mean",
+        domain_adversarial_bool=False,
     ):
         super().__init__()
         # ============ Device ============
@@ -364,6 +366,8 @@ class MARTA(torch.nn.Module):
         self.classifier_type = classifier
         self.hidden_dims_spectrogram = hidden_dims_spectrogram
         self.hidden_dims_gmvae = hidden_dims_gmvae
+        # ============ Domain adversarial ============
+        self.domain_adversarial_bool = domain_adversarial_bool
 
         # ============ Instantiate the networks ============
         # From Spectrogram (x) to encoded spectrogram (e_s)
@@ -376,13 +380,17 @@ class MARTA(torch.nn.Module):
         self.SpecDecoder()
         # Classifier: from latent space (z) to parkinson prediction (y_pred)
         self.classifier()
+        # Domain adversarial: from latent space (z) to domain prediction (d_pred)
+        self.domain_adversarial()
 
         # ============ Losses ============
         self.reducer = reducer
         # Reconstruction loss
         self.mse_loss = torch.nn.MSELoss(reduction=self.reducer)
-        # BCE loss
+        # BCE loss (classifier)
         self.bce_loss = torch.nn.BCELoss(reduction=self.reducer)
+        # Domain loss (domain adversarial)
+        self.domain_loss = torch.nn.BCELoss(reduction=self.reducer)
 
         # ============ Initialize the networks ============
         self.init_weights()
@@ -520,6 +528,16 @@ class MARTA(torch.nn.Module):
             ),  # Maybe we can use more layers here
         ).to(self.device)
 
+    def domain_adversarial(self):
+        """This function adds a domain adversarial network to the GMVAE.
+        It will receive the latent space representation of each window of the spectrogram (z) and will output the domain prediction (d_pred).
+        """
+        self.domain_given_z = torch.nn.Sequential(
+            torch.nn.Linear(self.z_dim, 256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 3),
+        ).to(self.device)
+
     def classifier(self):
         """This function adds a classifier to the network.
         First, the manner_class (N x 24 x 1) are embedded to a z_dim vector (N x win_size x z_dim).
@@ -609,6 +627,12 @@ class MARTA(torch.nn.Module):
         x_hat = self.spec_dec(e_hat_s)
         return x_hat
 
+    def domain_forward(self, z):
+        """Forward function of the domain adversarial network. It receives the latent space representation of each window of the spectrogram (z) and outputs the domain prediction (d_pred)."""
+        reverse_feature = ReverseLayerF.apply(z)
+        d_pred = self.domain_given_z(reverse_feature)
+        return d_pred
+
     def classifier_forward(self, x, manner):
         """Forward function of the classifier network. It receives the spectrogram (x), the manner class of each phoneme (manner) and the labels (labels).
         It outputs the predictions (y_pred) and the labels (labels)."""
@@ -658,6 +682,7 @@ class MARTA(torch.nn.Module):
         z_sample, y_logits, y, qz_mu, qz_var, pz_mu, pz_var = self.inference_forward(
             e_s
         )
+        domain_pred = self.domain_forward(z_sample)
         e_hat_s = self.generative_forward(z_sample)
         x_hat = self.spec_dec_forward(e_hat_s)
         return (
@@ -672,6 +697,7 @@ class MARTA(torch.nn.Module):
             z_sample,
             e_s,
             e_hat_s,
+            domain_pred,
         )
 
     def metric_loss(self, z_mu, manner_classes):
@@ -688,29 +714,7 @@ class MARTA(torch.nn.Module):
             reducer=reducer
         ).to(self.device)
 
-        # Silences and affricates should be not used to compute the metric loss
         manner_classes = manner_classes.reshape(-1)
-        # idx = np.where((manner_classes != 6) & (manner_classes != 7))[
-        #     0
-        # ]  # 6: affricates, 7: silences
-        # z_mu = z_mu[idx]
-        # manner_classes = manner_classes[idx]
-
-        # Oversample labels and x_hat to have the same number of samples
-        # unique_labels, count_labels = np.unique(manner_classes, return_counts=True)
-        # max_count = np.max(count_labels)
-
-        # # Generate indices for oversampling
-        # idx_sampled = np.concatenate(
-        #     [
-        #         np.random.choice(np.where(manner_classes == label)[0], max_count)
-        #         for label in unique_labels
-        #     ]
-        # )
-
-        # # Apply oversampling
-        # manner_classes = manner_classes[idx_sampled]
-        # z_mu = z_mu[idx_sampled]
 
         # Miner
         hard_pairs = self.miner(z_mu, manner_classes)
@@ -732,6 +736,8 @@ class MARTA(torch.nn.Module):
         pz_var,
         y,
         y_logits,
+        domain_pred,
+        domain,
     ):
         # Reconstruction loss
         recon_loss = self.mse_loss(x_hat, x)
@@ -753,6 +759,9 @@ class MARTA(torch.nn.Module):
         # Metric loss
         metric_loss = self.metric_loss(qz_mu, manner_classes)
 
+        # Domain adversarial loss
+        domain_loss = self.domain_adversarial_loss(domain_pred, domain)
+
         # Total loss is the weighted sum of the four losses
         complete_loss = (
             self.w[0] * recon_loss
@@ -760,8 +769,17 @@ class MARTA(torch.nn.Module):
             + self.w[2] * categorical_loss
             + self.w[3] * metric_loss
         )
+        if self.domain_adversarial_bool:
+            complete_loss += domain_loss
 
-        return complete_loss, recon_loss, gaussian_loss, categorical_loss, metric_loss
+        return (
+            complete_loss,
+            recon_loss,
+            gaussian_loss,
+            categorical_loss,
+            metric_loss,
+            domain_loss,
+        )
 
     def classifier_loss(self, y_pred, labels):
         """This function computes the loss of the classifier. It receives the predictions (y_pred) and the labels (labels)."""
@@ -771,18 +789,21 @@ class MARTA(torch.nn.Module):
         if len(labels.shape) == 1:
             labels = labels.unsqueeze(1)
 
-        n_samples = len(labels)
-        n_pos = labels.sum()
-        if n_pos == 0:
-            n_pos += 1
-        n_neg = n_samples - n_pos
-        weight_pos = n_neg / n_pos
-
         # Create a weighted BCEWithLogitsLoss
         criterion = torch.nn.BCEWithLogitsLoss()
         # BCE loss
         loss = criterion(y_pred, labels)
+
         return loss, 0, 0, 0, 0
+
+    def domain_adversarial_loss(self, domain_pred, domain):
+        # Categorical cross entropy loss
+        criterion = torch.nn.CrossEntropyLoss()
+        # BCE loss
+        loss = criterion(domain_pred, domain.squeeze().long())
+        if loss < 0:
+            print("Negative loss")
+        return loss
 
     def directly_classifier_loss(self, z_sample, manner_classes):
         z_sample = z_sample.reshape(
@@ -910,6 +931,21 @@ class GumbelSoftmax(torch.nn.Module):
         prob = torch.nn.functional.softmax(logits, dim=-1)
         y = self.gumbel_softmax(logits, temperature, hard)
         return logits, prob, y
+
+
+class ReverseLayerF(Function):
+
+    @staticmethod
+    def forward(ctx, x, alpha=1):
+        ctx.alpha = alpha
+
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        output = grad_output.neg() * ctx.alpha
+
+        return output, None
 
 
 # ========================================= END of util for MARTA =========================================
