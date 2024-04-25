@@ -331,25 +331,35 @@ def plot_logopeda_alb_neuro(
 
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ==========================================
 
-    print("Calculating jensen shannon")
-    print("Calculating distances in a space of dimensions: ", lm_test_original.shape[1])
-    calculate_distances_manner(
-        model,
-        lm_train_original,
-        lm_test_original,
-        manner_train,
-        manner_test,
-        labels_train,
-        labels_test,
-        dataset_train,
-        dataset_test,
-        None,
-        wandb_flag,
-        path_to_plot=path_to_plot,
-    )
+    # print("Calculating jensen shannon")
+    # print("Calculating distances in a space of dimensions: ", lm_test_original.shape[1])
+    # calculate_distances_manner(
+    #     model,
+    #     lm_train_original,
+    #     lm_test_original,
+    #     manner_train,
+    #     manner_test,
+    #     labels_train,
+    #     labels_test,
+    #     dataset_train,
+    #     dataset_test,
+    #     None,
+    #     wandb_flag,
+    #     path_to_plot=path_to_plot,
+    # )
 
     # Check the latent space dimension, if its 3D, plot it
     if latent_mu_train.shape[1] == 3:
+        # Plot all datasets at the same time
+        plot_versus_space3D(
+            latent_mu_train,
+            labels_train,
+            manner_train,
+            dataset_train,
+            2000,
+            path_to_plot,
+        )
+
         # Plot the albayzin latent space
         albayzin_idx = np.argwhere(dataset_train == "albayzin").ravel()
         albayzin_latent_mu = latent_mu_train[albayzin_idx]
@@ -366,18 +376,18 @@ def plot_logopeda_alb_neuro(
         )
 
         # Plot the neurovoz latent space
-        neurovoz_idx = np.concatenate(
-            np.argwhere(dataset_train == "neurovoz").ravel(),
-            np.argwhere(dataset_test == "neurovoz").ravel(),
-        )
+        neurovoz_idx_train = np.argwhere(dataset_train == "neurovoz").ravel()
+        neurovoz_idx_test = np.argwhere(dataset_test == "neurovoz").ravel()
+
         neurovoz_latent_mu = np.concatenate(
-            (latent_mu_train[neurovoz_idx], latent_mu_test[neurovoz_idx]), axis=0
+            (latent_mu_train[neurovoz_idx_train], latent_mu_test[neurovoz_idx_test]),
+            axis=0,
         )
         neurovoz_labels = np.concatenate(
-            (labels_train[neurovoz_idx], labels_test[neurovoz_idx]), axis=0
+            (labels_train[neurovoz_idx_train], labels_test[neurovoz_idx_test]), axis=0
         )
         neurovoz_manner = np.concatenate(
-            (manner_train[neurovoz_idx], manner_test[neurovoz_idx]), axis=0
+            (manner_train[neurovoz_idx_train], manner_test[neurovoz_idx_test]), axis=0
         )
 
         plot_latent_space3D(
@@ -390,25 +400,108 @@ def plot_logopeda_alb_neuro(
         )
 
         # Plot the gita latent space
-        gita_idx = np.concatenate(
-            (
-                np.argwhere(dataset_train == "gita").ravel(),
-                np.argwhere(dataset_test == "gita").ravel(),
-            )
-        )
+        gita_idx_train = np.argwhere(dataset_train == "gita").ravel()
+        gita_idx_test = np.argwhere(dataset_test == "gita").ravel()
+
         gita_latent_mu = np.concatenate(
-            (latent_mu_train[gita_idx], latent_mu_test[gita_idx]), axis=0
+            (latent_mu_train[gita_idx_train], latent_mu_test[gita_idx_test]), axis=0
         )
         gita_labels = np.concatenate(
-            (labels_train[gita_idx], labels_test[gita_idx]), axis=0
+            (labels_train[gita_idx_train], labels_test[gita_idx_test]), axis=0
         )
         gita_manner = np.concatenate(
-            (manner_train[gita_idx], manner_test[gita_idx]), axis=0
+            (manner_train[gita_idx_train], manner_test[gita_idx_test]), axis=0
         )
 
         plot_latent_space3D(
             gita_latent_mu, gita_labels, gita_manner, 1000, path_to_plot, "Gita"
         )
+
+
+def plot_versus_space3D(latent, labels, manner, dataset, N, path_to_plot):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    # Ensure N is not larger than the dataset size
+    N = min(N, len(labels))
+
+    # Randomly select N samples
+    indices = np.random.choice(len(labels), size=N, replace=False)
+    selected_latent = latent[indices]
+    selected_labels = labels[indices]
+    selected_manner = manner[indices]
+    selected_dataset = dataset[indices]
+
+    # Categorize dataset (albayzin = 0, neurovoz = 1, gita = 2)
+    dataset = np.zeros(len(selected_dataset))
+    dataset[selected_dataset == "neurovoz"] = 1
+    dataset[selected_dataset == "gita"] = 2
+
+    # Create a 3D scatter plot
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Define markers and get colormap
+    markers = {2: "*", 1: "s", 0: "o"}
+    manner_name = {
+        0: "Plosives",
+        1: "Plosives voiced",
+        2: "Nasals",
+        3: "Fricatives",
+        4: "Liquids",
+        5: "Vowels",
+    }
+    cmap = plt.get_cmap("Set1")
+    unique_manners = np.unique(manner)
+
+    # Plot each point with its corresponding color and marker
+    for i in range(N):
+        label = selected_labels[i]
+        m = selected_manner[i]
+        color = cmap(m / max(manner))
+        # Select also marker depending on dataset
+        marker = markers[dataset[i]]
+
+        ax.scatter(
+            selected_latent[i, 0],
+            selected_latent[i, 1],
+            selected_latent[i, 2],
+            color=color,
+            marker=marker,
+            alpha=1,
+        )
+
+    # Create legend for colors (manner of articulation)
+    color_legend = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color=cmap(i / max(unique_manners)),
+            label=manner_name[i],
+            linestyle="",
+        )
+        for i in unique_manners
+    ]
+
+    # Create legend for markers (condition)
+    marker_legend = [
+        Line2D([0], [0], marker="*", color="gray", label="Gita", linestyle=""),
+        Line2D([0], [0], marker="s", color="gray", label="Neurovoz", linestyle=""),
+        Line2D([0], [0], marker="o", color="gray", label="Albayzin", linestyle=""),
+    ]
+
+    ax.legend(
+        handles=color_legend + marker_legend, bbox_to_anchor=(1.05, 1), loc="best"
+    )
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    plt.title("3D Scatter Plot of Latent Space Samples")
+    plt.savefig(path_to_plot + "/3D_scatter_plot_by_dataset.png")
+    plt.show()
 
 
 def plot_latent_space3D(

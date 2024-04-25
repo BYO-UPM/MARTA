@@ -594,6 +594,8 @@ def MARTA_trainer(
         gaussian_component = []
         y_pred_list = []
         label_list = []
+        domain_list = []
+        domain_pred_list = []
 
         (
             tr_running_loss,
@@ -691,6 +693,9 @@ def MARTA_trainer(
                 usage += torch.sum(y, dim=0).cpu().detach().numpy()
                 gaussian_component.append(y.cpu().detach().numpy())
                 true_manner_list.append(manner)
+                domain_list.append(dataset.cpu().detach().numpy())
+                domain_pred = torch.argmax(domain_pred, dim=1)
+                domain_pred_list.append(domain_pred.cpu().detach().numpy())
 
         # Scheduler step
         scheduler.step()
@@ -703,8 +708,11 @@ def MARTA_trainer(
             gaussian_component = torch.tensor(np.concatenate(gaussian_component))
             acc = cluster_acc(gaussian_component, true_manner)
             nmi_score = nmi(gaussian_component, true_manner)
+            domain_acc = accuracy_score(
+                np.concatenate(domain_list), np.concatenate(domain_pred_list)
+            )
             print(
-                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} Domain Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                "Epoch: {} Train Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss: {:.4f} Metric Loss: {:.4f} Domain Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f} Domain acc {:.4f} ".format(
                     e,
                     tr_running_loss / len(trainloader.dataset),
                     tr_rec_loss / len(trainloader.dataset),
@@ -714,6 +722,7 @@ def MARTA_trainer(
                     tr_domain_loss / len(trainloader.dataset),
                     acc,
                     nmi_score,
+                    domain_acc,
                 )
             )
         else:

@@ -770,7 +770,7 @@ class MARTA(torch.nn.Module):
             + self.w[3] * metric_loss
         )
         if self.domain_adversarial_bool:
-            complete_loss += domain_loss
+            complete_loss += 100 * domain_loss
 
         return (
             complete_loss,
