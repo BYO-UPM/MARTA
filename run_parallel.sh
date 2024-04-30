@@ -2,14 +2,12 @@
 for FOLD in `seq 0 10`; do
     # Assign GPU 0 for even folds and GPU 1 for odd folds
     GPU_ID=$((FOLD % 2))
-    MASKED=5
 
-    ./run_fold.sh $FOLD $GPU_ID &
+    python MARTA_Supervised.py --fold $FOLD --gpu $GPU --latent_dim 3 --domain_adversarial 1 &
+    python MARTA_Supervised.py --fold $FOLD --gpu $GPU --latent_dim 3 --domain_adversarial 0
 
-    # Wait after launching two processes on the same GPU
-    if [ $((FOLD % 4)) -eq 1 ] || [ $((FOLD % 4)) -eq 2 ]; then
-        wait
-    fi
+    # Wait until both processed have finished
+    wait 
 done
 
 # Wait for the last set of processes to finish

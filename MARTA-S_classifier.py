@@ -53,11 +53,11 @@ def main(args, hyperparams):
     print("Device being used:", device)
 
     hyperparams["path_to_save"] = (
-        "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
+        "local_results/spectrograms/classifier_"
         + str(hyperparams["latent_dim"])
-        + "final_model_classifier"
-        + "_LATENTSPACE+manner_"
-        + str(hyperparams["classifier_type"])
+        + "latent_dim_"
+        + str(hyperparams["domain_adversarial"])
+        + "domain_adversarial_"
         + "_fold"
         + str(hyperparams["fold"])
     )
@@ -173,7 +173,13 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
+            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
+            + "latentdim"
+            + str(hyperparams["latent_dim"])
+            + "_domainadversarial_"
+            + str(hyperparams["domain_adversarial"])
+            + "supervised"
+            + "90-10-fold"
             + str(hyperparams["fold"])
             + "/GMVAE_cnn_best_model_2d.pt"
         )
@@ -250,10 +256,16 @@ def main(args, hyperparams):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script configuration")
     parser.add_argument(
-        "--fold", type=int, default=1, help="Fold number for the experiment"
+        "--fold", type=int, default=0, help="Fold number for the experiment"
     )
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number for the experiment"
+    )
+    parser.add_argument(
+        "--latent_dim", type=int, default=32, help="Latent dimension of the model"
+    )
+    parser.add_argument(
+        "--domain_adversarial", type=bool, default=True, help="Use domain adversarial"
     )
 
     args = parser.parse_args()
@@ -268,7 +280,7 @@ if __name__ == "__main__":
         "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 128,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
-        "latent_dim": 32,  # Latent dimension of the z vector (remember it is also the input to the classifier)
+        "latent_dim": args.latent_dim,  # Latent dimension of the z vector (remember it is also the input to the classifier)
         "n_gaussians": 16,  # Number of gaussians in the GMVAE
         "hidden_dims_enc": [
             64,
@@ -282,6 +294,7 @@ if __name__ == "__main__":
             1,  # w3 is categorical kl loss,
             10,  # w5 is metric loss
         ],
+        "domain_adversarial": args.domain_adversarial,  # If true, use domain adversarial model
         # ================ Classifier parameters ===================
         "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": True,  # If true, train the classifier

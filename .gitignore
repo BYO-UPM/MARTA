@@ -10,6 +10,8 @@ old/
 
 .vscode/
 
+telegram_bot.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

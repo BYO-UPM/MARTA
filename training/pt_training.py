@@ -778,6 +778,8 @@ def MARTA_trainer(
                 gaussian_component = []
                 label_list = []
                 y_pred_list = []
+                domain_list = []
+                domain_pred_list = []
 
                 for batch_idx, (data, labels, manner, dataset, id) in enumerate(
                     tqdm(validloader)
@@ -865,6 +867,7 @@ def MARTA_trainer(
                             dataset,
                         )
 
+                    # ==== Update metrics ====
                     v_running_loss += complete_loss.item()
 
                     if not classifier:
@@ -873,10 +876,14 @@ def MARTA_trainer(
                         v_cat_loss += categorical_loss.item()
                         v_metric_loss += metric_loss.item()
                         v_domain_loss += domain_loss.item()
+
                         usage += torch.sum(y, dim=0).cpu().detach().numpy()
 
                         true_manner_list.append(manner)
                         gaussian_component.append(y.cpu().detach().numpy())
+                        domain_list.append(dataset.cpu().detach().numpy())
+                        domain_pred = torch.argmax(domain_pred, dim=1)
+                        domain_pred_list.append(domain_pred.cpu().detach().numpy())
 
                 # Check reconstruction of X
                 if not classifier:
@@ -888,6 +895,9 @@ def MARTA_trainer(
                     )
                     acc = cluster_acc(gaussian_component, true_manner)
                     nmi_score = nmi(gaussian_component, true_manner)
+                    domain_acc = accuracy_score(
+                        np.concatenate(domain_list), np.concatenate(domain_pred_list)
+                    )
                 else:
                     best_th_youden, best_th_eer, auc = threshold_selection(
                         label_list, y_pred_list, verbose=1
@@ -903,7 +913,7 @@ def MARTA_trainer(
 
             if not classifier:
                 print(
-                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} Domain Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
+                    "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} Domain Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f} Domain Acc {:.4f}".format(
                         e,
                         v_running_loss / len(validloader.dataset),
                         v_rec_loss / len(validloader.dataset),
@@ -913,6 +923,7 @@ def MARTA_trainer(
                         v_domain_loss / len(validloader.dataset),
                         acc,
                         nmi_score,
+                        domain_acc,
                     )
                 )
                 print(len(validloader.dataset))
@@ -1100,6 +1111,7 @@ def MARTA_tester(
                     _,  # z_sample,
                     _,  # e_s,
                     _,  # e_hat_s,
+                    _,  # domain_pred
                 ) = model(x)
 
             else:

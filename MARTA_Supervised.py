@@ -61,8 +61,11 @@ def main(args, hyperparams):
 
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
-            "local_results/spectrograms/results_domain_adversarial/manner_gmvae_alb_neurovoz_"
+            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
+            + "latentdim"
             + str(hyperparams["latent_dim"])
+            + "_domainadversarial_"
+            + str(hyperparams["domain_adversarial"])
             + "supervised"
             + "90-10-fold"
             + str(hyperparams["fold"])
@@ -162,7 +165,7 @@ def main(args, hyperparams):
         weights=hyperparams["weights"],
         device=device,
         reducer="sum",
-        domain_adversarial_bool=True,
+        domain_adversarial_bool=hyperparams["domain_adversarial"],
     )
 
     if hyperparams["train"]:
@@ -254,6 +257,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number to use in the experiment"
     )
+    parser.add_argument(
+        "--latent_dim", type=int, default=32, help="Latent dimension of the model"
+    )
+    parser.add_argument(
+        "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
+    )
 
     args = parser.parse_args()
 
@@ -267,7 +276,7 @@ if __name__ == "__main__":
         "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 128,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
-        "latent_dim": 3,  # Latent dimension of the z vector (remember it is also the input to the classifier)
+        "latent_dim": args.latent_dim,  # Latent dimension of the z vector (remember it is also the input to the classifier)
         "n_gaussians": 16,  # Number of gaussians in the GMVAE
         "hidden_dims_enc": [
             64,
@@ -281,6 +290,7 @@ if __name__ == "__main__":
             1,  # w3 is categorical kl loss,
             10,  # w5 is metric loss
         ],
+        "domain_adversarial": args.domain_adversarial,  # If true, use domain adversarial
         # ================ Classifier parameters ===================
         "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": False,  # It must be False in this script.
@@ -288,7 +298,7 @@ if __name__ == "__main__":
         # ================ Experiment parameters ===================
         "experiment": "fourth",  # Experiment name
         # ================ Training parameters ===================
-        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
