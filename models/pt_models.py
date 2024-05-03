@@ -548,11 +548,11 @@ class MARTA(torch.nn.Module):
         self.hmc = torch.nn.Embedding(self.manner, self.z_dim)
 
         self.clf_cnn = torch.nn.Sequential(
-            # 2DConv with kernel_size = (3, 32), stride=2, padding=1
+            # 2DConv with kernel_size = (3, z_dim), stride=2, padding=1
             torch.nn.Conv2d(
                 1,
                 self.class_dims[0],
-                kernel_size=[3, 32],
+                kernel_size=[3, self.z_dim],
                 stride=[2, 1],
             ),
             torch.nn.ReLU(),
