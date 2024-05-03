@@ -265,7 +265,7 @@ if __name__ == "__main__":
         "--latent_dim", type=int, default=32, help="Latent dimension of the model"
     )
     parser.add_argument(
-        "--domain_adversarial", type=bool, default=True, help="Use domain adversarial"
+        "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
     )
 
     args = parser.parse_args()
