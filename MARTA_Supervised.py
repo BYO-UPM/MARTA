@@ -61,8 +61,9 @@ def main(args, hyperparams):
 
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
-            + "latentdim"
+            "local_results/spectrograms/cross_lingual_"
+            + hyperparams["crosslingual"]
+            + "_latentdim_"
             + str(hyperparams["latent_dim"])
             + "_domainadversarial_"
             + str(hyperparams["domain_adversarial"])
@@ -139,18 +140,71 @@ def main(args, hyperparams):
             + ".pt"
         )
 
-    train_sampler = make_balanced_sampler(train_loader.dataset, validation=False)
-    val_sampler = make_balanced_sampler(val_loader.dataset, validation=True)
+    # Get all gita data
+    gita_data_test = [data for data in test_loader.dataset if data[3] == "gita"]
+    gita_data_val = [data for data in val_loader.dataset if data[3] == "gita"]
+    gita_data_train = [data for data in train_loader.dataset if data[3] == "gita"]
+
+    # Get all neurovoz data
+    neurovoz_data_test = [data for data in test_loader.dataset if data[3] == "neurovoz"]
+    neurovoz_data_val = [data for data in val_loader.dataset if data[3] == "neurovoz"]
+    neurovoz_data_train = [
+        data for data in train_loader.dataset if data[3] == "neurovoz"
+    ]
+
+    # Get all albayzin data
+    albayzin_data_test = [data for data in test_loader.dataset if data[3] == "albayzin"]
+    albayzin_data_val = [data for data in val_loader.dataset if data[3] == "albayzin"]
+    albayzin_data_train = [
+        data for data in train_loader.dataset if data[3] == "albayzin"
+    ]
+
+    if hyperparams["crosslingual"] == "nv_gita":
+        # Train data is neurovoz + albayzin
+        new_train = (
+            neurovoz_data_train
+            + albayzin_data_train
+            + neurovoz_data_test
+            + albayzin_data_test
+        )
+        new_val = neurovoz_data_val + albayzin_data_val
+        # Test is all gita
+        new_test = gita_data_test + gita_data_train
+        print("Crosslingual scenario: neurovoz + albayzin -> gita")
+
+    elif hyperparams["crosslingual"] == "gita_nv":
+        # Train data is gita + albayzin
+        new_train = (
+            gita_data_train + gita_data_test + albayzin_data_train + albayzin_data_test
+        )
+        new_val = gita_data_val + albayzin_data_val
+        # Test is all neurovoz
+        new_test = neurovoz_data_test + neurovoz_data_train
+        print("Crosslingual scenario: gita + albayzin -> neurovoz")
+    else:
+        # All stays the same
+        new_train = train_loader.dataset
+        new_val = val_loader.dataset
+        new_test = test_loader.dataset
+        print("Multilingual scenario:")
+
+    train_sampler = make_balanced_sampler(new_train, validation=False)
+    val_sampler = make_balanced_sampler(new_val, validation=True)
 
     train_loader = torch.utils.data.DataLoader(
-        train_loader.dataset,
+        new_train,
         batch_size=512,
         sampler=train_sampler,
     )
     val_loader = torch.utils.data.DataLoader(
-        val_loader.dataset,
+        new_val,
         batch_size=512,
         sampler=val_sampler,
+    )
+    test_loader = torch.utils.data.DataLoader(
+        new_test,
+        batch_size=512,
+        shuffle=False,
     )
 
     print("Defining models...")
@@ -263,6 +317,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
     )
+    parser.add_argument(
+        "--cross_lingual", type=str, default="none", help="crosslingual scenario"
+    )
 
     args = parser.parse_args()
 
@@ -291,6 +348,7 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         "domain_adversarial": args.domain_adversarial,  # If true, use domain adversarial
+        "crosslingual": args.cross_lingual,  # Crosslingual scenario
         # ================ Classifier parameters ===================
         "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": False,  # It must be False in this script.
@@ -298,7 +356,7 @@ if __name__ == "__main__":
         # ================ Experiment parameters ===================
         "experiment": "fourth",  # Experiment name
         # ================ Training parameters ===================
-        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh

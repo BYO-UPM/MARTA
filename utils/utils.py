@@ -1450,8 +1450,9 @@ def calculate_distances_manner(
     print("Calculating distances...")
 
     def calculate_kde(data):
-        # if data.shape[0] < 2 * data.shape[1]:
-        #     return None
+        # If data is empty return None
+        if len(data) == 0:
+            return None
         kde = KernelDensity(kernel="gaussian", bandwidth="scott").fit(data)
         return kde
 
@@ -1469,6 +1470,9 @@ def calculate_distances_manner(
     def calculate_cluster_distance(
         latent_mu_one, latent_mu_two, kde_train, kde_test, umapmodel
     ):
+        # If any of the kde is len() 0 return 0
+        if kde_train is None or kde_test is None:
+            return 0
 
         # Uniformly sampling from the latent space restricted to the min and max of the classes we are comparing
         positions = np.concatenate((latent_mu_one, latent_mu_two), axis=0)
@@ -1511,6 +1515,7 @@ def calculate_distances_manner(
         (len(unique_manner_train), len(unique_manner_test))
     )
 
+    # Check if unique_manner_train is not empty before performing operations
     kde_albayzin = [
         calculate_kde(latent_mu_train[(labels_train == 0) & (manner_train == manner)])
         for manner in unique_manner_train

@@ -54,6 +54,7 @@ def main(args, hyperparams):
 
     hyperparams["path_to_save"] = (
         "local_results/spectrograms/classifier_"
+        + hyperparams["crosslingual"]
         + str(hyperparams["latent_dim"])
         + "latent_dim_"
         + str(hyperparams["domain_adversarial"])
@@ -103,18 +104,60 @@ def main(args, hyperparams):
             + str(hyperparams["fold"])
             + ".pt"
         )
+        # Get all gita data
+        gita_data_test = [data for data in test_loader.dataset if data[3] == "gita"]
+        gita_data_val = [data for data in val_loader.dataset if data[3] == "gita"]
+        gita_data_train = [data for data in train_loader.dataset if data[3] == "gita"]
 
-        # Remove all albayzin samples from train_loader
-        if not hyperparams["train_albayzin"]:
-            new_train = [data for data in train_loader.dataset if data[3] != "albayzin"]
-            new_val = [data for data in val_loader.dataset if data[3] != "albayzin"]
+        # Get all neurovoz data
+        neurovoz_data_test = [
+            data for data in test_loader.dataset if data[3] == "neurovoz"
+        ]
+        neurovoz_data_val = [
+            data for data in val_loader.dataset if data[3] == "neurovoz"
+        ]
+        neurovoz_data_train = [
+            data for data in train_loader.dataset if data[3] == "neurovoz"
+        ]
+
+        # Get all albayzin data
+        albayzin_data_test = [
+            data for data in test_loader.dataset if data[3] == "albayzin"
+        ]
+        albayzin_data_val = [
+            data for data in val_loader.dataset if data[3] == "albayzin"
+        ]
+        albayzin_data_train = [
+            data for data in train_loader.dataset if data[3] == "albayzin"
+        ]
+
+        if hyperparams["crosslingual"] == "nv_gita":
+            # Train data is neurovoz + albayzin
+            new_train = (
+                neurovoz_data_train
+                + albayzin_data_train
+                + neurovoz_data_test
+                + albayzin_data_test
+            )
+            new_val = neurovoz_data_val + albayzin_data_val
+            # Test is all gita
+            new_test = gita_data_test + gita_data_val + gita_data_train
+        elif hyperparams["crosslingual"] == "gita_nv":
+            # Train data is gita + albayzin
+            new_train = (
+                gita_data_train
+                + gita_data_test
+                + albayzin_data_train
+                + albayzin_data_test
+            )
+            new_val = gita_data_val + albayzin_data_val
+            # Test is all neurovoz
+            new_test = neurovoz_data_test + neurovoz_data_val + neurovoz_data_train
         else:
+            # All stays the same
             new_train = train_loader.dataset
             new_val = val_loader.dataset
-
-        # Assert that in the dataset there is almost one sample of "gita" and one sample of "neurovoz"
-        assert len([data for data in new_train if data[3] == "gita"]) > 0
-        assert len([data for data in new_train if data[3] == "neurovoz"]) > 0
+            new_test = test_loader.dataset
 
         # Augment the train dataset
         extended_dataset = augment_data(new_train)
@@ -173,8 +216,9 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
-            + "latentdim"
+            "local_results/spectrograms/cross_lingual_"
+            + hyperparams["crosslingual"]
+            + "_latentdim_"
             + str(hyperparams["latent_dim"])
             + "_domainadversarial_"
             + str(hyperparams["domain_adversarial"])
@@ -267,6 +311,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
     )
+    parser.add_argument(
+        "--cross_lingual", type=str, default="none", help="crosslingual scenario"
+    )
 
     args = parser.parse_args()
 
@@ -295,6 +342,7 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         "domain_adversarial": args.domain_adversarial,  # If true, use domain adversarial model
+        "crosslingual": args.cross_lingual,  # Crosslingual scenario
         # ================ Classifier parameters ===================
         "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": True,  # If true, train the classifier
