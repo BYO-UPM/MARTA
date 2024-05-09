@@ -413,208 +413,191 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             np.random.seed(f)
 
             # Split the data into train and test.
-            if (
-                train_albayzin
-            ):  # If we want to train with albayzin + 0.9 of neurovoz healthy patients
-                # =============== Prepare data ===============
-                albayzin_data = self.data[self.data["dataset"] == "albayzin"]
+            # If we want to train with albayzin + 0.9 of neurovoz healthy patients
+            # =============== Prepare data ===============
+            albayzin_data = self.data[self.data["dataset"] == "albayzin"]
 
-                # Get all healthy patients from neurovoz and shuffle them
-                healthy_patients_neurovoz = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-                ]["id_patient"].unique()
-                # Suffle the numpy array
-                np.random.shuffle(healthy_patients_neurovoz)
+            # Get all healthy patients from neurovoz and shuffle them
+            healthy_patients_neurovoz = self.data[
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
+            ]["id_patient"].unique()
+            # Suffle the numpy array
+            np.random.shuffle(healthy_patients_neurovoz)
 
-                # == Split nwurovoz healthy patients in 90-10 partitions ==
-                # Firt 90%
-                half_90_hp_neurovoz = healthy_patients_neurovoz[
-                    : int(len(healthy_patients_neurovoz) * 10 / 11)
-                ]
-                half_10_hp_neurovoz = healthy_patients_neurovoz[
-                    int(len(healthy_patients_neurovoz) * 10 / 11) :
-                ]
-                neurovoz_healthy_90_data = self.data[
-                    (self.data["dataset"] == "neurovoz")
-                    & (self.data["label"] == 0)
-                    & (self.data["id_patient"].isin(half_90_hp_neurovoz))
-                ]
-                # Second half
-                neurovoz_healthy_10_data = self.data[
-                    (self.data["dataset"] == "neurovoz")
-                    & (self.data["label"] == 0)
-                    & (self.data["id_patient"].isin(half_10_hp_neurovoz))
-                ]
+            # == Split nwurovoz healthy patients in 90-10 partitions ==
+            # Firt 90%
+            half_90_hp_neurovoz = healthy_patients_neurovoz[
+                : int(len(healthy_patients_neurovoz) * 10 / 11)
+            ]
+            half_10_hp_neurovoz = healthy_patients_neurovoz[
+                int(len(healthy_patients_neurovoz) * 10 / 11) :
+            ]
+            neurovoz_healthy_90_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 0)
+                & (self.data["id_patient"].isin(half_90_hp_neurovoz))
+            ]
+            # Second half
+            neurovoz_healthy_10_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 0)
+                & (self.data["id_patient"].isin(half_10_hp_neurovoz))
+            ]
 
-                # Get all parkinsonian patients from neurovoz and shuffle
-                parkinsonian_patients_neurovoz = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
-                ]["id_patient"].unique()
-                # Suffle the numpy array
-                np.random.shuffle(parkinsonian_patients_neurovoz)
+            # Get all parkinsonian patients from neurovoz and shuffle
+            parkinsonian_patients_neurovoz = self.data[
+                (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+            ]["id_patient"].unique()
+            # Suffle the numpy array
+            np.random.shuffle(parkinsonian_patients_neurovoz)
 
-                # == Split neurovoz parkinsonian patients in two halfs: 90-10 ==
-                # Firt 90%
-                half_90_pk_neurovoz = parkinsonian_patients_neurovoz[
-                    : int(len(parkinsonian_patients_neurovoz) * 10 / 11)
-                ]
-                half_10_pk_neurovoz = parkinsonian_patients_neurovoz[
-                    int(len(parkinsonian_patients_neurovoz) * 10 / 11) :
-                ]
-                neurovoz_parkinson_90_data = self.data[
-                    (self.data["dataset"] == "neurovoz")
-                    & (self.data["label"] == 1)
-                    & (self.data["id_patient"].isin(half_90_pk_neurovoz))
-                ]
-                # Second 10%
-                neurovoz_parkinson_10_data = self.data[
-                    (self.data["dataset"] == "neurovoz")
-                    & (self.data["label"] == 1)
-                    & (self.data["id_patient"].isin(half_10_pk_neurovoz))
-                ]
+            # == Split neurovoz parkinsonian patients in two halfs: 90-10 ==
+            # Firt 90%
+            half_90_pk_neurovoz = parkinsonian_patients_neurovoz[
+                : int(len(parkinsonian_patients_neurovoz) * 10 / 11)
+            ]
+            half_10_pk_neurovoz = parkinsonian_patients_neurovoz[
+                int(len(parkinsonian_patients_neurovoz) * 10 / 11) :
+            ]
+            neurovoz_parkinson_90_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 1)
+                & (self.data["id_patient"].isin(half_90_pk_neurovoz))
+            ]
+            # Second 10%
+            neurovoz_parkinson_10_data = self.data[
+                (self.data["dataset"] == "neurovoz")
+                & (self.data["label"] == 1)
+                & (self.data["id_patient"].isin(half_10_pk_neurovoz))
+            ]
 
-                # =========================================== TRAIN DATA ===========================================
-                if supervised:
-                    # Albayzin + 90% of healthy neurovoz + 90% of parkinson neurovoz
-                    train_data = pd.concat(
-                        [
-                            albayzin_data,
-                            neurovoz_healthy_90_data,
-                            neurovoz_parkinson_90_data,
-                        ]
-                    )
-                else:
-                    # Albayzin + 90% of healthy neurovoz
-                    train_data = pd.concat([albayzin_data, neurovoz_healthy_90_data])
-
-                # =========================================== VALIDATION DATA ===========================================
-                if supervised:
-                    # Get 20% of train data ensuring that: 20% of albayzin PATIENTS + 20% of healthy neurovoz PATIENTS + 20% of parkinson neurovoz PATIENTS
-                    # Get 20% of albayzin
-                    albayzin_patients = albayzin_data["id_patient"].unique()
-                    # Shuffle it
-                    np.random.shuffle(albayzin_patients)
-                    # Select 20% of the patients
-                    albayzin_val = albayzin_data[
-                        albayzin_data["id_patient"].isin(
-                            albayzin_patients[: int(len(albayzin_patients) * 0.2)]
-                        )
-                    ]
-                    # Get 20% of healthy neurovoz
-                    neurovoz_healthy_patients = neurovoz_healthy_90_data[
-                        "id_patient"
-                    ].unique()
-                    # Shuffle it
-                    np.random.shuffle(neurovoz_healthy_patients)
-                    # Select 20% of the patients
-                    neurovoz_healthy_val = neurovoz_healthy_90_data[
-                        neurovoz_healthy_90_data["id_patient"].isin(
-                            neurovoz_healthy_patients[
-                                : int(len(neurovoz_healthy_patients) * 0.2)
-                            ]
-                        )
-                    ]
-
-                    # Get 20% of parkinson neurovoz
-                    neurovoz_parkinson_patients = neurovoz_parkinson_90_data[
-                        "id_patient"
-                    ].unique()
-                    # Shuffle it
-                    np.random.shuffle(neurovoz_parkinson_patients)
-                    # Select 20% of the patients
-                    neurovoz_parkinson_val = neurovoz_parkinson_90_data[
-                        neurovoz_parkinson_90_data["id_patient"].isin(
-                            neurovoz_parkinson_patients[
-                                : int(len(neurovoz_parkinson_patients) * 0.2)
-                            ]
-                        )
-                    ]
-
-                    # Concatenate all
-                    val_data = pd.concat(
-                        [
-                            albayzin_val,
-                            neurovoz_healthy_val,
-                            neurovoz_parkinson_val,
-                        ]
-                    )
-                    # Remove from train_data the val_data
-                    train_data = train_data.drop(val_data.index)
-                else:
-                    # Get 20% of train data ensuring that: 20% of albayzin PATIENTS + 20· of healthy neurovoz PATIENTS
-                    # Get 20% of albayzin
-                    albayzin_patients = albayzin_data["id_patient"].unique()
-                    albayzin_val = albayzin_data[
-                        albayzin_data["id_patient"].isin(
-                            np.random.choice(
-                                albayzin_patients, int(len(albayzin_patients) * 0.2)
-                            )
-                        )
-                    ]
-                    # Get 20% of healthy neurovoz
-                    neurovoz_healthy_patients = neurovoz_healthy_90_data[
-                        "id_patient"
-                    ].unique()
-                    neurovoz_healthy_val = neurovoz_healthy_90_data[
-                        neurovoz_healthy_90_data["id_patient"].isin(
-                            np.random.choice(
-                                neurovoz_healthy_patients,
-                                int(len(neurovoz_healthy_patients) * 0.2),
-                            )
-                        )
-                    ]
-
-                    # Concatenate all
-                    val_data = pd.concat(
-                        [
-                            albayzin_val,
-                            neurovoz_healthy_val,
-                        ]
-                    )
-
-                    # Remove from train_data the val_data
-                    train_data = train_data.drop(val_data.index)
-
-                # =========================================== TEST DATA ===========================================
-                # Test data is alway: 10% of healthy neurovoz + 10% of parkinson neurovoz
-                test_data = pd.concat(
+            # =========================================== TRAIN DATA ===========================================
+            if supervised:
+                # Albayzin + 90% of healthy neurovoz + 90% of parkinson neurovoz
+                train_data = pd.concat(
                     [
-                        neurovoz_healthy_10_data,
-                        neurovoz_parkinson_10_data,
+                        albayzin_data,
+                        neurovoz_healthy_90_data,
+                        neurovoz_parkinson_90_data,
+                    ]
+                )
+            else:
+                # Albayzin + 90% of healthy neurovoz
+                train_data = pd.concat([albayzin_data, neurovoz_healthy_90_data])
+
+            # =========================================== VALIDATION DATA ===========================================
+            if supervised:
+                # Get 20% of train data ensuring that: 20% of albayzin PATIENTS + 20% of healthy neurovoz PATIENTS + 20% of parkinson neurovoz PATIENTS
+                # Get 20% of albayzin
+                albayzin_patients = albayzin_data["id_patient"].unique()
+                # Shuffle it
+                np.random.shuffle(albayzin_patients)
+                # Select 20% of the patients
+                albayzin_val = albayzin_data[
+                    albayzin_data["id_patient"].isin(
+                        albayzin_patients[: int(len(albayzin_patients) * 0.2)]
+                    )
+                ]
+                # Get 20% of healthy neurovoz
+                neurovoz_healthy_patients = neurovoz_healthy_90_data[
+                    "id_patient"
+                ].unique()
+                # Shuffle it
+                np.random.shuffle(neurovoz_healthy_patients)
+                # Select 20% of the patients
+                neurovoz_healthy_val = neurovoz_healthy_90_data[
+                    neurovoz_healthy_90_data["id_patient"].isin(
+                        neurovoz_healthy_patients[
+                            : int(len(neurovoz_healthy_patients) * 0.2)
+                        ]
+                    )
+                ]
+
+                # Get 20% of parkinson neurovoz
+                neurovoz_parkinson_patients = neurovoz_parkinson_90_data[
+                    "id_patient"
+                ].unique()
+                # Shuffle it
+                np.random.shuffle(neurovoz_parkinson_patients)
+                # Select 20% of the patients
+                neurovoz_parkinson_val = neurovoz_parkinson_90_data[
+                    neurovoz_parkinson_90_data["id_patient"].isin(
+                        neurovoz_parkinson_patients[
+                            : int(len(neurovoz_parkinson_patients) * 0.2)
+                        ]
+                    )
+                ]
+
+                # Concatenate all
+                val_data = pd.concat(
+                    [
+                        albayzin_val,
+                        neurovoz_healthy_val,
+                        neurovoz_parkinson_val,
+                    ]
+                )
+                # Remove from train_data the val_data
+                train_data = train_data.drop(val_data.index)
+            else:
+                # Get 20% of train data ensuring that: 20% of albayzin PATIENTS + 20· of healthy neurovoz PATIENTS
+                # Get 20% of albayzin
+                albayzin_patients = albayzin_data["id_patient"].unique()
+                albayzin_val = albayzin_data[
+                    albayzin_data["id_patient"].isin(
+                        np.random.choice(
+                            albayzin_patients, int(len(albayzin_patients) * 0.2)
+                        )
+                    )
+                ]
+                # Get 20% of healthy neurovoz
+                neurovoz_healthy_patients = neurovoz_healthy_90_data[
+                    "id_patient"
+                ].unique()
+                neurovoz_healthy_val = neurovoz_healthy_90_data[
+                    neurovoz_healthy_90_data["id_patient"].isin(
+                        np.random.choice(
+                            neurovoz_healthy_patients,
+                            int(len(neurovoz_healthy_patients) * 0.2),
+                        )
+                    )
+                ]
+
+                # Concatenate all
+                val_data = pd.concat(
+                    [
+                        albayzin_val,
+                        neurovoz_healthy_val,
                     ]
                 )
 
-                # =========================================== ASSERTIONS ===========================================
-                # Get all id patients from train, val and test data
-                train_patients = train_data["id_patient"].unique()
-                val_patients = val_data["id_patient"].unique()
-                test_patients = test_data["id_patient"].unique()
+                # Remove from train_data the val_data
+                train_data = train_data.drop(val_data.index)
 
-                # Assert that there are no patients shared between train, val and test
-                assert (
-                    len(np.intersect1d(train_patients, val_patients)) == 0
-                ), "There are patients in both train and val data!"
-                assert (
-                    len(np.intersect1d(train_patients, test_patients)) == 0
-                ), "There are patients in both train and test data!"
-                assert (
-                    len(np.intersect1d(val_patients, test_patients)) == 0
-                ), "There are patients in both val and test data!"
-
-            else:  # If we want to train with only neurovoz healthy patients and not use albayzin for enriching the training data
-                # Train data will be 0.8 of neurovoz healthy patients
-                train_data = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-                ].sample(frac=0.8, random_state=f)
-                # Get the rest healhty patients not used for training
-                rest_data = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 0)
-                ].drop(train_data.index)
-                test_data = self.data[
-                    (self.data["dataset"] == "neurovoz") & (self.data["label"] == 1)
+            # =========================================== TEST DATA ===========================================
+            # Test data is alway: 10% of healthy neurovoz + 10% of parkinson neurovoz
+            test_data = pd.concat(
+                [
+                    neurovoz_healthy_10_data,
+                    neurovoz_parkinson_10_data,
                 ]
-                # Concatenate the rest of healthy patients with the test data
-                test_data = pd.concat([test_data, rest_data])
+            )
+
+            # =========================================== ASSERTIONS ===========================================
+            # Get all id patients from train, val and test data
+            train_patients = train_data["id_patient"].unique()
+            val_patients = val_data["id_patient"].unique()
+            test_patients = test_data["id_patient"].unique()
+
+            # Assert that there are no patients shared between train, val and test
+            assert (
+                len(np.intersect1d(train_patients, val_patients)) == 0
+            ), "There are patients in both train and val data!"
+            assert (
+                len(np.intersect1d(train_patients, test_patients)) == 0
+            ), "There are patients in both train and test data!"
+            assert (
+                len(np.intersect1d(val_patients, test_patients)) == 0
+            ), "There are patients in both val and test data!"
 
             if verbose:
                 # Print the number of patients in each set

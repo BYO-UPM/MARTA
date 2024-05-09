@@ -35,7 +35,13 @@ Date: 25/01/2024
 """
 
 import pandas as pd
-import os
+import os, sys
+
+parent_dir = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '../utils/')
+)
+sys.path.append(parent_dir)
+from definitions import *
 
 
 def find_wav_path(text, condition="HC"):
@@ -69,7 +75,7 @@ for condition in ["HC", "PD"]:
     print("Processing: ", condition)
 
     # Read text in dat
-    path = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/text" + condition + ".dat"
+    path = NEUROVOZ_PARENT_REMOTE + "text" + condition + ".dat"
 
     df = pd.read_csv(
         path,
@@ -98,9 +104,7 @@ for condition in ["HC", "PD"]:
     df["text"] = df[0].apply(lambda x: x.split(" ", 1)[1])
 
     # Find the path to each audio file
-    path_to_all_audio = (
-        "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/PorMaterial_limpios1_2"
-    )
+    path_to_all_audio = NEUROVOZ_ALIGNED
 
     # Generate the path to wav column
     df["path_to_wav"] = df[0].apply(find_wav_path, condition=condition)
@@ -119,14 +123,14 @@ for condition in ["HC", "PD"]:
 
 
 # Create a local folder under /labeled/ named NeuroVoz
-os.makedirs("../labeled/NeuroVoz", exist_ok=True)
+os.makedirs("../" + NEUROVOZ_LABELS_LOCAL, exist_ok=True)
 
 # Copy all wavs to the new folder and rename it as utt_id_condition.wav
 for index, row in df_all.iterrows():
     os.system(
         "cp "
         + row["path_to_wav"]
-        + " ./labeled/NeuroVoz/"
+        + " ./" + NEUROVOZ_LABELS_LOCAL + "/"
         + row["utt_id"]
         + "_"
         + row["condition"]
@@ -134,6 +138,6 @@ for index, row in df_all.iterrows():
     )
     # Generate a .txt file with the text named equally
     with open(
-        "../labeled/NeuroVoz/" + row["utt_id"] + "_" + row["condition"] + ".txt", "w"
+        "../" + NEUROVOZ_LABELS_LOCAL + row["utt_id"] + "_" + row["condition"] + ".txt", "w"
     ) as f:
         f.write(row["text"])

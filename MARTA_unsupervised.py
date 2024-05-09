@@ -48,6 +48,7 @@ from training.pt_training import MARTA_trainer, MARTA_tester
 from utils.utils import (
     plot_logopeda_alb_neuro,
 )
+from utils.definitions import *
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
@@ -61,15 +62,15 @@ print("Device being used:", device)
 
 
 def main(args, hyperparams):
-    if hyperparams["train_albayzin"]:
-        hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
-            + str(hyperparams["latent_dim"])
-            + "unsupervised"
-            + "32d_final_model2"
-        )
 
-    # Create the path if does not exist
+    hyperparams["path_to_save"] = (
+        PROCESSED_DATA_LOCAL
+        + "spectrograms/manner_gmvae_alb_neurovoz_"
+        + str(hyperparams["latent_dim"])
+        + "unsupervised"
+        + "32d_final_model2"
+    )
+
     if not os.path.exists(hyperparams["path_to_save"]):
         os.makedirs(hyperparams["path_to_save"])
 
@@ -91,10 +92,16 @@ def main(args, hyperparams):
         )
 
     if hyperparams["train"] and hyperparams["new_data_partition"]:
+        # Create path if does not exist
+        if not os.path.exists(PROCESSED_DATA_LOCAL + "folds"):
+            os.makedirs(
+                PROCESSED_DATA_LOCAL + "folds"
+            )
+
         print("Reading data...")
         # Read the data
         dataset = Dataset_AudioFeatures(
-            "labeled/NeuroVoz",
+            NEUROVOZ_LABELS_LOCAL,
             hyperparams,
         )
         (
@@ -108,16 +115,16 @@ def main(args, hyperparams):
     else:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
-            "local_results/folds/folds30ms/train_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
+            "local_results/folds/train_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
         )
         val_loader = torch.load(
-            "local_results/folds/folds30ms/val_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
+            "local_results/folds/val_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
         )
         test_loader = torch.load(
-            "local_results/folds/folds30ms/test_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
+            "local_results/folds/test_loader_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
         )
         test_data = torch.load(
-            "local_results/folds/folds30ms/test_data_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
+            "local_results/folds/test_data_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5fold0.pt"
         )
 
     print("Defining models...")
