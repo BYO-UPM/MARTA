@@ -423,7 +423,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
     def get_dataloaders(
         self,
-        experiment="fisrt",
+        experiment="fourth",
         supervised=False,
         verbose=True,
     ):
@@ -508,11 +508,27 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
             f = "first_experiment"
 
-            self.create_dataloader(
+            (
+                train_loader,
+                val_loader,
+                test_loader,
+                train_data,  # train_data, not used
+                val_data,  # val_data, not used
+                test_data,
+            ) = self.create_dataloader(
                 train_data,
                 val_data,
                 test_data,
                 f,
+            )
+
+            return (
+                train_loader,
+                val_loader,
+                test_loader,
+                train_data,  # train_data, not used
+                val_data,  # val_data, not used
+                test_data,
             )
 
         elif experiment == "fourth":
@@ -618,12 +634,27 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     ]
                 )
 
-                self.create_dataloader(
+                (
+                    train_loader,
+                    val_loader,
+                    test_loader,
+                    train_data,  # train_data, not used
+                    val_data,  # val_data, not used
+                    test_data,
+                ) = self.create_dataloader(
                     train_data,
                     val_data,
                     test_data,
-                    supervised,
                     f,
+                )
+
+                return (
+                    train_loader,
+                    val_loader,
+                    test_loader,
+                    train_data,  # train_data, not used
+                    val_data,  # val_data, not used
+                    test_data,
                 )
 
     def create_dataloader(self, train_data, val_data, test_data, supervised, f=0):
@@ -760,10 +791,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             + ".pt"
         )
 
-        torch.save(train_loader, train_name)
-        torch.save(val_loader, val_name)
-        torch.save(test_loader, test_name)
-        torch.save(test_data, test_data_name)
+        # torch.save(train_loader, train_name)
+        # torch.save(val_loader, val_name)
+        # torch.save(test_loader, test_name)
+        # torch.save(test_data, test_data_name)
         return (
             train_loader,
             val_loader,

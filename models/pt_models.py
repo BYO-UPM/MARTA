@@ -760,7 +760,7 @@ class MARTA(torch.nn.Module):
         metric_loss = self.metric_loss(qz_mu, manner_classes)
 
         # Domain adversarial loss
-        domain_loss = 1e4 * self.domain_adversarial_loss(domain_pred, domain)
+        domain_loss = 1e5 * self.domain_adversarial_loss(domain_pred, domain)
 
         # Total loss is the weighted sum of the four losses
         complete_loss = (

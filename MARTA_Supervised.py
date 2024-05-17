@@ -306,7 +306,7 @@ def main(args, hyperparams):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script configuration")
     parser.add_argument(
-        "--fold", type=int, default=0, help="Fold number for the experiment"
+        "--fold", type=int, default=2, help="Fold number for the experiment"
     )
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number to use in the experiment"
@@ -318,7 +318,7 @@ if __name__ == "__main__":
         "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
     )
     parser.add_argument(
-        "--cross_lingual", type=str, default="none", help="crosslingual scenario"
+        "--cross_lingual", type=str, default="nv_gita", help="crosslingual scenario"
     )
 
     args = parser.parse_args()
@@ -356,7 +356,7 @@ if __name__ == "__main__":
         # ================ Experiment parameters ===================
         "experiment": "fourth",  # Experiment name
         # ================ Training parameters ===================
-        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh

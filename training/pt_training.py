@@ -984,14 +984,14 @@ def MARTA_trainer(
         if not classifier:
             check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
 
-        # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
+        # Early stopping: If in the last 10 epochs the validation loss has not improved, stop the training
         if e > 40:
             if not classifier:
-                if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
+                if valid_loss_store[-1] > max(valid_loss_store[-10:-1]):
                     print("Early stopping")
                     break
             if classifier:
-                if valid_loss_store[-1] > max(valid_loss_store[-50:-1]):
+                if valid_loss_store[-1] > max(valid_loss_store[-10:-1]):
                     print("Early stopping")
                     print("Reloading best model")
                     # Restore best model:
@@ -1155,58 +1155,61 @@ def MARTA_tester(
 
         tasks = ["running_speech", "texts", "all"]
 
-        # print("Calculating MSE")
-        # for dataset_i in np.unique(dataset_array):
-        #     if dataset_i != "neurovoz" and dataset_i != "gita":
-        #         continue
-        #     print("==============================================================")
-        #     print("Calculating results for dataset ", dataset_i)
-        #     idx = dataset_array == dataset_i
-        #     x_array_dataset = x_array[idx]
-        #     x_hat_array_dataset = x_hat_array[idx]
-        #     test_data_dataset = test_data[test_data["dataset"] == dataset_i]
-        #     if supervised:
-        #         y_hat_array_dataset = y_hat_array[idx]
-        #         y_array_dataset = y_array[idx]
+        print("Calculating MSE")
+        for dataset_i in np.unique(dataset_array):
+            if dataset_i != "neurovoz" and dataset_i != "gita":
+                continue
+            print("==============================================================")
+            print("Calculating results for dataset ", dataset_i)
+            idx = dataset_array == dataset_i
+            # if in idx is all false, continue
+            if not np.any(idx):
+                continue
+            x_array_dataset = x_array[idx]
+            x_hat_array_dataset = x_hat_array[idx]
+            test_data_dataset = test_data[test_data["dataset"] == dataset_i]
+            if supervised:
+                y_hat_array_dataset = y_hat_array[idx]
+                y_array_dataset = y_array[idx]
 
-        #     for task in tasks:
-        #         print("-----------------------------------------")
-        #         print("Calculating results for task ", task)
-        #         if task == "running_speech":
-        #             idx = (test_data_dataset["text"] == "Monologo") | (
-        #                 test_data_dataset["text"] == "ESPONTANEA"
-        #             ).astype(bool)
-        #         elif task == "texts":
-        #             idx = (test_data_dataset["text"] != "Monologo") & (
-        #                 test_data_dataset["text"] != "ESPONTANEA"
-        #             ).astype(bool)
-        #         else:
-        #             idx = np.ones(len(test_data_dataset)).astype(bool)
+            for task in tasks:
+                print("-----------------------------------------")
+                print("Calculating results for task ", task)
+                if task == "running_speech":
+                    idx = (test_data_dataset["text"] == "Monologo") | (
+                        test_data_dataset["text"] == "ESPONTANEA"
+                    ).astype(bool)
+                elif task == "texts":
+                    idx = (test_data_dataset["text"] != "Monologo") & (
+                        test_data_dataset["text"] != "ESPONTANEA"
+                    ).astype(bool)
+                else:
+                    idx = np.ones(len(test_data_dataset)).astype(bool)
 
-        #         if supervised:
-        #             calculate_classification_metrics(
-        #                 x_array_dataset[idx],
-        #                 x_hat_array_dataset[idx],
-        #                 test_data_dataset[idx],
-        #                 y_hat_array_dataset[idx],
-        #                 y_array_dataset[idx],
-        #                 supervised,
-        #                 path_to_plot,
-        #                 dataset_i,
-        #                 best_threshold,
-        #             )
-        #         else:
-        #             calculate_classification_metrics(
-        #                 x_array_dataset[idx],
-        #                 x_hat_array_dataset[idx],
-        #                 test_data_dataset[idx],
-        #                 None,
-        #                 None,
-        #                 supervised,
-        #                 path_to_plot,
-        #                 dataset_i,
-        #                 best_threshold,
-        #             )
+                if supervised:
+                    calculate_classification_metrics(
+                        x_array_dataset[idx],
+                        x_hat_array_dataset[idx],
+                        test_data_dataset[idx],
+                        y_hat_array_dataset[idx],
+                        y_array_dataset[idx],
+                        supervised,
+                        path_to_plot,
+                        dataset_i,
+                        best_threshold,
+                    )
+                else:
+                    calculate_classification_metrics(
+                        x_array_dataset[idx],
+                        x_hat_array_dataset[idx],
+                        test_data_dataset[idx],
+                        None,
+                        None,
+                        supervised,
+                        path_to_plot,
+                        dataset_i,
+                        best_threshold,
+                    )
 
 
 def calculate_classification_metrics(
