@@ -53,11 +53,12 @@ from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeature
 import torch
 import wandb
 import pandas as pd
+import argparse
 import sys
 import os
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -155,6 +156,7 @@ def main(args, hyperparams):
             path_to_save=hyperparams["path_to_save"],
             supervised=False,
             classifier=False,
+            method=hyperparams["method"],
         )
 
         print("Training finished!")
@@ -211,8 +213,16 @@ def main(args, hyperparams):
     log_file.close()
 
 
+
+
 if __name__ == "__main__":
-    args = {}
+
+    parser = argparse.ArgumentParser(description="Script configuration")
+    parser.add_argument(
+        "--method", type=str, default='sumloss', help="Gradients manipulation method"
+    )
+
+    args = parser.parse_args()
 
     hyperparams = {
         # ================ Spectrogram parameters ===================
@@ -242,6 +252,7 @@ if __name__ == "__main__":
         "cnn_classifier": False,  # Here no classifier is used
         "supervised": False,  # Here no classifier is used
         # ================ Training parameters ===================
+        "method": args.method, 
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).

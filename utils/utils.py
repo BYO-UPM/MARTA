@@ -307,7 +307,7 @@ def plot_logopeda_alb_neuro(
     # Check latent_mu shape, if greater than 2 do a t-SNE
     if latent_mu_train.shape[1] > 2:
         # Import UMAP
-        import umap
+        # import umap
 
         train_mu_shape = latent_mu_train.shape
 
@@ -503,20 +503,20 @@ def plot_logopeda_alb_neuro(
     #     path_to_plot=path_to_plot,
     # )
 
-    print("Calculating jensen shannon")
-    print("Calculating distances in a space of dimensions: ", lm_test_original.shape[1])
-    calculate_distances_manner(
-        model,
-        lm_train_original,
-        lm_test_original,
-        manner_train,
-        manner_test,
-        labels_train,
-        labels_test,
-        umapmodel,
-        wandb_flag,
-        path_to_plot=path_to_plot,
-    )
+    # print("Calculating jensen shannon")
+    # print("Calculating distances in a space of dimensions: ", lm_test_original.shape[1])
+    # calculate_distances_manner(
+    #     model,
+    #     lm_train_original,
+    #     lm_test_original,
+    #     manner_train,
+    #     manner_test,
+    #     labels_train,
+    #     labels_test,
+    #     umapmodel,
+    #     wandb_flag,
+    #     path_to_plot=path_to_plot,
+    # )
 
 
 def plot_logopeda(
