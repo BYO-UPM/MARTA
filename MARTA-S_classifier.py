@@ -39,6 +39,7 @@ Note:
 from models.pt_models import MARTA
 from training.pt_training import MARTA_trainer, MARTA_tester
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
+from utils.definitions import *
 import torch
 import wandb
 import sys
@@ -180,9 +181,10 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_32supervised90-10-fold"
+            "../models_sup/MVAE_cnn_best_model_2d" + "_"
+            + str(hyperparams["method"]) + "_"
             + str(hyperparams["fold"])
-            + "/GMVAE_cnn_best_model_2d.pt"
+            + ".pt"
         )
         tmp = torch.load(name)
         model.load_state_dict(tmp["model_state_dict"])
@@ -217,6 +219,7 @@ def main(args, hyperparams):
             path_to_save=hyperparams["path_to_save"],
             supervised=hyperparams["supervised"],
             classifier=hyperparams["classifier"],
+            method=hyperparams["method"],
         )
 
         print("Training finished!")
@@ -294,8 +297,9 @@ if __name__ == "__main__":
         "classifier": True,  # If true, train the classifier
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
+        "method": args.method, 
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
-        "train_albayzin": False,  # If true, train with albayzin data. If false, only train with neurovoz data.
+        "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
         "gpu": args.gpu,  # Which gpu to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh

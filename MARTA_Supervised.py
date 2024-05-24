@@ -44,6 +44,7 @@ from training.pt_training import MARTA_trainer, MARTA_tester
 from utils.utils import (
     plot_logopeda_alb_neuro,
 )
+from utils.definitions import *
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
@@ -58,14 +59,13 @@ def main(args, hyperparams):
     device = torch.device(gpu if torch.cuda.is_available() else "cpu")
     print("Device being used:", device)
 
-    if hyperparams["train_albayzin"]:
-        hyperparams["path_to_save"] = (
-            "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
-            + str(hyperparams["latent_dim"])
-            + "supervised"
-            + "90-10-fold"
-            + str(hyperparams["fold"])
-        )
+    hyperparams["path_to_save"] = (
+        "local_results/spectrograms/manner_gmvae_alb_neurovoz_"
+        + str(hyperparams["latent_dim"])
+        + "supervised"
+        + "90-10-fold"
+        + str(hyperparams["fold"])
+    )
 
     # Create the path if does not exist
     if not os.path.exists(hyperparams["path_to_save"]):
@@ -89,10 +89,16 @@ def main(args, hyperparams):
         )
 
     if hyperparams["train"] and hyperparams["new_data_partition"]:
+        # Create path if does not exist
+        if not os.path.exists(PROCESSED_DATA_LOCAL + "folds"):
+            os.makedirs(
+                PROCESSED_DATA_LOCAL + "folds"
+            )
+
         print("Reading data...")
         # Read the data
         dataset = Dataset_AudioFeatures(
-            "labeled/NeuroVoz",
+            NEUROVOZ_LABELS_LOCAL,
             hyperparams,
         )
         (
@@ -164,6 +170,7 @@ def main(args, hyperparams):
             path_to_save=hyperparams["path_to_save"],
             supervised=hyperparams["supervised"],
             classifier=hyperparams["classifier"],
+            method=hyperparams["method"],
         )
 
         print("Training finished!")
@@ -239,6 +246,10 @@ if __name__ == "__main__":
         "--gpu", type=int, default=0, help="GPU number to use in the experiment"
     )
 
+    parser.add_argument(
+        "--method", type=str, default='sumloss', help="Gradients manipulation method"
+    )
+
     args = parser.parse_args()
 
     hyperparams = {
@@ -270,6 +281,7 @@ if __name__ == "__main__":
         "classifier": False,  # It must be False in this script.
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
+        "method": args.method, 
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
