@@ -227,7 +227,10 @@ def main(args, hyperparams):
         print("Loading model...")
 
     # Restoring best model
-    name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
+    if hyperparams["model"] == "none":
+        name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
+    else: 
+        name = hyperparams["model"]
     tmp = torch.load(name)
     model.load_state_dict(tmp["model_state_dict"])
 
@@ -265,6 +268,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number for the experiment"
     )
+    parser.add_argument(
+        "--method", type=str, default='sumloss', help="Gradients manipulation method"
+    )
+    parser.add_argument(
+        "--model", type=str, default='none', help="Model to be restored"
+    )
 
     args = parser.parse_args()
 
@@ -298,7 +307,8 @@ if __name__ == "__main__":
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
         "method": args.method, 
-        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "model": args.model, 
+        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh

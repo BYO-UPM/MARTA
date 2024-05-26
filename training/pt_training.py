@@ -694,26 +694,34 @@ def MARTA_trainer(
 
             optimizer.zero_grad()
 
+            if method == "weightsum": complete_loss.backward()
+
             for i, loss_i in enumerate(losses):
-                if i < NUM_LOSSES: loss_i.backward(retain_graph=True)
-                else: loss_i.backward()
+
+                if method != "weightsum":
+                    if i < NUM_LOSSES: loss_i.backward(retain_graph=True)
+                    else: loss_i.backward()
+
                 grad2vec(model, grads, grad_dims, i)
                 model.zero_grad()
             
             monitor_grad(e, batch_idx, grads)
             monitor_loss(e, batch_idx, losses)
             
-            if method == "cagrad":
-                g = cagrad(grads)
-            elif method == "graddrop":
-                g = graddrop(grads)
-            elif method == "mgd":
-                g = mgd(grads)
-            elif method == "pcgrad":
-                g = pcgrad(grads, rng)
-            else: # sumloss
-                g = grads.sum(1)
-            overwrite_grad(model, g, grad_dims)
+            if method != "weightsum":
+
+                if method == "cagrad":
+                    g = cagrad(grads)
+                elif method == "graddrop":
+                    g = graddrop(grads)
+                elif method == "mgd":
+                    g = mgd(grads)
+                elif method == "pcgrad":
+                    g = pcgrad(grads, rng)
+                elif  method == "sumloss":
+                    g = grads.sum(1)
+            
+                overwrite_grad(model, g, grad_dims)
 
             optimizer.step()
 
@@ -969,6 +977,11 @@ def MARTA_trainer(
                 },
                 name,
             )
+            sum_grad = grads.sum(1) if method != "weightsum" else \
+                       grads[:, 0] + grads[:, 1] + grads[:, 2] + 10*grads[:, 3]
+            sum_mag = torch.norm(sum_grad)
+            with open(OUT_FILE_MAG, 'a') as f_mag:
+                f_mag.write(f'{e},{e},S,{sum_mag:.4f}\n')
             # Store best youden th in a txt
             if classifier:
                 print("Best threshold Youden: ", best_th_youden)
