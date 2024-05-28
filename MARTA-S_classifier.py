@@ -178,7 +178,7 @@ def main(args, hyperparams):
                 + albayzin_data_train
                 + albayzin_data_test
             )
-            new_val = gita_data_val
+            new_val = gita_data_val + albayzin_data_val
             # For neurovoz_data_val remove last element of each tuple
             neurovoz_data_val = [
                 (data[0], data[1], data[2], data[3]) for data in neurovoz_data_val
@@ -201,6 +201,7 @@ def main(args, hyperparams):
 
         # Augment the train dataset
         extended_dataset = augment_data(new_train)
+        extended_dataset = augment_data(extended_dataset)
 
         # Stratify train dataset
         balanced_dataset = stratify_dataset(extended_dataset)
@@ -211,17 +212,17 @@ def main(args, hyperparams):
         # Create new dataloaders
         new_train_loader = torch.utils.data.DataLoader(
             balanced_dataset,
-            batch_size=2048,
+            batch_size=1024,
             sampler=train_sampler,
         )
         val2_loader = torch.utils.data.DataLoader(
             new_val,
-            batch_size=2048,
+            batch_size=1024,
             sampler=val_sampler,
         )
         test_loader = torch.utils.data.DataLoader(
             new_test,
-            batch_size=2048,
+            batch_size=1024,
             shuffle=False,
         )
 

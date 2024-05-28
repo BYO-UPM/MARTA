@@ -571,7 +571,7 @@ class MARTA(torch.nn.Module):
             torch.nn.Linear(160, self.class_dims[2]),
             torch.nn.ReLU(),
             # Dropout
-            torch.nn.Dropout(p=0.8),
+            torch.nn.Dropout(p=0.9),
             torch.nn.Linear(self.class_dims[2], 1),
         )
 
