@@ -237,9 +237,9 @@ def main(args, hyperparams):
     print("Testing GMVAE...")
 
     # Read the best threshold
-    path = hyperparams["path_to_save"] + "/best_threshold.txt"
-    with open(path, "r") as f:
-        threshold = float(f.read())
+    # path = hyperparams["path_to_save"] + "/best_threshold.txt"
+    # with open(path, "r") as f:
+    #     threshold = float(f.read())
 
     # Test the model
     MARTA_tester(
@@ -249,7 +249,7 @@ def main(args, hyperparams):
         supervised=True,  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
         path_to_plot=hyperparams["path_to_save"],
-        best_threshold=threshold,
+        # best_threshold=threshold,
     )
     print("Testing finished!")
 
