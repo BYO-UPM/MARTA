@@ -4,7 +4,7 @@
 mkdir ../models_sup
 
 # Define methods to test
-methods=("weightsum")
+methods=("cagrad" "graddrop" "weightsum")
 
 for m in ${methods[@]}; do
     for f in $(seq 0 10); do

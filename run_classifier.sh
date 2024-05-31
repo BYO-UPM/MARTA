@@ -5,7 +5,6 @@ mkdir ../res_acc
 
 # Define methods to test
 methods=("cagrad" "graddrop" "mgd" "pcgrad" "sumloss" "weightsum")
-# methods=("cagrad", "graddrop", "mgd", "pcgrad", "sumloss", "weightsum")
 
 for m in ${methods[@]}; do
     for f in $(seq 0 10); do

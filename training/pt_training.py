@@ -583,35 +583,20 @@ def MARTA_trainer(
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=T_max, eta_min=0.0001
     )
+    
     # ============================= Iterate model modules =============================
-    grads, grad_dims = get_tensor_from_model(model)
-    print(f'{grad_dims} dimensions used for gradient manipulation')
-    rng = np.random.default_rng()
+    if not classifier:
+        # Prepare for manipulating gradient dimensions according to encoder loss.
+        grads, grad_dims = get_tensor_from_model(model)
+        print(f'{grad_dims} dimensions used for gradient manipulation')
+        rng = np.random.default_rng()
 
     # ============================= Storage variables =============================
     valid_loss_store = []
 
-    # Prepare for dynamic weight averaging
-    # T = 2.0
-    # avg_cost = np.zeros([epochs, 32], dtype=np.float32)
-    # lambda_weight = np.ones([NUM_LOSSES, epochs])
-
     for e in range(epochs):
         model.train()
         usage = np.zeros(model.k)
-
-        # Apply dynamic weight averaging
-        # if e == 0 or e == 1:
-        #     lambda_weight[:, e] = 1.0
-        # else:
-        #     w_1 = avg_cost[e - 1, 0] / avg_cost[e - 2, 0]
-        #     w_2 = avg_cost[e - 1, 3] / avg_cost[e - 2, 3]
-        #     w_3 = avg_cost[e - 1, 6] / avg_cost[e - 2, 6]
-        #     w_4 = avg_cost[e - 1, 9] / avg_cost[e - 2, 9]
-        #     lambda_weight[0, e] = 3 * np.exp(w_1 / T) / (np.exp(w_1 / T) + np.exp(w_2 / T) + np.exp(w_3 / T) + np.exp(w_4 / T))
-        #     lambda_weight[1, e] = 3 * np.exp(w_2 / T) / (np.exp(w_1 / T) + np.exp(w_2 / T) + np.exp(w_3 / T) + np.exp(w_4 / T))
-        #     lambda_weight[2, e] = 3 * np.exp(w_3 / T) / (np.exp(w_1 / T) + np.exp(w_2 / T) + np.exp(w_3 / T) + np.exp(w_4 / T))
-        #     lambda_weight[3, e] = 3 * np.exp(w_4 / T) / (np.exp(w_1 / T) + np.exp(w_2 / T) + np.exp(w_3 / T) + np.exp(w_4 / T))
 
         true_manner_list = []
         gaussian_component = []
@@ -688,38 +673,47 @@ def MARTA_trainer(
                     y_logits,
                 )
             # ==== Backward pass ====
-            losses = [recon_loss, gaussian_loss, categorical_loss, metric_loss]
-            # for i in range(NUM_LOSSES):
-            #     losses[i] = losses[i] * lambda_weight[i, e]
-
             optimizer.zero_grad()
 
-            if method == "weightsum":
-                losses = [recon_loss, gaussian_loss, categorical_loss, 10*metric_loss]
+            if not classifier:
 
-            for i, loss_i in enumerate(losses):
+                if method == "weightsum":
+                    losses = [recon_loss, gaussian_loss, categorical_loss, 10*metric_loss]
+                else:
+                    losses = [recon_loss, gaussian_loss, categorical_loss, metric_loss]
 
-                if i < NUM_LOSSES: loss_i.backward(retain_graph=True)
-                else: loss_i.backward()
-
-                grad2vec(model, grads, grad_dims, i)
-                model.zero_grad()
+                # Compute each loss gradient excluding those dimensions corresponding
+                # to the decoder and the classifier.
+                for i, loss_i in enumerate(losses):
+                    if i < NUM_LOSSES: loss_i.backward(retain_graph=True)
+                    else: loss_i.backward()
+                    grad2vec(model, grads, grad_dims, i)
+                    model.zero_grad()
+                
+                # Get gradients information.
+                monitor_grad(e, batch_idx, grads)
+                monitor_loss(e, batch_idx, losses)
+                
+                # Operate encoder gradient locally.
+                if method == "cagrad":
+                    g = cagrad(grads)
+                elif method == "graddrop":
+                    g = graddrop(grads)
+                elif method == "mgd":
+                    g = mgd(grads)
+                elif method == "pcgrad":
+                    g = pcgrad(grads, rng)
+                else:
+                    g = grads.sum(1)
+                
+                # Update model gradient according to decoder loss.
+                recon_loss.backward()
+                # Update model gradient according to encoder loss.
+                overwrite_grad(model, g, grad_dims)
             
-            monitor_grad(e, batch_idx, grads)
-            monitor_loss(e, batch_idx, losses)
-            
-            if method == "cagrad":
-                g = cagrad(grads)
-            elif method == "graddrop":
-                g = graddrop(grads)
-            elif method == "mgd":
-                g = mgd(grads)
-            elif method == "pcgrad":
-                g = pcgrad(grads, rng)
             else:
-                g = grads.sum(1)
-            
-            overwrite_grad(model, g, grad_dims)
+
+                complete_loss.backward()
 
             optimizer.step()
 
