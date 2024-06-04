@@ -969,10 +969,11 @@ def MARTA_trainer(
                 },
                 name,
             )
-            sum_grad = grads.sum(1)
-            sum_mag = torch.norm(sum_grad)
-            with open(OUT_FILE_MAG, 'a') as f_mag:
-                f_mag.write(f'{e},{e},S,{sum_mag:.4f}\n')
+            if not classifier:
+                sum_grad = grads.sum(1)
+                sum_mag = torch.norm(sum_grad)
+                with open(OUT_FILE_MAG, 'a') as f_mag:
+                    f_mag.write(f'{e},{e},S,{sum_mag:.4f}\n')
             # Store best youden th in a txt
             if classifier:
                 print("Best threshold Youden: ", best_th_youden)

@@ -181,12 +181,12 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "../models_sup/MVAE_cnn_best_model_2d" + "_"
+            "../models_sup/GMVAE_cnn_best_model_2d" + "_"
             + str(hyperparams["method"]) + "_"
             + str(hyperparams["fold"])
             + ".pt"
         )
-        tmp = torch.load(name)
+        tmp = torch.load(name, map_location='cuda:0')
         model.load_state_dict(tmp["model_state_dict"])
 
         # Freeze all the network
@@ -227,19 +227,16 @@ def main(args, hyperparams):
         print("Loading model...")
 
     # Restoring best model
-    if hyperparams["model"] == "none":
-        name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
-    else: 
-        name = hyperparams["model"]
+    name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
     tmp = torch.load(name)
     model.load_state_dict(tmp["model_state_dict"])
 
     print("Testing GMVAE...")
 
     # Read the best threshold
-    # path = hyperparams["path_to_save"] + "/best_threshold.txt"
-    # with open(path, "r") as f:
-    #     threshold = float(f.read())
+    path = hyperparams["path_to_save"] + "/best_threshold.txt"
+    with open(path, "r") as f:
+        threshold = float(f.read())
 
     # Test the model
     MARTA_tester(
@@ -271,9 +268,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--method", type=str, default='sumloss', help="Gradients manipulation method"
     )
-    parser.add_argument(
-        "--model", type=str, default='none', help="Model to be restored"
-    )
 
     args = parser.parse_args()
 
@@ -302,14 +296,13 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         # ================ Classifier parameters ===================
-        "classifier_type": "mlp",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
+        "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": True,  # If true, train the classifier
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
         "method": args.method, 
-        "model": args.model, 
-        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
-        "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
+        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train_albayzin": False,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
         "gpu": args.gpu,  # Which gpu to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
