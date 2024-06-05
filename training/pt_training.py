@@ -24,6 +24,8 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from utils.utils import cluster_acc, nmi
 from tqdm import tqdm
+from sklearn.manifold import TSNE
+import seaborn as sns
 
 
 class StratifiedBatchSampler:
@@ -624,7 +626,6 @@ def MARTA_trainer(
                 manner = manner.to(model.device).int()
                 labels = labels.to(model.device).float()
                 y_pred = model.classifier_forward(data, manner)
-                y_pred = torch.sigmoid(y_pred)
                 (
                     complete_loss,
                     recon_loss,
@@ -632,6 +633,7 @@ def MARTA_trainer(
                     categorical_loss,
                     metric_loss,
                 ) = model.classifier_loss(y_pred, labels)
+                y_pred = torch.sigmoid(y_pred)
                 y_pred_list = np.concatenate(
                     (y_pred_list, y_pred.cpu().detach().numpy().squeeze())
                 )
@@ -807,7 +809,6 @@ def MARTA_trainer(
                         manner = manner.to(model.device).int()
                         labels = labels.to(model.device).float()
                         y_pred = model.classifier_forward(data, manner)
-                        y_pred = torch.sigmoid(y_pred)
                         (
                             complete_loss,
                             recon_loss,
@@ -815,6 +816,7 @@ def MARTA_trainer(
                             categorical_loss,
                             metric_loss,
                         ) = model.classifier_loss(y_pred, labels)
+                        y_pred = torch.sigmoid(y_pred)
                         y_pred_list = np.concatenate(
                             (
                                 y_pred_list,
@@ -1050,6 +1052,7 @@ def MARTA_tester(
     path_to_plot=None,
     best_threshold=0.5,
     masked=8,
+    train=False,
 ):
     # Set model in evaluation mode
     model.eval()
@@ -1197,6 +1200,7 @@ def MARTA_tester(
                         path_to_plot,
                         dataset_i,
                         best_threshold,
+                        train,
                     )
                 else:
                     calculate_classification_metrics(
@@ -1212,6 +1216,168 @@ def MARTA_tester(
                     )
 
 
+def check_latent_space(model, train_data, test_data, path_to_plot):
+    import random
+
+    # Set model in evaluation mode
+    model.eval()
+
+    # Separate the train and test data based on labels
+    train_data_0 = [item for item in train_data if item[1] == 0]
+    train_data_1 = [item for item in train_data if item[1] == 1]
+    test_data_0 = [item for item in test_data if item[1] == 0]
+    test_data_1 = [item for item in test_data if item[1] == 1]
+
+    # Perform stratified random sampling
+    train_samples_0 = random.sample(train_data_0, 500)
+    train_samples_1 = random.sample(train_data_1, 500)
+    test_samples_0 = random.sample(test_data_0, 500)
+    test_samples_1 = random.sample(test_data_1, 500)
+
+    # Combine the samples to create the final train and test sets
+    train_data = train_samples_0 + train_samples_1
+    test_data = test_samples_0 + test_samples_1
+
+    # Construct the dataloaders
+    train_dataloader = torch.utils.data.DataLoader(
+        train_data,
+        batch_size=1024,
+        shuffle=False,
+    )
+    test_dataloader = torch.utils.data.DataLoader(
+        test_data,
+        batch_size=1024,
+        shuffle=False,
+    )
+
+    store_z_train = []
+    store_x_train = []
+
+    for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(train_dataloader)):
+        # Move data to device
+        x = x.to(model.device).float()
+        # ==== Forward pass ====
+        (
+            x,
+            x_hat,
+            pz_mu,
+            pz_var,
+            y_logits,
+            y,
+            qz_mu,
+            qz_var,
+            z_sample,
+            e_s,
+            e_hat_s,
+            domain_pred,
+        ) = model(x)
+
+        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, 32)
+
+        store_z_train.append(qz_mu)
+        store_x_train.append(x.cpu().detach().numpy().reshape(-1, 65, 25))
+
+    store_z_test = []
+    store_x_test = []
+    for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(test_dataloader)):
+        # Move data to device
+        x = x.to(model.device).float()
+        # ==== Forward pass ====
+        (
+            x,
+            x_hat,
+            pz_mu,
+            pz_var,
+            y_logits,
+            y,
+            qz_mu,
+            qz_var,
+            z_sample,
+            e_s,
+            e_hat_s,
+            domain_pred,
+        ) = model(x)
+
+        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, 32)
+        store_x_test.append(x.cpu().detach().numpy().reshape(-1, 65, 25))
+
+        store_z_test.append(qz_mu)
+
+    # Calculate tsne 2d for all samples, plot them in different colours
+    z_train = np.concatenate(store_z_train)
+    x_train = np.concatenate(store_x_train)
+    z_test = np.concatenate(store_z_test)
+    x_test = np.concatenate(store_x_test)
+    all_x = np.concatenate((x_train, x_test), axis=0)
+    all_z = np.concatenate((store_z_train, store_z_test), axis=1).squeeze(0)
+    # Create labels for train and test datasets
+    train_labels = np.concatenate(
+        (
+            np.zeros(z_train.shape[0] // 2),  # Healthy
+            np.ones(z_train.shape[0] // 2),  # Parkinsonian
+        )
+    )
+    test_labels = np.concatenate(
+        (
+            np.zeros(z_test.shape[0] // 2),  # Healthy
+            np.ones(z_test.shape[0] // 2),  # Parkinsonian
+        )
+    )
+
+    # Combine train and test labels
+    labels = np.concatenate((train_labels, test_labels))
+    dataset_labels = np.concatenate(
+        (np.array(["train"] * z_train.shape[0]), np.array(["test"] * z_test.shape[0]))
+    )
+
+    # Combine labels into a single array
+    combined_labels = np.array(
+        [
+            f"{dset}_{'healthy' if lbl == 0 else 'parkinsonian'}"
+            for dset, lbl in zip(dataset_labels, labels)
+        ]
+    )
+
+    # Perform TSNE
+    tsne = TSNE(n_components=2, random_state=0)
+    z_tsne = tsne.fit_transform(all_z.reshape(all_z.shape[0], -1))
+
+    x_tsne = tsne.fit_transform(all_x.reshape(all_x.shape[0], -1))
+
+    # Plotting
+    fig, ax = plt.subplots()
+    sns.scatterplot(
+        x=z_tsne[:, 0],
+        y=z_tsne[:, 1],
+        hue=combined_labels,
+        style=dataset_labels,
+        palette="viridis",
+        ax=ax,
+        alpha=0.6,
+        markers={"train": "s", "test": "o"},
+    )
+    ax.set_title("TSNE 2D of the latent space")
+    plt.legend(title="Labels", loc="best")
+    plt.savefig(path_to_plot + "/tsne_2d.png")
+    plt.show()
+
+    fig, ax = plt.subplots()
+    sns.scatterplot(
+        x=x_tsne[:, 0],
+        y=x_tsne[:, 1],
+        hue=combined_labels,
+        style=dataset_labels,
+        palette="viridis",
+        ax=ax,
+        alpha=0.6,
+        markers={"train": "s", "test": "o"},
+    )
+    ax.set_title("TSNE 2D of the latent space")
+    plt.legend(title="Labels", loc="best")
+    plt.savefig(path_to_plot + "/tsne_2d_spectrograms.png")
+    plt.show()
+
+
 def calculate_classification_metrics(
     x_array_dataset,
     x_hat_array_dataset,
@@ -1222,6 +1388,7 @@ def calculate_classification_metrics(
     path_to_plot,
     dataset_i,
     best_threshold,
+    train,
 ):
     from sklearn.metrics import roc_curve, roc_auc_score
 
@@ -1261,6 +1428,8 @@ def calculate_classification_metrics(
         )
         accuracy = accuracy_score(y_array_dataset, y_pred)
         balanced_accuracy = balanced_accuracy_score(y_array_dataset, y_pred)
+        if dataset_i == "neurovoz":
+            print("a")
         auc = roc_auc_score(y_array_dataset, y_hat_array_dataset)
         print(
             f"Accuracy: {accuracy:.2f}, Balanced accuracy: {balanced_accuracy:.2f}, AUC: {auc:.2f}"
@@ -1284,6 +1453,34 @@ def calculate_classification_metrics(
         auc_consensus_logits = roc_auc_score(
             consensus_true.numpy(), torch.sigmoid(mean_log_odds).numpy()
         )
+
+        # Plot the distribution of the sigmoid of the mean log odds for the labels 0 and albels 1 on the same plot
+        fig, ax = plt.subplots()
+        sns.histplot(
+            y_hat_tensor[y_tensor == 0],
+            color="blue",
+            label="Label 0",
+            ax=ax,
+            alpha=0.5,
+        )
+        sns.histplot(
+            y_hat_tensor[y_tensor == 1],
+            color="red",
+            label="Label 1",
+            ax=ax,
+            alpha=0.5,
+        )
+        ax.set_title("Distribution of the sigmoid of the mean log odds")
+        ax.legend()
+        path_to_plot_dist = (
+            path_to_plot
+            + "/consensus_distribution_"
+            + dataset_i
+            + "_train_"
+            + str(train)
+            + ".png"
+        )
+        plt.savefig(path_to_plot_dist)
 
         # Print the consensus results
         print("Consensus results with logits:")

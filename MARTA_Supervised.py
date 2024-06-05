@@ -103,7 +103,7 @@ def main(args, hyperparams):
             train_loader,
             val_loader,
             test_loader,
-            _,  # train_data, not used
+            train_data,  # train_data, not used
             _,  # val_data, not used
             test_data,
         ) = dataset.get_dataloaders(
@@ -175,9 +175,13 @@ def main(args, hyperparams):
     elif hyperparams["crosslingual"] == "gita_nv":
         # Train data is gita + albayzin
         new_train = (
-            gita_data_train + gita_data_test + albayzin_data_train + albayzin_data_test
+            gita_data_train
+            + gita_data_test
+            + albayzin_data_train
+            + albayzin_data_test
+            + albayzin_data_val
         )
-        new_val = gita_data_val + albayzin_data_val
+        new_val = gita_data_val
         # Test is all neurovoz
         new_test = neurovoz_data_test + neurovoz_data_train
         print("Crosslingual scenario: gita + albayzin -> neurovoz")
@@ -254,6 +258,17 @@ def main(args, hyperparams):
         model=model,
         testloader=test_loader,
         test_data=test_data,
+        supervised=False,  # Not implemented yet
+        wandb_flag=hyperparams["wandb_flag"],
+        path_to_plot=hyperparams["path_to_save"],
+    )
+    print("Testing finished!")
+
+    # Test the model
+    MARTA_tester(
+        model=model,
+        testloader=train_loader,
+        test_data=train_data,
         supervised=False,  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
         path_to_plot=hyperparams["path_to_save"],

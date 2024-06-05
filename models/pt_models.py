@@ -571,19 +571,22 @@ class MARTA(torch.nn.Module):
             torch.nn.Linear(160, self.class_dims[2]),
             torch.nn.ReLU(),
             # Dropout
-            torch.nn.Dropout(p=0.9),
+            torch.nn.Dropout(p=0.8),
             torch.nn.Linear(self.class_dims[2], 1),
         )
 
         self.clf_mlp = torch.nn.Sequential(
-            torch.nn.Linear(self.z_dim * self.window_size, 256),
-            torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.5),
-            torch.nn.Linear(256, 32),
+            torch.nn.Linear(self.z_dim * self.window_size, 32),
             torch.nn.ReLU(),
             torch.nn.Dropout(p=0.5),
             torch.nn.Linear(32, 1),
         )
+        #     torch.nn.Dropout(p=0.5),
+        #     torch.nn.Linear(256, 32),
+        #     torch.nn.ReLU(),
+        #     torch.nn.Dropout(p=0.5),
+        #     torch.nn.Linear(32, 1),
+        # )
 
     def spec_encoder_forward(self, x):
         """Forward function of the spectrogram encoder network. It receives the spectrogram (x) and outputs the encoded spectrogram (e_s)."""

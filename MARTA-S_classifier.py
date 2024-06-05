@@ -37,7 +37,7 @@ Note:
 """
 
 from models.pt_models import MARTA
-from training.pt_training import MARTA_trainer, MARTA_tester
+from training.pt_training import MARTA_trainer, MARTA_tester, check_latent_space
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
@@ -148,13 +148,8 @@ def main(args, hyperparams):
         import pandas as pd
 
         if hyperparams["crosslingual"] == "nv_gita":
-            # Train data is neurovoz + albayzin
-            new_train = (
-                neurovoz_data_train
-                + albayzin_data_train
-                + neurovoz_data_test
-                + albayzin_data_test
-            )
+            # Train data is neurovoz
+            new_train = neurovoz_data_train + neurovoz_data_test
             new_val = neurovoz_data_val
             # For gita_data_val remove last element of each tuple
             gita_data_val = [
@@ -171,14 +166,9 @@ def main(args, hyperparams):
                 ]
             )
         elif hyperparams["crosslingual"] == "gita_nv":
-            # Train data is gita + albayzin
-            new_train = (
-                gita_data_train
-                + gita_data_test
-                + albayzin_data_train
-                + albayzin_data_test
-            )
-            new_val = gita_data_val + albayzin_data_val
+            # Train data is gita
+            new_train = gita_data_train + gita_data_test
+            new_val = gita_data_val
             # For neurovoz_data_val remove last element of each tuple
             neurovoz_data_val = [
                 (data[0], data[1], data[2], data[3]) for data in neurovoz_data_val
@@ -201,10 +191,10 @@ def main(args, hyperparams):
 
         # Augment the train dataset
         extended_dataset = augment_data(new_train)
-        extended_dataset = augment_data(extended_dataset)
 
         # Stratify train dataset
         balanced_dataset = stratify_dataset(extended_dataset)
+        new_val = stratify_dataset(new_val, validation=True)
 
         train_sampler = make_balanced_sampler(balanced_dataset)
         val_sampler = make_balanced_sampler(new_val, validation=True)
@@ -247,8 +237,7 @@ def main(args, hyperparams):
             + hyperparams["crosslingual"]
             + "_latentdim_"
             + str(hyperparams["latent_dim"])
-            + "_domainadversarial_"
-            + str(hyperparams["domain_adversarial"])
+            + "_domainadversarial_1"
             + "supervised"
             + "90-10-fold"
             + str(hyperparams["fold"])
@@ -298,6 +287,10 @@ def main(args, hyperparams):
     tmp = torch.load(name)
     model.load_state_dict(tmp["model_state_dict"])
 
+    # Check latent space
+    print("Checking latent space...")
+    check_latent_space(model, new_train, new_test, hyperparams["path_to_save"])
+
     print("Testing GMVAE...")
 
     # Read the best threshold
@@ -306,6 +299,7 @@ def main(args, hyperparams):
         threshold = float(f.read())
 
     # Test the model
+    print("================ TESTING DATA ================")
     MARTA_tester(
         model=model,
         testloader=test_loader,
@@ -317,6 +311,23 @@ def main(args, hyperparams):
     )
     print("Testing finished!")
 
+    # Test the model
+    print("================ Training DATA ================")
+    MARTA_tester(
+        model=model,
+        testloader=train_loader,
+        test_data=train_data,
+        supervised=True,  # Not implemented yet
+        wandb_flag=hyperparams["wandb_flag"],
+        path_to_plot=hyperparams["path_to_save"],
+        best_threshold=threshold,
+        train=True,
+    )
+    print("Testing finished!")
+
+    print("Checking spectrograms")
+    # Check the spectrograms
+
     if hyperparams["wandb_flag"]:
         wandb.finish()
 
@@ -327,7 +338,7 @@ def main(args, hyperparams):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script configuration")
     parser.add_argument(
-        "--fold", type=int, default=0, help="Fold number for the experiment"
+        "--fold", type=int, default=2, help="Fold number for the experiment"
     )
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number for the experiment"
@@ -336,10 +347,10 @@ if __name__ == "__main__":
         "--latent_dim", type=int, default=32, help="Latent dimension of the model"
     )
     parser.add_argument(
-        "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
+        "--domain_adversarial", type=int, default=0, help="Use domain adversarial"
     )
     parser.add_argument(
-        "--cross_lingual", type=str, default="nv_gita", help="crosslingual scenario"
+        "--cross_lingual", type=str, default="gita_nv", help="crosslingual scenario"
     )
 
     args = parser.parse_args()
@@ -351,7 +362,7 @@ if __name__ == "__main__":
         "spectrogram_win_size": 0.030,  # Window size of each window in the spectrogram
         "hop_size_percent": 0.5,  # Hop size (0.5 means 50%) between each window in the spectrogram
         # ================ GMVAE parameters ===================
-        "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
+        "epochs": 300,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 128,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
         "latent_dim": args.latent_dim,  # Latent dimension of the z vector (remember it is also the input to the classifier)
@@ -371,7 +382,7 @@ if __name__ == "__main__":
         "domain_adversarial": args.domain_adversarial,  # If true, use domain adversarial model
         "crosslingual": args.cross_lingual,  # Crosslingual scenario
         # ================ Classifier parameters ===================
-        "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
+        "classifier_type": "mlp",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": True,  # If true, train the classifier
         "supervised": True,  # It must be true
         # ================ Training parameters ===================

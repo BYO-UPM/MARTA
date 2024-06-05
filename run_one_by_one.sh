@@ -25,8 +25,7 @@
 # wait $PID_GPU0 $PID_GPU1
 
 
-python MARTA-S_classifier.py  --gpu 1 --latent_dim 32 --domain_adversarial 0 --cross_lingual gita_nv --fold 2&
+python MARTA_Supervised.py  --gpu 1 --latent_dim 32 --domain_adversarial 1 --cross_lingual gita_nv --fold 2&
 PID_GPU0=$!
+wait $PID_GPU0 
 python MARTA-S_classifier.py  --gpu 1 --latent_dim 32 --domain_adversarial 1 --cross_lingual gita_nv --fold 2&
-PID_GPU1=$!
-wait $PID_GPU0 $PID_GPU1
