@@ -346,6 +346,7 @@ class MARTA(torch.nn.Module):
         n_manner=8,
         weights=[1, 1, 1, 10],
         classifier="cnn",
+        grb_enable=False, 
         device="cpu",
         reducer="mean",
     ):
@@ -376,6 +377,8 @@ class MARTA(torch.nn.Module):
         self.SpecDecoder()
         # Classifier: from latent space (z) to parkinson prediction (y_pred)
         self.classifier()
+        # GRB ratings: from latent space (z) to GRAB ratings prediction ()
+        self.multi_task()
 
         # ============ Losses ============
         self.reducer = reducer
@@ -566,6 +569,40 @@ class MARTA(torch.nn.Module):
             torch.nn.Dropout(p=0.5),
             torch.nn.Linear(32, 1),
         )
+    
+    def multi_task(self):
+        '''This function adds a classifier to the network'''
+        # Initial shared layers.
+        shared_layers = torch.nn.Sequential(
+            torch.nn.Linear(self.z_dim * self.window_size, 256),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=0.5),
+            torch.nn.Linear(256, 128),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=0.5)
+        )
+        
+        # Define separate paths for G, R, B.
+        g_path = torch.nn.Sequential(
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=0.5),
+            torch.nn.Linear(64, 4) 
+        )
+        r_path = torch.nn.Sequential(
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=0.5),
+            torch.nn.Linear(64, 4) 
+        )
+        b_path = torch.nn.Sequential(
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=0.5),
+            torch.nn.Linear(64, 4) 
+        )
+
+        self.mt_grb = torch.nn.ModuleList([shared_layers, g_path, r_path, b_path])
 
     def spec_encoder_forward(self, x):
         """Forward function of the spectrogram encoder network. It receives the spectrogram (x) and outputs the encoded spectrogram (e_s)."""
@@ -651,6 +688,35 @@ class MARTA(torch.nn.Module):
             y_pred = self.clf_mlp(z_hat)
 
         return y_pred
+    
+    def mt_grb_forward(self, x, manner):
+        """Forward function of the GRB rating scale predicting network. It receives the spectrogram (x)."""
+        # Extract the features of the spectrogram
+        e_s = self.spec_encoder_forward(x)
+        # Get the latent space representation of each window of the spectrogram
+        _, _, _, qz_mu, _, _, _ = self.inference_forward(e_s)
+        # Let us use the mean of the latent space representation as the samples
+        z = qz_mu
+
+        # Embed manner class from (batch, win_size) to (batch, win_size, z_dim)
+        hmc = self.hmc(manner)
+
+        # Now z is (batch*window, z_dim), reshape to: (batch, window_size, z_dim)
+        z = z.reshape(manner.shape[0], self.window_size, self.z_dim)
+
+        # Flatten both z and hmc from (batch, window, z_dim) to (batch, window*z_dim)
+        hmc = hmc.reshape(hmc.shape[0], -1)
+        z = z.reshape(z.shape[0], -1)
+        z = z / torch.norm(z, dim=1).unsqueeze(1)
+        hmc = hmc / torch.norm(hmc, dim=1).unsqueeze(1)
+        z_hat = z + hmc      
+
+        shared_out = self.mt_grb[0](z_hat)
+        g_pred = self.mt_grb[1](shared_out)
+        r_pred = self.mt_grb[2](shared_out)
+        b_pred = self.mt_grb[3](shared_out)
+
+        return g_pred, r_pred, b_pred
 
     def forward(self, x):
         """Forward function of the MARTA. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""
@@ -783,6 +849,18 @@ class MARTA(torch.nn.Module):
         # BCE loss
         loss = criterion(y_pred, labels)
         return loss, 0, 0, 0, 0
+
+    def mt_grb_loss(self, g_pred, r_pred, b_pred, g_true, r_true, b_true):
+        """Compute the ordinal regression loss for each path."""
+        def ordinal_loss(pred, true):
+            criterion = torch.nn.CrossEntropyLoss()
+            return criterion(pred, true.long())
+
+        g_loss = ordinal_loss(g_pred, g_true)
+        r_loss = ordinal_loss(r_pred, r_true)
+        b_loss = ordinal_loss(b_pred, b_true)
+
+        return g_loss, r_loss, b_loss
 
     def directly_classifier_loss(self, z_sample, manner_classes):
         z_sample = z_sample.reshape(
