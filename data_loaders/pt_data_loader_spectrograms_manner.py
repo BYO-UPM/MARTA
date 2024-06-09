@@ -739,8 +739,34 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 + str(f)
                 + ".pt"
             )
+            train_data_name = (
+                "local_results/folds/train_data_supervised_"
+                + str(self.hyperparams["supervised"])
+                + "_frame_size_"
+                + str(self.hyperparams["frame_size_ms"])
+                + "spec_winsize_"
+                + str(self.hyperparams["spectrogram_win_size"])
+                + "hopsize_"
+                + str(self.hyperparams["hop_size_percent"])
+                + "fold"
+                + str(f)
+                + ".pt"
+            )
             val_name = (
                 "local_results/folds/val_loader_supervised_"
+                + str(self.hyperparams["supervised"])
+                + "_frame_size_"
+                + str(self.hyperparams["frame_size_ms"])
+                + "spec_winsize_"
+                + str(self.hyperparams["spectrogram_win_size"])
+                + "hopsize_"
+                + str(self.hyperparams["hop_size_percent"])
+                + "fold"
+                + str(f)
+                + ".pt"
+            )
+            val_data_name = (
+                "local_results/folds/val_data_supervised_"
                 + str(self.hyperparams["supervised"])
                 + "_frame_size_"
                 + str(self.hyperparams["frame_size_ms"])
@@ -780,7 +806,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
             torch.save(train_loader, train_name)
+            torch.save(train_data, train_data_name)
             torch.save(val_loader, val_name)
+            torch.save(val_data, val_data_name)
             torch.save(test_loader, test_name)
             torch.save(test_data, test_data_name)
 

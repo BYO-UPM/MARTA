@@ -10,3 +10,5 @@ ALBAYCIN_ALIGNED = ALBAYCIN_PARENT_REMOTE + r'albayzin_htk_forced_alignment'
 NEUROVOZ_LABELS_LOCAL = r'labeled/NeuroVoz'
 # Local folder to store already processed data
 PROCESSED_DATA_LOCAL = r'local_results/'
+# Local folder where data partitions are stored.
+PARTITIONS_DATA_LOCAL = PROCESSED_DATA_LOCAL + r'folds/'
