@@ -75,6 +75,7 @@ def main(args, hyperparams):
         hidden_dims_spectrogram=hyperparams["hidden_dims_enc"],
         hidden_dims_gmvae=hyperparams["hidden_dims_gmvae"],
         classifier=hyperparams["classifier_type"],
+        grb_enable=hyperparams["grb_enable"],
         weights=hyperparams["weights"],
         device=device,
     )
@@ -120,6 +121,7 @@ def main(args, hyperparams):
             path_to_save=hyperparams["path_to_save"],
             supervised=hyperparams["supervised"],
             classifier=hyperparams["classifier"],
+            grb_enable=hyperparams["grb_enable"],
             method=hyperparams["method"],
         )
 
@@ -198,10 +200,11 @@ if __name__ == "__main__":
         ],
         # ================ Classifier parameters ===================
         "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
-        "classifier": True,  # If true, train the classifier
+        "classifier": False,  # If true, train the classifier
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
         "method": args.method, 
+        "grb_enable": True, # If true, MARTA model is tailored for GRB rating scale prediction.
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": False,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).

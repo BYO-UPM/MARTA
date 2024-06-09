@@ -575,6 +575,7 @@ def MARTA_trainer(
     path_to_save,
     supervised,
     classifier,
+    grb_enable, 
     method='sumloss'
 ):
     # ============================= LR scheduler =============================
@@ -587,7 +588,13 @@ def MARTA_trainer(
     # ============================= Iterate model modules =============================
     if not classifier:
         # Prepare for manipulating gradient dimensions according to encoder loss.
-        grads, grad_dims = get_tensor_from_model(model)
+        if not grb_enable:
+            task_count = 4
+            excluded_layers = ['spec_dec', 'clf_cnn', 'clf_mlp', 'hmc'] # TODO: check if hmc had had to be included
+        else:
+            task_count = 3
+            excluded_layers = ['spec_dec', 'clf_cnn', 'clf_mlp', 'hmc'] # TODO
+        grads, grad_dims = get_tensor_from_model(model, task_count, excluded_layers)
         print(f'{grad_dims} dimensions used for gradient manipulation')
         rng = np.random.default_rng()
 
@@ -611,13 +618,12 @@ def MARTA_trainer(
             0,
         )
 
-        for batch_idx, (data, labels, manner, dataset) in enumerate(tqdm(trainloader)):
+        for batch_idx, (data, labels, g_label, r_label, b_label, manner, dataset) in enumerate(tqdm(trainloader)): #### TODO: check GRB labels.
 
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
 
             # ==== Forward pass ====
-
             if classifier:
                 manner[manner > 7] = manner[manner > 7] - 8
                 manner = manner.to(model.device).int()
@@ -631,11 +637,16 @@ def MARTA_trainer(
                     categorical_loss,
                     metric_loss,
                 ) = model.classifier_loss(y_pred, labels)
-                y_pred_list = np.concatenate(
-                    (y_pred_list, y_pred.cpu().detach().numpy().squeeze())
-                )
-
+                y_pred_list = np.concatenate((y_pred_list, y_pred.cpu().detach().numpy().squeeze()))
                 label_list = np.concatenate((label_list, labels.cpu().detach().numpy()))
+            elif grb_enable:
+                manner[manner > 7] = manner[manner > 7] - 8
+                manner = manner.to(model.device).int()
+                g_label = g_label.to(model.device).float()
+                r_label = r_label.to(model.device).float()
+                b_label = b_label.to(model.device).float()
+                g_pred, r_pred, b_pred = model.mt_grb_forward(data, manner)
+                g_loss, r_loss, b_loss = model.mt_grb_loss(g_pred, r_pred, b_pred, g_label, r_label, b_label)
             else:
                 # Assert that any manner is no bigger than 7
                 if not supervised:
@@ -650,8 +661,8 @@ def MARTA_trainer(
                     qz_mu,
                     qz_var,
                     z_sample,
-                    e_s,
-                    e_hat_s,
+                    _,
+                    _,
                 ) = model(data)
                 # ==== Loss ====
                 (
@@ -675,51 +686,42 @@ def MARTA_trainer(
             # ==== Backward pass ====
             optimizer.zero_grad()
 
-            if not classifier:
-
-                if method == "weightsum":
-                    losses = [recon_loss, gaussian_loss, categorical_loss, 10*metric_loss]
+            if not classifier or grb_enable: # TODO: check these "ifnots".
+                if not grb_enable:
+                    if method == "weightsum":
+                        losses = [recon_loss, gaussian_loss, categorical_loss, 10*metric_loss]
+                    else:
+                        losses = [recon_loss, gaussian_loss, categorical_loss, metric_loss]
                 else:
-                    losses = [recon_loss, gaussian_loss, categorical_loss, metric_loss]
-
+                    losses = [g_loss, r_loss, b_loss]
                 # Compute each loss gradient excluding those dimensions corresponding
                 # to the decoder and the classifier.
                 for i, loss_i in enumerate(losses):
-                    if i < NUM_LOSSES: loss_i.backward(retain_graph=True)
+                    if i < task_count: loss_i.backward(retain_graph=True)
                     else: loss_i.backward()
                     grad2vec(model, grads, grad_dims, i)
                     model.zero_grad()
-                
                 # Get gradients information.
-                monitor_grad(e, batch_idx, grads)
-                monitor_loss(e, batch_idx, losses)
-                
+                monitor_grad(e, batch_idx, grads, task_count)
+                monitor_loss(e, batch_idx, losses, task_count)
                 # Operate encoder gradient locally.
-                if method == "cagrad":
-                    g = cagrad(grads)
-                elif method == "graddrop":
-                    g = graddrop(grads)
-                elif method == "mgd":
-                    g = mgd(grads)
-                elif method == "pcgrad":
-                    g = pcgrad(grads, rng)
-                else:
-                    g = grads.sum(1)
-                
+                if method == "cagrad": g = cagrad(grads, task_count)
+                elif method == "graddrop": g = graddrop(grads, task_count)
+                elif method == "mgd": g = mgd(grads, task_count)
+                elif method == "pcgrad": g = pcgrad(grads, rng, task_count)
+                else: g = grads.sum(1)
                 # Update model gradient according to decoder loss.
-                recon_loss.backward()
+                if not grb_enable: recon_loss.backward()
                 # Update model gradient according to encoder loss.
-                overwrite_grad(model, g, grad_dims)
-            
+                overwrite_grad(model, g, grad_dims, task_count, excluded_layers)
             else:
-
                 complete_loss.backward()
 
             optimizer.step()
 
             # ==== Update metrics ====
             tr_running_loss += complete_loss.item()
-            if not classifier:
+            if not classifier and not grb_enable:
                 tr_rec_loss += recon_loss.item()
                 tr_gauss_loss += gaussian_loss.item()
                 tr_cat_loss += categorical_loss.item()
@@ -732,7 +734,7 @@ def MARTA_trainer(
         scheduler.step()
 
         # Check reconstruction of X
-        if not classifier:
+        if not classifier and not grb_enable:
             check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
             # Check unsupervised cluster accuracy and NMI
             true_manner = torch.tensor(np.concatenate(true_manner_list))
@@ -877,7 +879,7 @@ def MARTA_trainer(
 
                     v_running_loss += complete_loss.item()
 
-                    if not classifier:
+                    if not classifier and not grb_enable:
                         v_rec_loss += recon_loss.item()
                         v_gauss_loss += gaussian_loss.item()
                         v_cat_loss += categorical_loss.item()
@@ -888,7 +890,7 @@ def MARTA_trainer(
                         gaussian_component.append(y.cpu().detach().numpy())
 
                 # Check reconstruction of X
-                if not classifier:
+                if not classifier and not grb_enable:
                     check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
                     # Check unsupervised cluster accuracy and NMI
                     true_manner = torch.tensor(np.concatenate(true_manner_list))
@@ -910,7 +912,7 @@ def MARTA_trainer(
                         )
                     )
 
-            if not classifier:
+            if not classifier and not grb_enable:
                 print(
                     "Epoch: {} Valid Loss: {:.4f} Rec Loss: {:.4f} Gaussian Loss: {:.4f} Cat Loss : {:.4f} Metric Loss: {:.4f} UAcc: {:.4f} NMI: {:.4f}".format(
                         e,
@@ -969,7 +971,7 @@ def MARTA_trainer(
                 },
                 name,
             )
-            if not classifier:
+            if not classifier or grb_enable:
                 sum_grad = grads.sum(1)
                 sum_mag = torch.norm(sum_grad)
                 with open(OUT_FILE_MAG, 'a') as f_mag:
@@ -983,7 +985,7 @@ def MARTA_trainer(
                 with open(namefile, "w") as f:
                     f.write(str(best_th_youden))
 
-        if not classifier:
+        if not classifier and not grb_enable:
             check_reconstruction(x, x_hat, wandb_flag, train_flag=False)
 
         # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training

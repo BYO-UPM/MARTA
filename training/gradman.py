@@ -5,19 +5,18 @@ from scipy.optimize import minimize
 from training.min_norm_solvers import MinNormSolver
 
 
-NUM_LOSSES = 4
 OUT_FILE_MAG = 'local_results/trace_mag.csv'
 OUT_FILE_COS = 'local_results/trace_cos.csv'
 OUT_FILE_LOSS = 'local_results/trace_loss.csv'
 
 
-def get_tensor_from_model(model):
+def get_tensor_from_model(model, task_count, excluded_layers):
     grad_dims = []
     for name, param in model.named_parameters():
         # Exclude those layers after the GMVAE
-        if name.split('.')[0] not in ['spec_dec', 'clf_cnn', 'clf_mlp', 'hmc']:
+        if name.split('.')[0] not in excluded_layers:
             grad_dims.append(param.data.numel())
-    grads = torch.Tensor(sum(grad_dims), NUM_LOSSES).cuda()
+    grads = torch.Tensor(sum(grad_dims), task_count).cuda()
     return grads, grad_dims
 
 
@@ -37,12 +36,12 @@ def grad2vec(m, grads, grad_dims, task):
             cnt += 1
 
 
-def overwrite_grad(m, newgrad, grad_dims):
-    newgrad = newgrad * NUM_LOSSES # to match the sum loss
+def overwrite_grad(m, newgrad, grad_dims, task_count, excluded_layers):
+    newgrad = newgrad * task_count # to match the sum loss
     cnt = 0
     for name, param in m.named_parameters():
         # Exclude those layers after the GMVAE
-        if name.split('.')[0] not in ['spec_dec', 'clf_cnn', 'clf_mlp', 'hmc']:
+        if name.split('.')[0] not in excluded_layers:
             beg = 0 if cnt == 0 else sum(grad_dims[:cnt])
             en = sum(grad_dims[:cnt + 1])
             this_grad = newgrad[beg: en].contiguous().view(param.data.size())
@@ -65,9 +64,9 @@ def mgd(grads):
     g = grads.mm(w.view(-1, 1)).view(-1)
     return g
 
-def pcgrad(grads, rng):
+def pcgrad(grads, rng, task_count):
     grad_vec = grads.t()
-    num_tasks = NUM_LOSSES
+    num_tasks = task_count
 
     shuffled_task_indices = np.zeros((num_tasks, num_tasks - 1), dtype=int)
     for i in range(num_tasks):
@@ -93,19 +92,19 @@ def pcgrad(grads, rng):
     return g
 
 
-def cagrad(grads, alpha=0.5, rescale=1):
+def cagrad(grads, task_count, alpha=0.5, rescale=1):
     GG = grads.t().mm(grads).cpu() # [num_tasks, num_tasks]
     g0_norm = (GG.mean()+1e-8).sqrt() # norm of the average gradient
 
-    x_start = np.ones(NUM_LOSSES) / NUM_LOSSES
+    x_start = np.ones(task_count) / task_count
     bnds = tuple((0,1) for x in x_start)
     cons=({'type':'eq','fun':lambda x:1-sum(x)})
     A = GG.numpy()
     b = x_start.copy()
     c = (alpha*g0_norm+1e-8).item()
     def objfn(x):
-        return (x.reshape(1,NUM_LOSSES).dot(A).dot(b.reshape(NUM_LOSSES, 1)) + \
-                c * np.sqrt(x.reshape(1,NUM_LOSSES).dot(A).dot(x.reshape(NUM_LOSSES,1))+1e-8)).sum()
+        return (x.reshape(1,task_count).dot(A).dot(b.reshape(task_count, 1)) + \
+                c * np.sqrt(x.reshape(1,task_count).dot(A).dot(x.reshape(task_count,1))+1e-8)).sum()
     res = minimize(objfn, x_start, bounds=bnds, constraints=cons)
     w_cpu = res.x
     ww = torch.Tensor(w_cpu).to(grads.device)
@@ -121,7 +120,7 @@ def cagrad(grads, alpha=0.5, rescale=1):
         return g / (1 + alpha)
     
 
-def monitor_grad(epoch, batch, grads):
+def monitor_grad(epoch, batch, grads, task_count):
     
     if (batch == 0) and (epoch == 0): 
 
@@ -136,20 +135,20 @@ def monitor_grad(epoch, batch, grads):
 
         # Dump gradients magnitude to file
         with open(OUT_FILE_MAG, 'a') as f_mag:
-            for i in range(NUM_LOSSES):
+            for i in range(task_count):
                 mag_i = torch.norm(grads[:,i])
                 grad_mag.append(mag_i)
                 f_mag.write(f'{epoch},{batch},{i},{mag_i:.4f}\n')
         
         # Dump gradients cosine to file
         with open(OUT_FILE_COS, 'a') as f_cos:
-            for i in range(NUM_LOSSES):
-                for j in range(i+1, NUM_LOSSES):
+            for i in range(task_count):
+                for j in range(i+1, task_count):
                     cos_ij = torch.dot(grads[:,i], grads[:,j]) / grad_mag[i] / grad_mag[j]
                     f_cos.write(f'{epoch},{batch},{i},{j},{cos_ij:.6f}\n')
 
 
-def monitor_loss(epoch, batch, losses):
+def monitor_loss(epoch, batch, losses, task_count):
     
     if (batch == 0) and (epoch == 0): 
 
@@ -160,6 +159,6 @@ def monitor_loss(epoch, batch, losses):
 
         # Dump task loss magnitude to file
         with open(OUT_FILE_LOSS, 'a') as f_loss:
-            for i in range(NUM_LOSSES):
+            for i in range(task_count):
                 f_loss.write(f'{epoch},{batch},{i},{losses[i]:.4f}\n')
 
