@@ -9,6 +9,7 @@ import os
 import argparse
 from utils.utils import make_balanced_sampler, augment_data, stratify_dataset
 from utils.process_grb import convert_data_for_grb
+import time
 
 
 def main(args, hyperparams):
@@ -36,35 +37,17 @@ def main(args, hyperparams):
         _, _, _, _, _, _ = dataset.get_dataloaders(
             train_albayzin=hyperparams["train_albayzin"], supervised=hyperparams["supervised"])
 
-    # Transform already created MARTA data partitions into suitable data for GRB problem.
-    if not hyperparams['grb_labeled']:
-        convert_data_for_grb()
-
     # Read data from GRB-transformed data partitions.
     print('Reading train, val and test loaders from local_results/...')
     name_core_1 = f'_supervised_True_frame_size_0.4spec_winsize_{hyperparams["spectrogram_win_size"]}'
     name_core_2 = f'hopsize_0.5fold{hyperparams["fold"]}.pt'
+    t_start = time.time()
     train_loader = torch.load(f'{PARTITIONS_DATA_LOCAL}train_loader{name_core_1}{name_core_2}')
     val_loader   = torch.load(f'{PARTITIONS_DATA_LOCAL}val_loader{name_core_1}{name_core_2}')
     test_loader  = torch.load(f'{PARTITIONS_DATA_LOCAL}test_loader{name_core_1}{name_core_2}')
     test_data    = torch.load(f'{PARTITIONS_DATA_LOCAL}test_data{name_core_1}{name_core_2}')
-
-    new_train = train_loader.dataset
-    new_val = val_loader.dataset
-
-    # Augment the train dataset
-    extended_dataset = augment_data(new_train)
-
-    # Stratify train dataset
-    balanced_dataset = stratify_dataset(extended_dataset)
-
-    # Balance dataset.
-    train_sampler = make_balanced_sampler(balanced_dataset)
-    val_sampler = make_balanced_sampler(new_val, validation=True)
-
-    # Create new dataloaders
-    new_train_loader = torch.utils.data.DataLoader(balanced_dataset, batch_size=val_loader.batch_size, sampler=train_sampler)
-    val2_loader = torch.utils.data.DataLoader(new_val, batch_size=val_loader.batch_size, sampler=val_sampler)
+    t_end = time.time()
+    print(f'It took {(t_end - t_start)/60:.2f} minutes to read current data partition')
 
     print('Defining models...')
     # Create the model
@@ -114,8 +97,8 @@ def main(args, hyperparams):
         # Train the model
         MARTA_trainer(
             model=model,
-            trainloader=new_train_loader,
-            validloader=val2_loader,
+            trainloader=train_loader,
+            validloader=val_loader,
             epochs=hyperparams['epochs'],
             lr=hyperparams['lr'],
             wandb_flag=hyperparams['wandb_flag'],
@@ -215,7 +198,6 @@ if __name__ == '__main__':
         'train': True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": False,  # If true, train with albayzin data. If false, only train with neurovoz data.
         'new_data_partition': False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
-        'grb_labeled': True, # If true, data partitions already include GRB labels.
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
         'gpu': args.gpu,  # Which gpu to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
         # ================ UNUSED PARAMETERS (we should fix this) ===================

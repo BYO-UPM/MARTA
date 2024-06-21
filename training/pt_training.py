@@ -14,6 +14,7 @@ from sklearn.metrics import (
     f1_score,
     roc_auc_score,
     balanced_accuracy_score,
+    confusion_matrix,
 )
 from sklearn.model_selection import StratifiedKFold
 import os
@@ -609,6 +610,8 @@ def MARTA_trainer(
         gaussian_component = []
         y_pred_list = []
         label_list = []
+        g_real_list, r_real_list, b_real_list = [], [], []
+        g_pred_list, r_pred_list, b_pred_list = [], [], []
 
         tr_running_loss, tr_rec_loss, tr_gauss_loss, tr_cat_loss, tr_metric_loss = (
             0,
@@ -618,7 +621,7 @@ def MARTA_trainer(
             0,
         )
 
-        for batch_idx, (data, labels, g_label, r_label, b_label, manner, dataset) in enumerate(tqdm(trainloader)): #### TODO: check GRB labels.
+        for batch_idx, (data, labels, g_label, r_label, b_label, manner, dataset) in enumerate(tqdm(trainloader)):
 
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
@@ -645,8 +648,16 @@ def MARTA_trainer(
                 g_label = g_label.to(model.device).float()
                 r_label = r_label.to(model.device).float()
                 b_label = b_label.to(model.device).float()
-                g_pred, r_pred, b_pred = model.mt_grb_forward(data, manner)
-                g_loss, r_loss, b_loss = model.mt_grb_loss(g_pred, r_pred, b_pred, g_label, r_label, b_label)
+                y_pred = model.mt_grb_forward(data, manner)
+                g_loss, r_loss, b_loss = \
+                    model.mt_grb_loss(y_pred[0], y_pred[1], y_pred[2], 
+                                      g_label, r_label, b_label)
+                g_pred_list = np.concatenate((g_pred_list, y_pred[0].cpu().detach().numpy().squeeze()))
+                g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
+                r_pred_list = np.concatenate((r_pred_list, y_pred[1].cpu().detach().numpy().squeeze()))
+                r_real_list = np.concatenate((r_real_list, g_label.cpu().detach().numpy()))
+                b_pred_list = np.concatenate((b_pred_list, y_pred[2].cpu().detach().numpy().squeeze()))
+                b_real_list = np.concatenate((b_real_list, g_label.cpu().detach().numpy()))
             else:
                 # Assert that any manner is no bigger than 7
                 if not supervised:
@@ -706,7 +717,7 @@ def MARTA_trainer(
                 monitor_loss(e, batch_idx, losses, task_count)
                 # Operate encoder gradient locally.
                 if method == "cagrad": g = cagrad(grads, task_count)
-                elif method == "graddrop": g = graddrop(grads, task_count)
+                elif method == "graddrop": g = graddrop(grads)
                 elif method == "mgd": g = mgd(grads, task_count)
                 elif method == "pcgrad": g = pcgrad(grads, rng, task_count)
                 else: g = grads.sum(1)
@@ -720,15 +731,16 @@ def MARTA_trainer(
             optimizer.step()
 
             # ==== Update metrics ====
-            tr_running_loss += complete_loss.item()
-            if not classifier and not grb_enable:
-                tr_rec_loss += recon_loss.item()
-                tr_gauss_loss += gaussian_loss.item()
-                tr_cat_loss += categorical_loss.item()
-                tr_metric_loss += metric_loss.item()
-                usage += torch.sum(y, dim=0).cpu().detach().numpy()
-                gaussian_component.append(y.cpu().detach().numpy())
-                true_manner_list.append(manner)
+            if not grb_enable:
+                tr_running_loss += complete_loss.item()
+                if not classifier and not grb_enable:
+                    tr_rec_loss += recon_loss.item()
+                    tr_gauss_loss += gaussian_loss.item()
+                    tr_cat_loss += categorical_loss.item()
+                    tr_metric_loss += metric_loss.item()
+                    usage += torch.sum(y, dim=0).cpu().detach().numpy()
+                    gaussian_component.append(y.cpu().detach().numpy())
+                    true_manner_list.append(manner)
 
         # Scheduler step
         scheduler.step()
@@ -753,7 +765,7 @@ def MARTA_trainer(
                     nmi_score,
                 )
             )
-        else:
+        elif not grb_enable:
             best_th_youden, best_th_eer, auc = threshold_selection(
                 label_list, y_pred_list, verbose=0
             )
@@ -765,6 +777,11 @@ def MARTA_trainer(
                     e, tr_running_loss, acc_super, balanced_acc, auc
                 )
             )
+        else:
+            g_bacc = balanced_accuracy_score(g_real_list, g_pred_list)
+            r_bacc = balanced_accuracy_score(r_real_list, r_pred_list)
+            b_bacc = balanced_accuracy_score(b_real_list, b_pred_list)
+            print(f"Epoch: {e} \tG-ACC: {g_bacc:.4f} \tR-ACC: {r_bacc:.4f} \tB-ACC: {b_bacc:.4f}")
 
         if wandb_flag:
             if classifier:
@@ -805,8 +822,10 @@ def MARTA_trainer(
                 gaussian_component = []
                 label_list = []
                 y_pred_list = []
+                g_real_list, r_real_list, b_real_list = [], [], []
+                g_pred_list, r_pred_list, b_pred_list = [], [], []
 
-                for batch_idx, (data, labels, manner, dataset, id) in enumerate(
+                for batch_idx, (data, labels, g_label, r_label, b_label, manner, dataset, id) in enumerate(
                     tqdm(validloader)
                 ):
                     # Make sure dtype is Tensor float
@@ -838,6 +857,22 @@ def MARTA_trainer(
                         label_list = np.concatenate(
                             (label_list, labels.cpu().detach().numpy())
                         )
+                    elif grb_enable:
+                        manner[manner > 7] = manner[manner > 7] - 8
+                        manner = manner.to(model.device).int()
+                        g_label = g_label.to(model.device).float()
+                        r_label = r_label.to(model.device).float()
+                        b_label = b_label.to(model.device).float()
+                        y_pred = model.mt_grb_forward(data, manner)
+                        g_loss, r_loss, b_loss = \
+                            model.mt_grb_loss(y_pred[0], y_pred[1], y_pred[2], 
+                                            g_label, r_label, b_label)
+                        g_pred_list = np.concatenate((g_pred_list, y_pred[0].cpu().detach().numpy().squeeze()))
+                        g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
+                        r_pred_list = np.concatenate((r_pred_list, y_pred[1].cpu().detach().numpy().squeeze()))
+                        r_real_list = np.concatenate((r_real_list, g_label.cpu().detach().numpy()))
+                        b_pred_list = np.concatenate((b_pred_list, y_pred[2].cpu().detach().numpy().squeeze()))
+                        b_real_list = np.concatenate((b_real_list, g_label.cpu().detach().numpy()))
                     else:
                         if not supervised:
                             # Assert that any manner is no bigger than 7
@@ -877,7 +912,8 @@ def MARTA_trainer(
                             y_logits,
                         )
 
-                    v_running_loss += complete_loss.item()
+                    v_running_loss += complete_loss.item() \
+                        if not grb_enable else sum([g_loss, r_loss, b_loss])
 
                     if not classifier and not grb_enable:
                         v_rec_loss += recon_loss.item()
@@ -899,7 +935,7 @@ def MARTA_trainer(
                     )
                     acc = cluster_acc(gaussian_component, true_manner)
                     nmi_score = nmi(gaussian_component, true_manner)
-                else:
+                elif not grb_enable:
                     best_th_youden, best_th_eer, auc = threshold_selection(
                         label_list, y_pred_list, verbose=1
                     )
@@ -911,6 +947,11 @@ def MARTA_trainer(
                             e, v_running_loss, acc_super, bacc, auc
                         )
                     )
+                else:
+                    g_bacc = balanced_accuracy_score(g_real_list, g_pred_list)
+                    r_bacc = balanced_accuracy_score(r_real_list, r_pred_list)
+                    b_bacc = balanced_accuracy_score(b_real_list, b_pred_list)
+                    print(f"Epoch: {e} \tValid Loss: {v_running_loss:.4f} \tG-BACC: {g_bacc:.4f} \tR-BACC: {r_bacc:.4f} \tB-BACC: {b_bacc:.4f}")
 
             if not classifier and not grb_enable:
                 print(
@@ -990,10 +1031,13 @@ def MARTA_trainer(
 
         # Early stopping: If in the last 20 epochs the validation loss has not improved, stop the training
         if e > 40:
-            if not classifier:
+            if not classifier and not grb_enable:
                 if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
                     print("Early stopping")
                     break
+            elif grb_enable:
+                pass
+                # TODO
             if classifier:
                 if valid_loss_store[-1] > max(valid_loss_store[-50:-1]):
                     print("Early stopping")

@@ -54,11 +54,11 @@ def find_wav_path(text, condition="HC"):
         + "/"
         + condition
         + "/"
-        + condition
+        + patientid
         + "_"
         + folder
         + "_"
-        + patientid
+        + condition
         + ".wav"
     )
 
@@ -130,7 +130,7 @@ for index, row in df_all.iterrows():
     os.system(
         "cp "
         + row["path_to_wav"]
-        + " ./" + NEUROVOZ_LABELS_LOCAL + "/"
+        + " ../" + NEUROVOZ_LABELS_LOCAL + "/"
         + row["utt_id"]
         + "_"
         + row["condition"]
@@ -138,6 +138,6 @@ for index, row in df_all.iterrows():
     )
     # Generate a .txt file with the text named equally
     with open(
-        "../" + NEUROVOZ_LABELS_LOCAL + row["utt_id"] + "_" + row["condition"] + ".txt", "w"
+        "../" + NEUROVOZ_LABELS_LOCAL + "/" + row["utt_id"] + "_" + row["condition"] + ".txt", "w"
     ) as f:
         f.write(row["text"])

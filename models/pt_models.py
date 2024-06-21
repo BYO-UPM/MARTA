@@ -571,7 +571,7 @@ class MARTA(torch.nn.Module):
         )
     
     def multi_task(self):
-        '''This function adds a classifier to the network'''
+        '''This function adds a multi-task layer to the network'''
         # Initial shared layers.
         shared_layers = torch.nn.Sequential(
             torch.nn.Linear(self.z_dim * self.window_size, 256),
@@ -716,7 +716,7 @@ class MARTA(torch.nn.Module):
         r_pred = self.mt_grb[2](shared_out)
         b_pred = self.mt_grb[3](shared_out)
 
-        return g_pred, r_pred, b_pred
+        return [g_pred, r_pred, b_pred]
 
     def forward(self, x):
         """Forward function of the MARTA. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""

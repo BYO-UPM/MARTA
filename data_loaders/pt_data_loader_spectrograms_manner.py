@@ -70,7 +70,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         self.plps = self.hyperparams["n_plps"] > 0
         self.mfcc = self.hyperparams["n_mfccs"] > 0
         self.spectrogram = self.hyperparams["spectrogram"]
-        self.data_path = data_path
+        # self.data_path = data_path # TODO: remove for dataloader update.
 
         # Check if the data has been already processed and saved
         name_save = (
@@ -98,28 +98,42 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         texts = []
         phonemes = []
 
-        datapath = "labeled/NeuroVoz"
+        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/neurovoz_htk_forced_alignment/"
 
-        for file in os.listdir(datapath):
-            # If the file does not end with .wav, skip it
-            if not file.endswith(".wav"):
-                continue
-            file_path = os.path.join(datapath, file)
-            file_paths.append(file_path)
-            # Each file is named as follows: <speakerid>_<idpatient>_<text>_<condition>.wav
-            labels.append(file.split("_")[3].split(".")[0])
-            id_patient.append(file.split("_")[1])
-            texts.append(file.split("_")[2])
+        for root, dirs, files in os.walk(datapath):
+            for file in files:
+                # If the file does not end with .wav, skip it
+                if not file.endswith(".wav"):
+                    continue
+                file_path = os.path.join(root, file)
+                file_paths.append(file_path)
 
-            # Read the text grid file
-            tg_file = os.path.join(datapath, file + ".TextGrid")
-            # Check if the file exists
-            if not os.path.exists(tg_file):
-                print("File does not exist: ", tg_file)
-                phonemes.append(None)
-                continue
-            tg_file = tg.TextGrid(tg_file)
-            phonemes.append(tg_file["speaker : phones"])
+                # ID patient is always a 4 digit number
+                keys = file.split(".")[0].split("_")
+                # Remove duplicated keys
+                keys = set(keys)
+                for key in keys:
+                    # if the key is PD or HC, then it is the label
+                    if key == "PD":
+                        labels.append(1)
+                    elif key == "HC":
+                        labels.append(0)
+                    # if the key is a number, then it is the id_patient
+                    elif key.isdigit() and len(key) == 4:
+                        id_patient.append(int(key))
+                    # in any other case, it should be the name of the "task" performed
+                    else:
+                        texts.append(key)
+
+                # Read the text grid file
+                tg_file = os.path.join(root, file).replace(".wav", ".TextGrid")
+                # Check if the file exists
+                if not os.path.exists(tg_file):
+                    print("File does not exist: ", tg_file)
+                    phonemes.append(None)
+                    continue
+                tg_file = tg.TextGrid(tg_file)
+                phonemes.append(tg_file["speaker : phones"])
 
         # Generate a dataframe with all the data
         data = pd.DataFrame(
@@ -131,6 +145,21 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 "id_patient": id_patient,
             }
         )
+
+        zenodo = pd.read_pickle(os.path.join('local_results', 'grbas_zenodo.pkl'))
+        zenodo = zenodo['data']
+        
+        # FIXME: for GRB task, labels from some patients are missing. Also one utterance needs to be removed.
+        patients_to_remove = np.setdiff1d(data.id_patient.unique(), zenodo.id_patient.unique())
+        data = data[-data['id_patient'].isin(patients_to_remove)]
+        data = data[-data['text'].isin(['ESPONTANEA'])]
+
+        # FIXME: addnig GRB labels.
+        for task in ['G', 'R', 'B']:
+            zenodo[task] = zenodo[task].replace(3, 2)
+        data['id_patient'] = data['id_patient'].astype(int)
+        data = data.merge(zenodo, how='left', on=['id_patient', 'text'], validate='m:1')
+
         # Drop na
         data = data.dropna()
         # sort by id_patient
@@ -220,14 +249,19 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
     def read_dataset(self):
         print("Reading the data...")
 
-        data_train = self.read_albayzin()
-        # add a column with the dataset name
-        data_train["dataset"] = "albayzin"
+        if False:
+            data_train = self.read_albayzin()
+            # add a column with the dataset name
+            data_train["dataset"] = "albayzin"
         data_test = self.read_neurovoz()
         # add a column with the dataset name
         data_test["dataset"] = "neurovoz"
 
-        data = pd.concat([data_train, data_test])
+        # FIXME: GRB is not trained with Albayzin.
+        if False:
+            data = pd.concat([data_train, data_test])
+        else:
+            data = data_test
 
         # Categorise label to 0 and 1
         data["label"] = data["label"].astype("category").cat.codes
@@ -653,6 +687,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             x_train = np.stack(train_data[audio_features].values)
             x_train = np.expand_dims(x_train, axis=1)
             y_train = train_data["label"].values
+            g_train = train_data["G"].values
+            r_train = train_data["R"].values
+            b_train = train_data["B"].values
             p_train = np.array([np.array(x) for x in train_data["manner_class"]])
             # Make a new label that is the combination of p and y. That is: p has 7 classes and y has 2 classes. So the new label will have 14 classes
             z_train = np.array(
@@ -665,6 +702,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             x_val = np.stack(val_data[audio_features].values)
             x_val = np.expand_dims(x_val, axis=1)
             y_val = val_data["label"].values
+            g_val = val_data["G"].values
+            r_val = val_data["R"].values
+            b_val = val_data["B"].values
             p_val = np.array([np.array(x) for x in val_data["manner_class"]])
             z_val = np.array(
                 [np.array([np.repeat(x, len(y)), y]) for x, y in zip(y_val, p_val)]
@@ -676,12 +716,14 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             x_test = np.stack(test_data[audio_features].values)
             x_test = np.expand_dims(x_test, axis=1)
             y_test = test_data["label"].values
+            g_test = test_data["G"].values
+            r_test = test_data["R"].values
+            b_test = test_data["B"].values
             p_test = np.array([np.array(x) for x in test_data["manner_class"]])
             z_test = np.array(
                 [np.array([np.repeat(x, len(y)), y]) for x, y in zip(y_test, p_test)]
             )
             z_test = np.array([np.array(x[1] + n_classes * x[0]) for x in z_test])
-            d_test = np.array([np.array(x) for x in test_data["dataset"]])
 
             print("Creating dataloaders...")
             train_loader = torch.utils.data.DataLoader(
@@ -689,6 +731,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     zip(
                         x_train,
                         y_train,
+                        g_train,
+                        r_train,
+                        b_train,
                         p_train,
                         d_train,
                     )
@@ -702,6 +747,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     zip(
                         x_val,
                         y_val,
+                        g_val,
+                        r_val,
+                        b_val,
                         p_val,
                         d_val,
                         id_val,
@@ -716,8 +764,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     zip(
                         x_test,
                         y_test,
+                        g_test,
+                        r_test,
+                        b_test,
                         p_test,
-                        d_test,
                     )
                 ),
                 drop_last=False,
@@ -739,34 +789,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 + str(f)
                 + ".pt"
             )
-            train_data_name = (
-                "local_results/folds/train_data_supervised_"
-                + str(self.hyperparams["supervised"])
-                + "_frame_size_"
-                + str(self.hyperparams["frame_size_ms"])
-                + "spec_winsize_"
-                + str(self.hyperparams["spectrogram_win_size"])
-                + "hopsize_"
-                + str(self.hyperparams["hop_size_percent"])
-                + "fold"
-                + str(f)
-                + ".pt"
-            )
             val_name = (
                 "local_results/folds/val_loader_supervised_"
-                + str(self.hyperparams["supervised"])
-                + "_frame_size_"
-                + str(self.hyperparams["frame_size_ms"])
-                + "spec_winsize_"
-                + str(self.hyperparams["spectrogram_win_size"])
-                + "hopsize_"
-                + str(self.hyperparams["hop_size_percent"])
-                + "fold"
-                + str(f)
-                + ".pt"
-            )
-            val_data_name = (
-                "local_results/folds/val_data_supervised_"
                 + str(self.hyperparams["supervised"])
                 + "_frame_size_"
                 + str(self.hyperparams["frame_size_ms"])
@@ -806,9 +830,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
             torch.save(train_loader, train_name)
-            torch.save(train_data, train_data_name)
             torch.save(val_loader, val_name)
-            torch.save(val_data, val_data_name)
             torch.save(test_loader, test_name)
             torch.save(test_data, test_data_name)
 

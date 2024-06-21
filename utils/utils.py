@@ -14,9 +14,9 @@ def augment_data(dataset, validation=False):
     augmented_data = []
     for data in dataset:
         if validation:
-            spectrogram, label, manner, ds, id = data
+            spectrogram, label, g, r, b, manner, ds, id = data
         else:
-            spectrogram, label, manner, ds = data
+            spectrogram, label, g, r, b, manner, ds = data
 
         spectrogram_to_modify1 = copy.deepcopy(spectrogram)
         spectrogram_to_modify2 = copy.deepcopy(spectrogram)
@@ -26,18 +26,18 @@ def augment_data(dataset, validation=False):
             spectrogram_to_modify1, p=0.8, q=0.8, r=0.2
         )
         if validation:
-            augmented_data.append((augmented_spectrogram_1, label, manner, ds, id))
+            augmented_data.append((augmented_spectrogram_1, label, g, r, b, manner, ds, id))
         else:
-            augmented_data.append((augmented_spectrogram_1, label, manner, ds))
+            augmented_data.append((augmented_spectrogram_1, label, g, r, b, manner, ds))
 
         # Second augmentation
         augmented_spectrogram_2 = augment_spectrogram(
             spectrogram_to_modify2, p=0.8, q=0.8, r=0.2
         )
         if validation:
-            augmented_data.append((augmented_spectrogram_2, label, manner, ds, id))
+            augmented_data.append((augmented_spectrogram_2, label, g, r, b, manner, ds, id))
         else:
-            augmented_data.append((augmented_spectrogram_2, label, manner, ds))
+            augmented_data.append((augmented_spectrogram_2, label, g, r, b, manner, ds))
 
     dataset += augmented_data
 
