@@ -5,6 +5,7 @@ from pytorch_metric_learning import miners, losses, reducers
 
 
 width = 64
+GRB_LABELS = 3
 
 
 def Selec_embedding(model_name, **params):
@@ -587,19 +588,19 @@ class MARTA(torch.nn.Module):
             torch.nn.Linear(128, 64),
             torch.nn.ReLU(),
             torch.nn.Dropout(p=0.5),
-            torch.nn.Linear(64, 4) 
+            torch.nn.Linear(64, GRB_LABELS) 
         )
         r_path = torch.nn.Sequential(
             torch.nn.Linear(128, 64),
             torch.nn.ReLU(),
             torch.nn.Dropout(p=0.5),
-            torch.nn.Linear(64, 4) 
+            torch.nn.Linear(64, GRB_LABELS) 
         )
         b_path = torch.nn.Sequential(
             torch.nn.Linear(128, 64),
             torch.nn.ReLU(),
             torch.nn.Dropout(p=0.5),
-            torch.nn.Linear(64, 4) 
+            torch.nn.Linear(64, GRB_LABELS) 
         )
 
         self.mt_grb = torch.nn.ModuleList([shared_layers, g_path, r_path, b_path])
