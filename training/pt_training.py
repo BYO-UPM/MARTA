@@ -642,22 +642,34 @@ def MARTA_trainer(
                 ) = model.classifier_loss(y_pred, labels)
                 y_pred_list = np.concatenate((y_pred_list, y_pred.cpu().detach().numpy().squeeze()))
                 label_list = np.concatenate((label_list, labels.cpu().detach().numpy()))
+            
             elif grb_enable:
                 manner[manner > 7] = manner[manner > 7] - 8
                 manner = manner.to(model.device).int()
                 g_label = g_label.to(model.device).float()
                 r_label = r_label.to(model.device).float()
                 b_label = b_label.to(model.device).float()
-                y_pred = model.mt_grb_forward(data, manner)
+                y_logit = model.mt_grb_forward(data, manner)
                 g_loss, r_loss, b_loss = \
-                    model.mt_grb_loss(y_pred[0], y_pred[1], y_pred[2], 
+                    model.mt_grb_loss(y_logit[0], y_logit[1], y_logit[2], 
                                       g_label, r_label, b_label)
-                g_pred_list = np.concatenate((g_pred_list, y_pred[0].cpu().detach().numpy().squeeze()))
+
+                # Append multi-class predicted labels.
+                g_prob = torch.nn.functional.softmax(y_logit[0], dim=1)
+                r_prob = torch.nn.functional.softmax(y_logit[1], dim=1)
+                b_prob = torch.nn.functional.softmax(y_logit[2], dim=1)
+                g_pred = [np.argmax(row) for row in g_prob.cpu().detach().numpy().squeeze()]
+                r_pred = [np.argmax(row) for row in r_prob.cpu().detach().numpy().squeeze()]
+                b_pred = [np.argmax(row) for row in b_prob.cpu().detach().numpy().squeeze()]
+                g_pred_list = np.concatenate((g_pred_list, g_pred))
+                r_pred_list = np.concatenate((r_pred_list, r_pred))
+                b_pred_list = np.concatenate((b_pred_list, b_pred))
+
+                # Append multi-class real labels.
                 g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
-                r_pred_list = np.concatenate((r_pred_list, y_pred[1].cpu().detach().numpy().squeeze()))
-                r_real_list = np.concatenate((r_real_list, g_label.cpu().detach().numpy()))
-                b_pred_list = np.concatenate((b_pred_list, y_pred[2].cpu().detach().numpy().squeeze()))
-                b_real_list = np.concatenate((b_real_list, g_label.cpu().detach().numpy()))
+                r_real_list = np.concatenate((r_real_list, r_label.cpu().detach().numpy()))
+                b_real_list = np.concatenate((b_real_list, b_label.cpu().detach().numpy()))
+            
             else:
                 # Assert that any manner is no bigger than 7
                 if not supervised:
@@ -741,6 +753,8 @@ def MARTA_trainer(
                     usage += torch.sum(y, dim=0).cpu().detach().numpy()
                     gaussian_component.append(y.cpu().detach().numpy())
                     true_manner_list.append(manner)
+            else:
+                tr_running_loss = sum([g_loss.item(), r_loss.item(), b_loss.item()])
 
         # Scheduler step
         scheduler.step()
@@ -781,7 +795,7 @@ def MARTA_trainer(
             g_bacc = balanced_accuracy_score(g_real_list, g_pred_list)
             r_bacc = balanced_accuracy_score(r_real_list, r_pred_list)
             b_bacc = balanced_accuracy_score(b_real_list, b_pred_list)
-            print(f"Epoch: {e} \tG-ACC: {g_bacc:.4f} \tR-ACC: {r_bacc:.4f} \tB-ACC: {b_bacc:.4f}")
+            print(f"Epoch: {e} \tTrain Loss: {tr_running_loss:.4f} \tG-ACC: {g_bacc:.4f} \tR-ACC: {r_bacc:.4f} \tB-ACC: {b_bacc:.4f}")
 
         if wandb_flag:
             if classifier:
@@ -863,16 +877,26 @@ def MARTA_trainer(
                         g_label = g_label.to(model.device).float()
                         r_label = r_label.to(model.device).float()
                         b_label = b_label.to(model.device).float()
-                        y_pred = model.mt_grb_forward(data, manner)
+                        y_logit = model.mt_grb_forward(data, manner)
                         g_loss, r_loss, b_loss = \
-                            model.mt_grb_loss(y_pred[0], y_pred[1], y_pred[2], 
+                            model.mt_grb_loss(y_logit[0], y_logit[1], y_logit[2], 
                                             g_label, r_label, b_label)
-                        g_pred_list = np.concatenate((g_pred_list, y_pred[0].cpu().detach().numpy().squeeze()))
+
+                        # Append multi-class predicted labels.
+                        g_prob = torch.nn.functional.softmax(y_logit[0], dim=1)
+                        r_prob = torch.nn.functional.softmax(y_logit[1], dim=1)
+                        b_prob = torch.nn.functional.softmax(y_logit[2], dim=1)
+                        g_pred = [np.argmax(row) for row in g_prob.cpu().detach().numpy().squeeze()]
+                        r_pred = [np.argmax(row) for row in r_prob.cpu().detach().numpy().squeeze()]
+                        b_pred = [np.argmax(row) for row in b_prob.cpu().detach().numpy().squeeze()]
+                        g_pred_list = np.concatenate((g_pred_list, g_pred))
+                        r_pred_list = np.concatenate((r_pred_list, r_pred))
+                        b_pred_list = np.concatenate((b_pred_list, b_pred))
+
+                        # Append multi-class real labels.
                         g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
-                        r_pred_list = np.concatenate((r_pred_list, y_pred[1].cpu().detach().numpy().squeeze()))
-                        r_real_list = np.concatenate((r_real_list, g_label.cpu().detach().numpy()))
-                        b_pred_list = np.concatenate((b_pred_list, y_pred[2].cpu().detach().numpy().squeeze()))
-                        b_real_list = np.concatenate((b_real_list, g_label.cpu().detach().numpy()))
+                        r_real_list = np.concatenate((r_real_list, r_label.cpu().detach().numpy()))
+                        b_real_list = np.concatenate((b_real_list, b_label.cpu().detach().numpy()))
                     else:
                         if not supervised:
                             # Assert that any manner is no bigger than 7
@@ -913,7 +937,7 @@ def MARTA_trainer(
                         )
 
                     v_running_loss += complete_loss.item() \
-                        if not grb_enable else sum([g_loss, r_loss, b_loss])
+                        if not grb_enable else sum([g_loss.item(), r_loss.item(), b_loss.item()])
 
                     if not classifier and not grb_enable:
                         v_rec_loss += recon_loss.item()
@@ -1035,10 +1059,7 @@ def MARTA_trainer(
                 if valid_loss_store[-1] > max(valid_loss_store[-20:-1]):
                     print("Early stopping")
                     break
-            elif grb_enable:
-                pass
-                # TODO
-            if classifier:
+            if classifier or grb_enable:
                 if valid_loss_store[-1] > max(valid_loss_store[-50:-1]):
                     print("Early stopping")
                     print("Reloading best model")
@@ -1093,6 +1114,7 @@ def MARTA_tester(
     model,
     testloader,
     test_data,
+    grb_enable=True, 
     supervised=False,
     wandb_flag=False,
     path_to_plot=None,
@@ -1108,17 +1130,20 @@ def MARTA_tester(
         batch_size = testloader.batch_size
         y_hat_array = []
         y_array = []
+        g_real_list,  r_real_list,  b_real_list  = [], [], []
+        g_hat_list,   r_hat_list,   b_hat_list   = [], [], []
+        g_hat_p_list, r_hat_p_list, b_hat_p_list = [], [], []
 
         # Create x_array of shape Batch x Output shape
         x_array = np.zeros((batch_size, 1, 65, 25))
         manner_array = np.zeros((batch_size, 25))
 
         x_hat_array = np.zeros(x_array.shape)
-        for batch_idx, (x, labels, manner, dataset) in enumerate(tqdm(testloader)):
+        for batch_idx, (x, labels, g_label, r_label, b_label, manner) in enumerate(tqdm(testloader)):
             # Move data to device
             x = x.to(model.device).float()
 
-            if supervised:
+            if supervised or grb_enable:
                 # ==== Forward pass ====
                 manner[manner > 7] = manner[manner > 7] - 8
                 if masked < 8:
@@ -1131,33 +1156,71 @@ def MARTA_tester(
                 manner_array = np.concatenate(
                     (manner_array, manner.cpu().detach().numpy())
                 )
-
                 manner = manner.to(model.device).int()
-                labels = labels.to(model.device).float()
 
-                y_logit = model.classifier_forward(x, manner)
-                y_pred = torch.sigmoid(y_logit)
-                y_hat_array = np.concatenate(
+                if supervised:
+                    labels = labels.to(model.device).float()
+                    y_logit = model.classifier_forward(x, manner)
+                    y_pred = torch.sigmoid(y_logit)
+                    y_hat_array = np.concatenate(
+                        (y_hat_array, y_pred.cpu().detach().numpy().squeeze().reshape(-1)))
+                    y_array = np.concatenate((y_array, labels.cpu().detach().numpy()))
                     (
-                        y_hat_array,
-                        y_pred.cpu().detach().numpy().squeeze().reshape(-1),
-                    )
-                )
+                        x,
+                        x_hat,
+                        _,  # pz_mu,
+                        _,  # pz_var,
+                        _,  # y_logits,
+                        _,  # y
+                        _,  # qz_mu,
+                        _,  # qz_var,
+                        _,  # z_sample,
+                        _,  # e_s,
+                        _,  # e_hat_s,
+                    ) = model(x)
 
-                y_array = np.concatenate((y_array, labels.cpu().detach().numpy()))
-                (
-                    x,
-                    x_hat,
-                    _,  # pz_mu,
-                    _,  # pz_var,
-                    _,  # y_logits,
-                    _,  # y
-                    _,  # qz_mu,
-                    _,  # qz_var,
-                    _,  # z_sample,
-                    _,  # e_s,
-                    _,  # e_hat_s,
-                ) = model(x)
+                else:
+                    g_label = g_label.to(model.device).float()
+                    r_label = r_label.to(model.device).float()
+                    b_label = b_label.to(model.device).float()
+
+                    # Get raw multi-class output from the model.
+                    y_logit = model.mt_grb_forward(x, manner)
+
+                    # Append multi-class probability distribution.
+                    g_prob = torch.nn.functional.softmax(y_logit[0], dim=1)
+                    r_prob = torch.nn.functional.softmax(y_logit[1], dim=1)
+                    b_prob = torch.nn.functional.softmax(y_logit[2], dim=1)
+                    g_hat_p_list.append(g_prob)
+                    r_hat_p_list.append(r_prob)
+                    b_hat_p_list.append(b_prob)
+
+                    # Append multi-class predicted labels.
+                    g_pred = [np.argmax(row) for row in g_prob.cpu().detach().numpy().squeeze()]
+                    r_pred = [np.argmax(row) for row in r_prob.cpu().detach().numpy().squeeze()]
+                    b_pred = [np.argmax(row) for row in b_prob.cpu().detach().numpy().squeeze()]
+                    g_hat_list = np.concatenate((g_hat_list, g_pred))
+                    r_hat_list = np.concatenate((r_hat_list, r_pred))
+                    b_hat_list = np.concatenate((b_hat_list, b_pred))
+
+                    # Append multi-class real labels.
+                    g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
+                    r_real_list = np.concatenate((r_real_list, r_label.cpu().detach().numpy()))
+                    b_real_list = np.concatenate((b_real_list, b_label.cpu().detach().numpy()))
+
+                    (
+                        x,
+                        x_hat,
+                        _,  # pz_mu,
+                        _,  # pz_var,
+                        _,  # y_logits,
+                        _,  # y
+                        _,  # qz_mu,
+                        _,  # qz_var,
+                        _,  # z_sample,
+                        _,  # e_s,
+                        _,  # e_hat_s,
+                    ) = model(x)
 
             else:
                 # ==== Forward pass ====
@@ -1180,6 +1243,14 @@ def MARTA_tester(
                 (x_hat_array, x_hat.cpu().detach().numpy()), axis=0
             )
             x_array = np.concatenate((x_array, x.cpu().detach().numpy()), axis=0)
+        
+        if grb_enable:
+            g_hat_p_list = torch.vstack(g_hat_p_list)
+            r_hat_p_list = torch.vstack(r_hat_p_list)
+            b_hat_p_list = torch.vstack(b_hat_p_list)
+            g_hat_p_list = g_hat_p_list.cpu().detach().numpy()
+            r_hat_p_list = r_hat_p_list.cpu().detach().numpy()
+            b_hat_p_list = b_hat_p_list.cpu().detach().numpy()
 
         print("Removing unused elements")
         # Remove all from GPU to release memory
@@ -1355,6 +1426,93 @@ def MARTA_tester(
                         ),
                     }
                 )
+        
+        if grb_enable:
+            # Convert predictions and labels to PyTorch tensors
+            g_real_tensor  = torch.tensor(g_real_list,  dtype=torch.long)
+            g_hat_tensor   = torch.tensor(g_hat_list,   dtype=torch.float)
+            g_hat_p_tensor = torch.tensor(g_hat_p_list, dtype=torch.float)
+            r_real_tensor  = torch.tensor(r_real_list,  dtype=torch.long)
+            r_hat_tensor   = torch.tensor(r_hat_list,   dtype=torch.float)
+            r_hat_p_tensor = torch.tensor(r_hat_p_list, dtype=torch.float)
+            b_real_tensor  = torch.tensor(b_real_list,  dtype=torch.long)
+            b_hat_tensor   = torch.tensor(b_hat_list,   dtype=torch.float)
+            b_hat_p_tensor = torch.tensor(b_hat_p_list, dtype=torch.float)
+
+            g_acc  = accuracy_score(g_real_tensor, g_hat_tensor)
+            g_bacc = balanced_accuracy_score(g_real_tensor, g_hat_tensor)
+            g_auc  = roc_auc_score(g_real_tensor, g_hat_p_tensor, multi_class='ovo')
+            r_acc  = accuracy_score(r_real_tensor, r_hat_tensor)
+            r_bacc = balanced_accuracy_score(r_real_tensor, r_hat_tensor)
+            r_auc  = roc_auc_score(r_real_tensor, r_hat_p_tensor, multi_class='ovo')
+            b_acc  = accuracy_score(b_real_tensor, b_hat_tensor)
+            b_bacc = balanced_accuracy_score(b_real_tensor, b_hat_tensor)
+            b_auc  = roc_auc_score(b_real_tensor, b_hat_p_tensor, multi_class='ovo')
+            print(
+                f"ACC: ({g_acc:.2f}, {r_acc:.2f}, {b_acc:.2f}), BACC: ({g_bacc:.2f}, {r_bacc:.2f}, {b_bacc:.2f}), AUC: ({g_auc:.2f}, {r_auc:.2f}, {b_auc:.2f})"
+            )
+            # Consensus methods.
+            # mean_log_odds_g, consensus_true_g, consensus_pred_g = soft_output_by_subject_logits(
+            #     g_hat_tensor, g_real_tensor, test_data["id_patient"].to_numpy())
+            # mean_log_odds_r, consensus_true_r, consensus_pred_r = soft_output_by_subject_logits(
+            #     r_hat_tensor, r_real_tensor, test_data["id_patient"].to_numpy())
+            # mean_log_odds_b, consensus_true_b, consensus_pred_b = soft_output_by_subject_logits(
+            #     b_hat_tensor, b_real_tensor, test_data["id_patient"].to_numpy())
+
+            # Calculate metrics for consensus predictions.
+            # g_acc_consensus = accuracy_score(consensus_true_g.numpy(), consensus_pred_g.numpy())
+            # r_acc_consensus = accuracy_score(consensus_true_r.numpy(), consensus_pred_r.numpy())
+            # b_acc_consensus = accuracy_score(consensus_true_b.numpy(), consensus_pred_b.numpy())
+            
+            # g_bacc_consensus = balanced_accuracy_score(consensus_true_g.numpy(), consensus_pred_g.numpy())
+            # r_bacc_consensus = balanced_accuracy_score(consensus_true_r.numpy(), consensus_pred_r.numpy())
+            # b_bacc_consensus = balanced_accuracy_score(consensus_true_b.numpy(), consensus_pred_b.numpy())
+            
+            # g_auc_consensus = roc_auc_score(consensus_true_g.numpy(), torch.sigmoid(mean_log_odds_g).numpy(), multi_class='ovo')
+            # r_auc_consensus = roc_auc_score(consensus_true_r.numpy(), torch.sigmoid(mean_log_odds_r).numpy(), multi_class='ovo')
+            # b_auc_consensus = roc_auc_score(consensus_true_b.numpy(), torch.sigmoid(mean_log_odds_b).numpy(), multi_class='ovo')
+
+            # Print the consensus results
+            # print("Consensus results with logits:")
+            # print(
+            #     f"C-ACC: ({g_acc_consensus:.2f}, {r_acc_consensus:.2f}, {b_acc_consensus:.2f}), C-BACC: ({g_bacc_consensus:.2f}, {r_bacc_consensus:.2f}, {b_bacc_consensus:.2f}), C-AUC: ({g_auc_consensus:.2f}, {r_auc_consensus:.2f}, {b_auc_consensus:.2f})"
+            # )
+
+            # Calculate results per patient
+            # accuracy_per_patient = []
+            # balanced_accuracy_per_patient = []
+            # g_acc_per_patient,  r_acc_per_patient,  b_acc_per_patient  = [], [], []
+            # g_bacc_per_patient, r_bacc_per_patient, b_bacc_per_patient = [], [], []
+            # for i in test_data["id_patient"].unique():
+            #     # Get the predictions for the patient
+            #     g_real_patient_i = g_real_list[test_data.id_patient == i]
+            #     g_hat_patient_i  = g_hat_list[test_data.id_patient == i]
+            #     r_real_patient_i = r_real_list[test_data.id_patient == i]
+            #     r_hat_patient_i  = r_hat_list[test_data.id_patient == i]
+            #     b_real_patient_i = b_real_list[test_data.id_patient == i]
+            #     b_hat_patient_i  = b_hat_list[test_data.id_patient == i]
+
+            #     # Calculate the metrics
+            #     g_acc_patient_i  = accuracy_score(g_real_patient_i, np.round(g_hat_patient_i))
+            #     g_bacc_patient_i = balanced_accuracy_score(g_real_patient_i, np.round(g_hat_patient_i))
+            #     r_acc_patient_i  = accuracy_score(r_real_patient_i, np.round(r_hat_patient_i))
+            #     r_bacc_patient_i = balanced_accuracy_score(r_real_patient_i, np.round(r_hat_patient_i))
+            #     b_acc_patient_i  = accuracy_score(b_real_patient_i, np.round(b_hat_patient_i))
+            #     b_bacc_patient_i = balanced_accuracy_score(b_real_patient_i, np.round(b_hat_patient_i))
+
+            #     # Store the results
+            #     g_acc_per_patient.append(g_acc_patient_i)
+            #     g_bacc_per_patient.append(g_bacc_patient_i)
+            #     r_acc_per_patient.append(r_acc_patient_i)
+            #     r_bacc_per_patient.append(r_bacc_patient_i)
+            #     b_acc_per_patient.append(b_acc_patient_i)
+            #     b_bacc_per_patient.append(b_bacc_patient_i)
+
+            # # Print the results
+            # print("Results per patient in mean and std:")
+            # print(f"[G] Accuracy: {np.mean(g_acc_per_patient):.2f} +- {np.std(g_acc_per_patient):.2f}, Balanced accuracy: {np.mean(g_bacc_per_patient):.2f} +- {np.std(g_bacc_per_patient):.2f}")
+            # print(f"[R] Accuracy: {np.mean(r_acc_per_patient):.2f} +- {np.std(r_acc_per_patient):.2f}, Balanced accuracy: {np.mean(r_bacc_per_patient):.2f} +- {np.std(r_bacc_per_patient):.2f}")
+            # print(f"[B] Accuracy: {np.mean(b_acc_per_patient):.2f} +- {np.std(b_acc_per_patient):.2f}, Balanced accuracy: {np.mean(b_bacc_per_patient):.2f} +- {np.std(b_bacc_per_patient):.2f}")
 
 
 def threshold_selection(y_true, y_pred_soft, verbose=0):

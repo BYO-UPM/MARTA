@@ -8,7 +8,6 @@ import sys
 import os
 import argparse
 from utils.utils import make_balanced_sampler, augment_data, stratify_dataset
-from utils.process_grb import convert_data_for_grb
 import time
 
 
@@ -41,16 +40,13 @@ def main(args, hyperparams):
     print('Reading train, val and test loaders from local_results/...')
     name_core_1 = f'_supervised_True_frame_size_0.4spec_winsize_{hyperparams["spectrogram_win_size"]}'
     name_core_2 = f'hopsize_0.5fold{hyperparams["fold"]}.pt'
-    t_start = time.time()
     train_loader = torch.load(f'{PARTITIONS_DATA_LOCAL}train_loader{name_core_1}{name_core_2}')
     val_loader   = torch.load(f'{PARTITIONS_DATA_LOCAL}val_loader{name_core_1}{name_core_2}')
     test_loader  = torch.load(f'{PARTITIONS_DATA_LOCAL}test_loader{name_core_1}{name_core_2}')
     test_data    = torch.load(f'{PARTITIONS_DATA_LOCAL}test_data{name_core_1}{name_core_2}')
-    t_end = time.time()
-    print(f'It took {(t_end - t_start)/60:.2f} minutes to read current data partition')
 
+    # Create GMVAE model.
     print('Defining models...')
-    # Create the model
     model = MARTA(
         x_dim=train_loader.dataset[0][0].shape,
         z_dim=hyperparams['latent_dim'],
@@ -64,8 +60,11 @@ def main(args, hyperparams):
         device=device,
     )
 
+    # Tailor MARTA's model for a GRB MTL task, with pre-trained GMVAE 
+    # parameters and trainable GRB MTL parameters.
     if hyperparams['train']:
-        # Load the best unsupervised model to supervise it
+
+        # Load the trained model with the best MARTA's GMVAE parameters.
         name = (
             'local_results/models_z/GMVAE_cnn_best_model_2d' + '_'
             + str(hyperparams['method']) + '_'
@@ -74,27 +73,24 @@ def main(args, hyperparams):
         )
         tmp = torch.load(name, map_location='cuda:0')
 
-        # Initialize missing keys due to the addition of new  layers to MARTA.
+        # Append GRB MTL parameters to MARTA's GMVAE parameters.
         model_state_dict = model.state_dict()
         for key in model_state_dict.keys():
             if key not in tmp['model_state_dict']:
                 model_state_dict[key] = torch.zeros_like(model_state_dict[key])
         tmp['model_state_dict'].update(model_state_dict)
-
         model.load_state_dict(tmp['model_state_dict'])
 
-        # Freeze all the network
+        # Make GRB MTL parameters the only ones trainable.
         for param in model.parameters():
             param.requires_grad = False
-        # Add a multi-task netowork to the model
         model.multi_task()
-        # Unfreeze the multi-task netowork
         for param in model.mt_grb.parameters():
             param.requires_grad = True
         model.to(device)
 
+        # Train MARTA's model and save the best one.
         print('Training GMVAE...')
-        # Train the model
         MARTA_trainer(
             model=model,
             trainloader=train_loader,
@@ -113,24 +109,18 @@ def main(args, hyperparams):
     else:
         print('Loading model...')
 
-    # Restoring best model
+    # Load best MARTA's model.
     name = hyperparams["path_to_save"] + '/GMVAE_cnn_best_model_2d.pt'
     tmp = torch.load(name)
     model.load_state_dict(tmp['model_state_dict'])
 
-    print('Testing GMVAE...')
-
-    # Read the best threshold
-    path = hyperparams["path_to_save"] + '/best_threshold.txt'
-    with open(path, 'r') as f:
-        threshold = float(f.read())
-
     # Test the model
+    print('Testing GMVAE...')
     MARTA_tester(
         model=model,
         testloader=test_loader,
         test_data=test_data,
-        supervised=True,  # Not implemented yet
+        supervised=False,  # Not implemented yet
         wandb_flag=hyperparams['wandb_flag'],
         path_to_plot=hyperparams["path_to_save"],
         # best_threshold=threshold,
