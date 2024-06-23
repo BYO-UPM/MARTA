@@ -1,5 +1,7 @@
 import torch
+import seaborn as sns
 import numpy as np
+import pandas as pd
 from models.pt_models import (
     finetuning_model,
     Selec_embedding,
@@ -15,6 +17,7 @@ from sklearn.metrics import (
     roc_auc_score,
     balanced_accuracy_score,
     confusion_matrix,
+    ConfusionMatrixDisplay,
 )
 from sklearn.model_selection import StratifiedKFold
 import os
@@ -1451,6 +1454,30 @@ def MARTA_tester(
             print(
                 f"ACC: ({g_acc:.2f}, {r_acc:.2f}, {b_acc:.2f}), BACC: ({g_bacc:.2f}, {r_bacc:.2f}, {b_bacc:.2f}), AUC: ({g_auc:.2f}, {r_auc:.2f}, {b_auc:.2f})"
             )
+            
+            # Plot and save confusion matrices
+            def save_confusion_matrix(cm, title, filename):
+                df_cm = pd.DataFrame(cm)
+                perc = df_cm.div(df_cm.sum(axis=1), axis=0).multiply(100)
+                annot = df_cm.astype(str) + "\n" + perc.round(1).astype(str) + "%"
+                fig, ax = plt.subplots(figsize=(6, 6))
+                sns.heatmap(df_cm, annot=annot, fmt='', cmap="Blues", cbar=True, annot_kws={"fontsize":14}, linewidths=1, ax=ax)
+                ax.set_title(title, fontsize=15)
+                ax.set_xlabel('Target label', fontsize=14)
+                ax.set_ylabel('Predicted label', fontsize=14)
+                plt.savefig(path_to_plot + filename)
+                plt.close()
+
+            # Confusion matrix for g
+            g_cm = confusion_matrix(g_real_tensor, g_hat_tensor)
+            save_confusion_matrix(g_cm, 'Confusion Matrix of G', '/confusion_matrix_g.png')
+            # Confusion matrix for r
+            r_cm = confusion_matrix(r_real_tensor, r_hat_tensor)
+            save_confusion_matrix(r_cm, 'Confusion Matrix of R', '/confusion_matrix_r.png')
+            # Confusion matrix for b
+            b_cm = confusion_matrix(b_real_tensor, b_hat_tensor)
+            save_confusion_matrix(b_cm, 'Confusion Matrix of B', '/confusion_matrix_b.png')
+
             # Consensus methods.
             # mean_log_odds_g, consensus_true_g, consensus_pred_g = soft_output_by_subject_logits(
             #     g_hat_tensor, g_real_tensor, test_data["id_patient"].to_numpy())

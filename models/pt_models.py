@@ -2,6 +2,7 @@ import torch
 import timm
 from utils.utils import log_normal, KL_cat
 from pytorch_metric_learning import miners, losses, reducers
+from sklearn.utils.class_weight import compute_class_weight
 
 
 width = 64
@@ -854,7 +855,7 @@ class MARTA(torch.nn.Module):
     def mt_grb_loss(self, g_pred, r_pred, b_pred, g_true, r_true, b_true):
         """Compute the ordinal regression loss for each path."""
         def ordinal_loss(pred, true):
-            criterion = torch.nn.CrossEntropyLoss()
+            criterion = torch.nn.CrossEntropyLoss() # TODO: add arg. weight=class_weights
             return criterion(pred, true.long())
 
         g_loss = ordinal_loss(g_pred, g_true)
