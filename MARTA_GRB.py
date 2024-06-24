@@ -67,7 +67,7 @@ def main(args, hyperparams):
         # Load the trained model with the best MARTA's GMVAE parameters.
         name = (
             'local_results/models_z/GMVAE_cnn_best_model_2d' + '_'
-            + str(hyperparams['method']) + '_'
+            + 'graddrop' + '_' # FIXME: allow to choose the GMVAE optimization strategy
             + str(hyperparams["fold"])
             + '.pt'
         )
@@ -76,10 +76,9 @@ def main(args, hyperparams):
         # Append GRB MTL parameters to MARTA's GMVAE parameters.
         model_state_dict = model.state_dict()
         for key in model_state_dict.keys():
-            if key not in tmp['model_state_dict']:
-                model_state_dict[key] = torch.zeros_like(model_state_dict[key])
-        tmp['model_state_dict'].update(model_state_dict)
-        model.load_state_dict(tmp['model_state_dict'])
+            if key in tmp['model_state_dict']:
+                model_state_dict[key] = tmp['model_state_dict'][key]
+        model.load_state_dict(model_state_dict)
 
         # Make GRB MTL parameters the only ones trainable.
         for param in model.parameters():
@@ -149,7 +148,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     ### DEBUG DEGINS
-    args.method = 'graddrop'
+    args.method = 'sumloss'
     args.gpu = 1
     args.fold = 0
     ### DEBUG ENDS

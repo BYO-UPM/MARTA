@@ -654,7 +654,7 @@ def MARTA_trainer(
                 b_label = b_label.to(model.device).float()
                 y_logit = model.mt_grb_forward(data, manner)
                 g_loss, r_loss, b_loss = \
-                    model.mt_grb_loss(y_logit[0], y_logit[1], y_logit[2], 
+                    model.mt_grb_loss(y_logit[0], y_logit[1], y_logit[2],
                                       g_label, r_label, b_label)
 
                 # Append multi-class predicted labels.
@@ -672,6 +672,9 @@ def MARTA_trainer(
                 g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
                 r_real_list = np.concatenate((r_real_list, r_label.cpu().detach().numpy()))
                 b_real_list = np.concatenate((b_real_list, b_label.cpu().detach().numpy()))
+
+                if e == 40: 
+                    chk = 0
             
             else:
                 # Assert that any manner is no bigger than 7

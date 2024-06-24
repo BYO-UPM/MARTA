@@ -854,13 +854,20 @@ class MARTA(torch.nn.Module):
 
     def mt_grb_loss(self, g_pred, r_pred, b_pred, g_true, r_true, b_true):
         """Compute the ordinal regression loss for each path."""
-        def ordinal_loss(pred, true):
-            criterion = torch.nn.CrossEntropyLoss() # TODO: add arg. weight=class_weights
+        def ordinal_loss(pred, true, trait):
+            class_weights = [1., 1., 1.]
+            if trait == 'G':
+                class_weights = [0.45888889, 3.16475096, 1.98081535]
+            elif trait == 'R':
+                class_weights = [0.4100273, 3.46331237, 3.67111111]
+            elif trait == 'B':
+                class_weights = [0.394178, 4.14035088, 4.5136612]
+            criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor(class_weights).to('cuda:1'))
             return criterion(pred, true.long())
 
-        g_loss = ordinal_loss(g_pred, g_true)
-        r_loss = ordinal_loss(r_pred, r_true)
-        b_loss = ordinal_loss(b_pred, b_true)
+        g_loss = ordinal_loss(g_pred, g_true, 'G')
+        r_loss = ordinal_loss(r_pred, r_true, 'R')
+        b_loss = ordinal_loss(b_pred, b_true, 'B')
 
         return g_loss, r_loss, b_loss
 
