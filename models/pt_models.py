@@ -574,37 +574,52 @@ class MARTA(torch.nn.Module):
     
     def multi_task(self):
         '''This function adds a multi-task layer to the network'''
-        # Initial shared layers.
-        shared_layers = torch.nn.Sequential(
-            torch.nn.Linear(self.z_dim * self.window_size, 256),
+        self.mt_grb = torch.nn.Sequential(
+            # 2DConv with kernel_size = (3, 32), stride=2, padding=1
+            torch.nn.Conv2d(
+                1,
+                self.class_dims[0],
+                kernel_size=[3, 32],
+                stride=[2, 1],
+            ),
             torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.5),
-            torch.nn.Linear(256, 128),
+            torch.nn.BatchNorm2d(self.class_dims[0]),
+            torch.nn.Conv2d(
+                self.class_dims[0],
+                self.class_dims[1],
+                kernel_size=[3, 1],
+                stride=[2, 1],
+            ),
             torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.5)
+            torch.nn.BatchNorm2d(self.class_dims[1]),
+            # Flatten
+            ClassifierFlatten(),
+            # Linear
+            torch.nn.Linear(160, self.class_dims[2]),
+            torch.nn.ReLU(),
+            # Dropout
+            torch.nn.Dropout(p=0.8),
+            torch.nn.Linear(self.class_dims[2], GRB_LABELS),
         )
         
-        # Define separate paths for G, R, B.
-        g_path = torch.nn.Sequential(
-            torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.5),
-            torch.nn.Linear(64, GRB_LABELS) 
-        )
-        r_path = torch.nn.Sequential(
-            torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.5),
-            torch.nn.Linear(64, GRB_LABELS) 
-        )
-        b_path = torch.nn.Sequential(
-            torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
-            torch.nn.Dropout(p=0.5),
-            torch.nn.Linear(64, GRB_LABELS) 
-        )
-
-        self.mt_grb = torch.nn.ModuleList([shared_layers, g_path, r_path, b_path])
+        # torch.nn.Sequential(
+        #     torch.nn.Linear(self.z_dim * self.window_size, 1024),
+        #     torch.nn.ReLU(),
+        #     # torch.nn.Dropout(p=0.5),
+        #     torch.nn.Linear(1024, 512),
+        #     torch.nn.ReLU(),
+        #     # torch.nn.Dropout(p=0.5),
+        #     torch.nn.Linear(512, 256),
+        #     torch.nn.ReLU(),
+        #     # torch.nn.Dropout(p=0.5),
+        #     torch.nn.Linear(256, 128),
+        #     torch.nn.ReLU(),
+        #     # torch.nn.Dropout(p=0.5), 
+        #     torch.nn.Linear(128, 64),
+        #     torch.nn.ReLU(),
+        #     # torch.nn.Dropout(p=0.5),
+        #     torch.nn.Linear(64, GRB_LABELS) 
+        # )
 
     def spec_encoder_forward(self, x):
         """Forward function of the spectrogram encoder network. It receives the spectrogram (x) and outputs the encoded spectrogram (e_s)."""
@@ -705,20 +720,14 @@ class MARTA(torch.nn.Module):
 
         # Now z is (batch*window, z_dim), reshape to: (batch, window_size, z_dim)
         z = z.reshape(manner.shape[0], self.window_size, self.z_dim)
+        # Sum them and reshape to (batch, 1, window_size, z_dim) for the CNN
+        z = z / torch.norm(z, dim=2).unsqueeze(2)
+        hmc = hmc / torch.norm(hmc, dim=2).unsqueeze(2)
+        z_hat = (z + hmc).unsqueeze(1)
 
-        # Flatten both z and hmc from (batch, window, z_dim) to (batch, window*z_dim)
-        hmc = hmc.reshape(hmc.shape[0], -1)
-        z = z.reshape(z.shape[0], -1)
-        z = z / torch.norm(z, dim=1).unsqueeze(1)
-        hmc = hmc / torch.norm(hmc, dim=1).unsqueeze(1)
-        z_hat = z + hmc      
+        g_pred = self.mt_grb(z_hat)
 
-        shared_out = self.mt_grb[0](z_hat)
-        g_pred = self.mt_grb[1](shared_out)
-        r_pred = self.mt_grb[2](shared_out)
-        b_pred = self.mt_grb[3](shared_out)
-
-        return [g_pred, r_pred, b_pred]
+        return g_pred
 
     def forward(self, x):
         """Forward function of the MARTA. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""
@@ -852,24 +861,15 @@ class MARTA(torch.nn.Module):
         loss = criterion(y_pred, labels)
         return loss, 0, 0, 0, 0
 
-    def mt_grb_loss(self, g_pred, r_pred, b_pred, g_true, r_true, b_true):
+    def mt_grb_loss(self, g_pred, g_true):
         """Compute the ordinal regression loss for each path."""
-        def ordinal_loss(pred, true, trait):
-            class_weights = [1., 1., 1.]
-            if trait == 'G':
-                class_weights = [0.45888889, 3.16475096, 1.98081535]
-            elif trait == 'R':
-                class_weights = [0.4100273, 3.46331237, 3.67111111]
-            elif trait == 'B':
-                class_weights = [0.394178, 4.14035088, 4.5136612]
-            criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor(class_weights).to('cuda:1'))
+        def ordinal_loss(pred, true):
+            criterion = torch.nn.CrossEntropyLoss()
             return criterion(pred, true.long())
 
-        g_loss = ordinal_loss(g_pred, g_true, 'G')
-        r_loss = ordinal_loss(r_pred, r_true, 'R')
-        b_loss = ordinal_loss(b_pred, b_true, 'B')
+        g_loss = ordinal_loss(g_pred, g_true)
 
-        return g_loss, r_loss, b_loss
+        return g_loss
 
     def directly_classifier_loss(self, z_sample, manner_classes):
         z_sample = z_sample.reshape(

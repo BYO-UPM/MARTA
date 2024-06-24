@@ -613,8 +613,8 @@ def MARTA_trainer(
         gaussian_component = []
         y_pred_list = []
         label_list = []
-        g_real_list, r_real_list, b_real_list = [], [], []
-        g_pred_list, r_pred_list, b_pred_list = [], [], []
+        g_real_list = []
+        g_pred_list = []
 
         tr_running_loss, tr_rec_loss, tr_gauss_loss, tr_cat_loss, tr_metric_loss = (
             0,
@@ -624,7 +624,7 @@ def MARTA_trainer(
             0,
         )
 
-        for batch_idx, (data, labels, g_label, r_label, b_label, manner, dataset) in enumerate(tqdm(trainloader)):
+        for batch_idx, (data, labels, g_label, _, _, manner, dataset) in enumerate(tqdm(trainloader)):
 
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
@@ -650,31 +650,16 @@ def MARTA_trainer(
                 manner[manner > 7] = manner[manner > 7] - 8
                 manner = manner.to(model.device).int()
                 g_label = g_label.to(model.device).float()
-                r_label = r_label.to(model.device).float()
-                b_label = b_label.to(model.device).float()
                 y_logit = model.mt_grb_forward(data, manner)
-                g_loss, r_loss, b_loss = \
-                    model.mt_grb_loss(y_logit[0], y_logit[1], y_logit[2],
-                                      g_label, r_label, b_label)
+                g_loss = model.mt_grb_loss(y_logit, g_label)
 
                 # Append multi-class predicted labels.
-                g_prob = torch.nn.functional.softmax(y_logit[0], dim=1)
-                r_prob = torch.nn.functional.softmax(y_logit[1], dim=1)
-                b_prob = torch.nn.functional.softmax(y_logit[2], dim=1)
+                g_prob = torch.nn.functional.softmax(y_logit, dim=1)
                 g_pred = [np.argmax(row) for row in g_prob.cpu().detach().numpy().squeeze()]
-                r_pred = [np.argmax(row) for row in r_prob.cpu().detach().numpy().squeeze()]
-                b_pred = [np.argmax(row) for row in b_prob.cpu().detach().numpy().squeeze()]
                 g_pred_list = np.concatenate((g_pred_list, g_pred))
-                r_pred_list = np.concatenate((r_pred_list, r_pred))
-                b_pred_list = np.concatenate((b_pred_list, b_pred))
 
                 # Append multi-class real labels.
                 g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
-                r_real_list = np.concatenate((r_real_list, r_label.cpu().detach().numpy()))
-                b_real_list = np.concatenate((b_real_list, b_label.cpu().detach().numpy()))
-
-                if e == 40: 
-                    chk = 0
             
             else:
                 # Assert that any manner is no bigger than 7
@@ -715,14 +700,12 @@ def MARTA_trainer(
             # ==== Backward pass ====
             optimizer.zero_grad()
 
-            if not classifier or grb_enable: # TODO: check these "ifnots".
+            if not classifier and not grb_enable:
                 if not grb_enable:
                     if method == "weightsum":
                         losses = [recon_loss, gaussian_loss, categorical_loss, 10*metric_loss]
                     else:
                         losses = [recon_loss, gaussian_loss, categorical_loss, metric_loss]
-                else:
-                    losses = [g_loss, r_loss, b_loss]
                 # Compute each loss gradient excluding those dimensions corresponding
                 # to the decoder and the classifier.
                 for i, loss_i in enumerate(losses):
@@ -744,7 +727,8 @@ def MARTA_trainer(
                 # Update model gradient according to encoder loss.
                 overwrite_grad(model, g, grad_dims, task_count, excluded_layers)
             else:
-                complete_loss.backward()
+                if grb_enable: g_loss.backward()
+                else: complete_loss.backward()
 
             optimizer.step()
 
@@ -760,7 +744,7 @@ def MARTA_trainer(
                     gaussian_component.append(y.cpu().detach().numpy())
                     true_manner_list.append(manner)
             else:
-                tr_running_loss = sum([g_loss.item(), r_loss.item(), b_loss.item()])
+                tr_running_loss = g_loss.item()
 
         # Scheduler step
         scheduler.step()
@@ -799,9 +783,7 @@ def MARTA_trainer(
             )
         else:
             g_bacc = balanced_accuracy_score(g_real_list, g_pred_list)
-            r_bacc = balanced_accuracy_score(r_real_list, r_pred_list)
-            b_bacc = balanced_accuracy_score(b_real_list, b_pred_list)
-            print(f"Epoch: {e} \tTrain Loss: {tr_running_loss:.4f} \tG-ACC: {g_bacc:.4f} \tR-ACC: {r_bacc:.4f} \tB-ACC: {b_bacc:.4f}")
+            print(f"Epoch: {e} \tTrain Loss: {tr_running_loss:.4f} \tG-ACC: {g_bacc:.4f}")
 
         if wandb_flag:
             if classifier:
@@ -842,10 +824,10 @@ def MARTA_trainer(
                 gaussian_component = []
                 label_list = []
                 y_pred_list = []
-                g_real_list, r_real_list, b_real_list = [], [], []
-                g_pred_list, r_pred_list, b_pred_list = [], [], []
+                g_real_list = []
+                g_pred_list = []
 
-                for batch_idx, (data, labels, g_label, r_label, b_label, manner, dataset, id) in enumerate(
+                for batch_idx, (data, labels, g_label, _, _, manner, dataset, id) in enumerate(
                     tqdm(validloader)
                 ):
                     # Make sure dtype is Tensor float
@@ -881,28 +863,16 @@ def MARTA_trainer(
                         manner[manner > 7] = manner[manner > 7] - 8
                         manner = manner.to(model.device).int()
                         g_label = g_label.to(model.device).float()
-                        r_label = r_label.to(model.device).float()
-                        b_label = b_label.to(model.device).float()
                         y_logit = model.mt_grb_forward(data, manner)
-                        g_loss, r_loss, b_loss = \
-                            model.mt_grb_loss(y_logit[0], y_logit[1], y_logit[2], 
-                                            g_label, r_label, b_label)
+                        g_loss = model.mt_grb_loss(y_logit, g_label)
 
                         # Append multi-class predicted labels.
-                        g_prob = torch.nn.functional.softmax(y_logit[0], dim=1)
-                        r_prob = torch.nn.functional.softmax(y_logit[1], dim=1)
-                        b_prob = torch.nn.functional.softmax(y_logit[2], dim=1)
+                        g_prob = torch.nn.functional.softmax(y_logit, dim=1)
                         g_pred = [np.argmax(row) for row in g_prob.cpu().detach().numpy().squeeze()]
-                        r_pred = [np.argmax(row) for row in r_prob.cpu().detach().numpy().squeeze()]
-                        b_pred = [np.argmax(row) for row in b_prob.cpu().detach().numpy().squeeze()]
                         g_pred_list = np.concatenate((g_pred_list, g_pred))
-                        r_pred_list = np.concatenate((r_pred_list, r_pred))
-                        b_pred_list = np.concatenate((b_pred_list, b_pred))
 
                         # Append multi-class real labels.
                         g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
-                        r_real_list = np.concatenate((r_real_list, r_label.cpu().detach().numpy()))
-                        b_real_list = np.concatenate((b_real_list, b_label.cpu().detach().numpy()))
                     else:
                         if not supervised:
                             # Assert that any manner is no bigger than 7
@@ -943,7 +913,7 @@ def MARTA_trainer(
                         )
 
                     v_running_loss += complete_loss.item() \
-                        if not grb_enable else sum([g_loss.item(), r_loss.item(), b_loss.item()])
+                        if not grb_enable else g_loss.item()
 
                     if not classifier and not grb_enable:
                         v_rec_loss += recon_loss.item()
@@ -979,9 +949,7 @@ def MARTA_trainer(
                     )
                 else:
                     g_bacc = balanced_accuracy_score(g_real_list, g_pred_list)
-                    r_bacc = balanced_accuracy_score(r_real_list, r_pred_list)
-                    b_bacc = balanced_accuracy_score(b_real_list, b_pred_list)
-                    print(f"Epoch: {e} \tValid Loss: {v_running_loss:.4f} \tG-BACC: {g_bacc:.4f} \tR-BACC: {r_bacc:.4f} \tB-BACC: {b_bacc:.4f}")
+                    print(f"Epoch: {e} \tValid Loss: {v_running_loss:.4f} \tG-BACC: {g_bacc:.4f}")
 
             if not classifier and not grb_enable:
                 print(
@@ -1136,16 +1104,16 @@ def MARTA_tester(
         batch_size = testloader.batch_size
         y_hat_array = []
         y_array = []
-        g_real_list,  r_real_list,  b_real_list  = [], [], []
-        g_hat_list,   r_hat_list,   b_hat_list   = [], [], []
-        g_hat_p_list, r_hat_p_list, b_hat_p_list = [], [], []
+        g_real_list  = []
+        g_hat_list   = []
+        g_hat_p_list = []
 
         # Create x_array of shape Batch x Output shape
         x_array = np.zeros((batch_size, 1, 65, 25))
         manner_array = np.zeros((batch_size, 25))
 
         x_hat_array = np.zeros(x_array.shape)
-        for batch_idx, (x, labels, g_label, r_label, b_label, manner) in enumerate(tqdm(testloader)):
+        for batch_idx, (x, labels, g_label, _, _, manner) in enumerate(tqdm(testloader)):
             # Move data to device
             x = x.to(model.device).float()
 
@@ -1187,32 +1155,20 @@ def MARTA_tester(
 
                 else:
                     g_label = g_label.to(model.device).float()
-                    r_label = r_label.to(model.device).float()
-                    b_label = b_label.to(model.device).float()
 
                     # Get raw multi-class output from the model.
                     y_logit = model.mt_grb_forward(x, manner)
 
                     # Append multi-class probability distribution.
-                    g_prob = torch.nn.functional.softmax(y_logit[0], dim=1)
-                    r_prob = torch.nn.functional.softmax(y_logit[1], dim=1)
-                    b_prob = torch.nn.functional.softmax(y_logit[2], dim=1)
+                    g_prob = torch.nn.functional.softmax(y_logit, dim=1)
                     g_hat_p_list.append(g_prob)
-                    r_hat_p_list.append(r_prob)
-                    b_hat_p_list.append(b_prob)
 
                     # Append multi-class predicted labels.
                     g_pred = [np.argmax(row) for row in g_prob.cpu().detach().numpy().squeeze()]
-                    r_pred = [np.argmax(row) for row in r_prob.cpu().detach().numpy().squeeze()]
-                    b_pred = [np.argmax(row) for row in b_prob.cpu().detach().numpy().squeeze()]
                     g_hat_list = np.concatenate((g_hat_list, g_pred))
-                    r_hat_list = np.concatenate((r_hat_list, r_pred))
-                    b_hat_list = np.concatenate((b_hat_list, b_pred))
 
                     # Append multi-class real labels.
                     g_real_list = np.concatenate((g_real_list, g_label.cpu().detach().numpy()))
-                    r_real_list = np.concatenate((r_real_list, r_label.cpu().detach().numpy()))
-                    b_real_list = np.concatenate((b_real_list, b_label.cpu().detach().numpy()))
 
                     (
                         x,
@@ -1252,11 +1208,7 @@ def MARTA_tester(
         
         if grb_enable:
             g_hat_p_list = torch.vstack(g_hat_p_list)
-            r_hat_p_list = torch.vstack(r_hat_p_list)
-            b_hat_p_list = torch.vstack(b_hat_p_list)
             g_hat_p_list = g_hat_p_list.cpu().detach().numpy()
-            r_hat_p_list = r_hat_p_list.cpu().detach().numpy()
-            b_hat_p_list = b_hat_p_list.cpu().detach().numpy()
 
         print("Removing unused elements")
         # Remove all from GPU to release memory
@@ -1438,24 +1390,12 @@ def MARTA_tester(
             g_real_tensor  = torch.tensor(g_real_list,  dtype=torch.long)
             g_hat_tensor   = torch.tensor(g_hat_list,   dtype=torch.float)
             g_hat_p_tensor = torch.tensor(g_hat_p_list, dtype=torch.float)
-            r_real_tensor  = torch.tensor(r_real_list,  dtype=torch.long)
-            r_hat_tensor   = torch.tensor(r_hat_list,   dtype=torch.float)
-            r_hat_p_tensor = torch.tensor(r_hat_p_list, dtype=torch.float)
-            b_real_tensor  = torch.tensor(b_real_list,  dtype=torch.long)
-            b_hat_tensor   = torch.tensor(b_hat_list,   dtype=torch.float)
-            b_hat_p_tensor = torch.tensor(b_hat_p_list, dtype=torch.float)
 
             g_acc  = accuracy_score(g_real_tensor, g_hat_tensor)
             g_bacc = balanced_accuracy_score(g_real_tensor, g_hat_tensor)
             g_auc  = roc_auc_score(g_real_tensor, g_hat_p_tensor, multi_class='ovo')
-            r_acc  = accuracy_score(r_real_tensor, r_hat_tensor)
-            r_bacc = balanced_accuracy_score(r_real_tensor, r_hat_tensor)
-            r_auc  = roc_auc_score(r_real_tensor, r_hat_p_tensor, multi_class='ovo')
-            b_acc  = accuracy_score(b_real_tensor, b_hat_tensor)
-            b_bacc = balanced_accuracy_score(b_real_tensor, b_hat_tensor)
-            b_auc  = roc_auc_score(b_real_tensor, b_hat_p_tensor, multi_class='ovo')
             print(
-                f"ACC: ({g_acc:.2f}, {r_acc:.2f}, {b_acc:.2f}), BACC: ({g_bacc:.2f}, {r_bacc:.2f}, {b_bacc:.2f}), AUC: ({g_auc:.2f}, {r_auc:.2f}, {b_auc:.2f})"
+                f"ACC: ({g_acc:.2f}), BACC: ({g_bacc:.2f}), AUC: ({g_auc:.2f})"
             )
             
             # Plot and save confusion matrices
@@ -1474,12 +1414,6 @@ def MARTA_tester(
             # Confusion matrix for g
             g_cm = confusion_matrix(g_real_tensor, g_hat_tensor)
             save_confusion_matrix(g_cm, 'Confusion Matrix of G', '/confusion_matrix_g.png')
-            # Confusion matrix for r
-            r_cm = confusion_matrix(r_real_tensor, r_hat_tensor)
-            save_confusion_matrix(r_cm, 'Confusion Matrix of R', '/confusion_matrix_r.png')
-            # Confusion matrix for b
-            b_cm = confusion_matrix(b_real_tensor, b_hat_tensor)
-            save_confusion_matrix(b_cm, 'Confusion Matrix of B', '/confusion_matrix_b.png')
 
             # Consensus methods.
             # mean_log_odds_g, consensus_true_g, consensus_pred_g = soft_output_by_subject_logits(
