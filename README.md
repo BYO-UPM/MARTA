@@ -7,6 +7,10 @@ This repository contains a series of Python scripts implementing the Manner of A
     <img src="logo1.png" alt="Logo" width="30%" />
 </p>
 
+## Paper link
+
+https://www.techrxiv.org/doi/full/10.36227/techrxiv.171084943.31044695
+
 ## Overview
 
 The project includes the following key scripts:
