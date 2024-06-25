@@ -574,52 +574,39 @@ class MARTA(torch.nn.Module):
     
     def multi_task(self):
         '''This function adds a multi-task layer to the network'''
+        cnn_dims = [128, 64, 32]
         self.mt_grb = torch.nn.Sequential(
-            # 2DConv with kernel_size = (3, 32), stride=2, padding=1
             torch.nn.Conv2d(
-                1,
-                self.class_dims[0],
-                kernel_size=[3, 32],
-                stride=[2, 1],
+                self.x_dim,
+                cnn_dims[0],
+                kernel_size=[3, 3],
+                stride=[2, 2],
             ),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(self.class_dims[0]),
+            torch.nn.BatchNorm2d(cnn_dims[0]),
             torch.nn.Conv2d(
-                self.class_dims[0],
-                self.class_dims[1],
-                kernel_size=[3, 1],
-                stride=[2, 1],
+                cnn_dims[0],
+                cnn_dims[1],
+                kernel_size=[3, 3],
+                stride=[2, 2],
             ),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(self.class_dims[1]),
-            # Flatten
-            ClassifierFlatten(),
-            # Linear
-            torch.nn.Linear(160, self.class_dims[2]),
+            torch.nn.BatchNorm2d(cnn_dims[1]),
+            torch.nn.Conv2d(
+                cnn_dims[1],
+                cnn_dims[2],
+                kernel_size=[3, 3],
+                stride=[2, 2],
+            ),
             torch.nn.ReLU(),
-            # Dropout
-            torch.nn.Dropout(p=0.8),
-            torch.nn.Linear(self.class_dims[2], GRB_LABELS),
-        )
+            torch.nn.BatchNorm2d(cnn_dims[2]),
+            torch.nn.Flatten(start_dim=1),
         
-        # torch.nn.Sequential(
-        #     torch.nn.Linear(self.z_dim * self.window_size, 1024),
-        #     torch.nn.ReLU(),
-        #     # torch.nn.Dropout(p=0.5),
-        #     torch.nn.Linear(1024, 512),
-        #     torch.nn.ReLU(),
-        #     # torch.nn.Dropout(p=0.5),
-        #     torch.nn.Linear(512, 256),
-        #     torch.nn.ReLU(),
-        #     # torch.nn.Dropout(p=0.5),
-        #     torch.nn.Linear(256, 128),
-        #     torch.nn.ReLU(),
-        #     # torch.nn.Dropout(p=0.5), 
-        #     torch.nn.Linear(128, 64),
-        #     torch.nn.ReLU(),
-        #     # torch.nn.Dropout(p=0.5),
-        #     torch.nn.Linear(64, GRB_LABELS) 
-        # )
+            torch.nn.Linear(448, 64),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=0.8),
+            torch.nn.Linear(64, GRB_LABELS),
+        )
 
     def spec_encoder_forward(self, x):
         """Forward function of the spectrogram encoder network. It receives the spectrogram (x) and outputs the encoded spectrogram (e_s)."""
@@ -708,24 +695,8 @@ class MARTA(torch.nn.Module):
     
     def mt_grb_forward(self, x, manner):
         """Forward function of the GRB rating scale predicting network. It receives the spectrogram (x)."""
-        # Extract the features of the spectrogram
-        e_s = self.spec_encoder_forward(x)
-        # Get the latent space representation of each window of the spectrogram
-        _, _, _, qz_mu, _, _, _ = self.inference_forward(e_s)
-        # Let us use the mean of the latent space representation as the samples
-        z = qz_mu
 
-        # Embed manner class from (batch, win_size) to (batch, win_size, z_dim)
-        hmc = self.hmc(manner)
-
-        # Now z is (batch*window, z_dim), reshape to: (batch, window_size, z_dim)
-        z = z.reshape(manner.shape[0], self.window_size, self.z_dim)
-        # Sum them and reshape to (batch, 1, window_size, z_dim) for the CNN
-        z = z / torch.norm(z, dim=2).unsqueeze(2)
-        hmc = hmc / torch.norm(hmc, dim=2).unsqueeze(2)
-        z_hat = (z + hmc).unsqueeze(1)
-
-        g_pred = self.mt_grb(z_hat)
+        g_pred = self.mt_grb(x)
 
         return g_pred
 
@@ -864,7 +835,7 @@ class MARTA(torch.nn.Module):
     def mt_grb_loss(self, g_pred, g_true):
         """Compute the ordinal regression loss for each path."""
         def ordinal_loss(pred, true):
-            criterion = torch.nn.CrossEntropyLoss()
+            criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor([0.45888889, 3.16475096, 1.98081535]).to('cuda:1'), reduction='mean')
             return criterion(pred, true.long())
 
         g_loss = ordinal_loss(g_pred, g_true)

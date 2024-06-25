@@ -615,6 +615,7 @@ def MARTA_trainer(
         label_list = []
         g_real_list = []
         g_pred_list = []
+        g_pred_p_list = []
 
         tr_running_loss, tr_rec_loss, tr_gauss_loss, tr_cat_loss, tr_metric_loss = (
             0,
@@ -655,6 +656,7 @@ def MARTA_trainer(
 
                 # Append multi-class predicted labels.
                 g_prob = torch.nn.functional.softmax(y_logit, dim=1)
+                g_pred_p_list.append(g_prob)
                 g_pred = [np.argmax(row) for row in g_prob.cpu().detach().numpy().squeeze()]
                 g_pred_list = np.concatenate((g_pred_list, g_pred))
 
@@ -744,7 +746,11 @@ def MARTA_trainer(
                     gaussian_component.append(y.cpu().detach().numpy())
                     true_manner_list.append(manner)
             else:
-                tr_running_loss = g_loss.item()
+                tr_running_loss += g_loss.item()
+            
+        if grb_enable:
+            g_pred_p_list = torch.vstack(g_pred_p_list)
+            g_pred_p_list = g_pred_p_list.cpu().detach().numpy()
 
         # Scheduler step
         scheduler.step()
@@ -782,8 +788,10 @@ def MARTA_trainer(
                 )
             )
         else:
+            g_acc = accuracy_score(g_real_list, g_pred_list)
+            g_auc = roc_auc_score(g_real_list, g_pred_p_list, multi_class='ovo')
             g_bacc = balanced_accuracy_score(g_real_list, g_pred_list)
-            print(f"Epoch: {e} \tTrain Loss: {tr_running_loss:.4f} \tG-ACC: {g_bacc:.4f}")
+            print(f"Epoch: {e} \tTrain Loss: {tr_running_loss:.4f} \t\tACC: {g_acc:.4f} \tAUC: {g_auc:.4f} \tBACC: {g_bacc:.4f}")
 
         if wandb_flag:
             if classifier:
@@ -826,6 +834,7 @@ def MARTA_trainer(
                 y_pred_list = []
                 g_real_list = []
                 g_pred_list = []
+                g_pred_p_list = []
 
                 for batch_idx, (data, labels, g_label, _, _, manner, dataset, id) in enumerate(
                     tqdm(validloader)
@@ -868,6 +877,7 @@ def MARTA_trainer(
 
                         # Append multi-class predicted labels.
                         g_prob = torch.nn.functional.softmax(y_logit, dim=1)
+                        g_pred_p_list.append(g_prob)
                         g_pred = [np.argmax(row) for row in g_prob.cpu().detach().numpy().squeeze()]
                         g_pred_list = np.concatenate((g_pred_list, g_pred))
 
@@ -925,6 +935,10 @@ def MARTA_trainer(
                         true_manner_list.append(manner)
                         gaussian_component.append(y.cpu().detach().numpy())
 
+                if grb_enable:
+                    g_pred_p_list = torch.vstack(g_pred_p_list)
+                    g_pred_p_list = g_pred_p_list.cpu().detach().numpy()
+
                 # Check reconstruction of X
                 if not classifier and not grb_enable:
                     check_reconstruction(x, x_hat, wandb_flag, train_flag=True)
@@ -948,8 +962,10 @@ def MARTA_trainer(
                         )
                     )
                 else:
+                    g_acc = accuracy_score(g_real_list, g_pred_list)
+                    g_auc = roc_auc_score(g_real_list, g_pred_p_list, multi_class='ovo')
                     g_bacc = balanced_accuracy_score(g_real_list, g_pred_list)
-                    print(f"Epoch: {e} \tValid Loss: {v_running_loss:.4f} \tG-BACC: {g_bacc:.4f}")
+                    print(f"Epoch: {e} \tValid Loss: {v_running_loss:.4f} \tACC: {g_acc:.4f} \tAUC: {g_auc:.4f} \tBACC: {g_bacc:.4f}")
 
             if not classifier and not grb_enable:
                 print(
@@ -1394,9 +1410,7 @@ def MARTA_tester(
             g_acc  = accuracy_score(g_real_tensor, g_hat_tensor)
             g_bacc = balanced_accuracy_score(g_real_tensor, g_hat_tensor)
             g_auc  = roc_auc_score(g_real_tensor, g_hat_p_tensor, multi_class='ovo')
-            print(
-                f"ACC: ({g_acc:.2f}), BACC: ({g_bacc:.2f}), AUC: ({g_auc:.2f})"
-            )
+            print(f"ACC: ({g_acc:.2f}), BACC: ({g_bacc:.2f}), AUC: ({g_auc:.2f})")
             
             # Plot and save confusion matrices
             def save_confusion_matrix(cm, title, filename):
