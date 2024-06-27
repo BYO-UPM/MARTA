@@ -573,39 +573,50 @@ class MARTA(torch.nn.Module):
         )
     
     def multi_task(self):
-        '''This function adds a multi-task layer to the network'''
-        cnn_dims = [128, 64, 32]
-        self.mt_grb = torch.nn.Sequential(
+        # Ecoding.
+        input_channels = 1
+        hidden_dims = [64, 1024, 64]
+        latent_dim = 32
+        self.encoder_vae_grb = torch.nn.Sequential(
             torch.nn.Conv2d(
-                self.x_dim,
-                cnn_dims[0],
-                kernel_size=[3, 3],
-                stride=[2, 2],
+                input_channels, 
+                hidden_dims[0], 
+                kernel_size=4, 
+                stride=2, 
+                padding=1
             ),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(cnn_dims[0]),
+            torch.nn.BatchNorm2d(hidden_dims[0]),
             torch.nn.Conv2d(
-                cnn_dims[0],
-                cnn_dims[1],
-                kernel_size=[3, 3],
-                stride=[2, 2],
+                hidden_dims[0], 
+                hidden_dims[1], 
+                kernel_size=4, 
+                stride=2, 
+                padding=1
             ),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(cnn_dims[1]),
+            torch.nn.BatchNorm2d(hidden_dims[1]),
             torch.nn.Conv2d(
-                cnn_dims[1],
-                cnn_dims[2],
-                kernel_size=[3, 3],
-                stride=[2, 2],
+                hidden_dims[1], 
+                hidden_dims[2], 
+                kernel_size=4, 
+                stride=2, 
+                padding=1
             ),
             torch.nn.ReLU(),
-            torch.nn.BatchNorm2d(cnn_dims[2]),
-            torch.nn.Flatten(start_dim=1),
-        
-            torch.nn.Linear(448, 64),
+            torch.nn.BatchNorm2d(hidden_dims[2]),
+            torch.nn.Flatten(),
+            
+        )
+        # Latent space generation.
+        self.fc_mu = torch.nn.Linear(1536, latent_dim)
+        self.fc_logvar = torch.nn.Linear(1536, latent_dim)
+        # Ordinal classification.
+        self.ordinal_classifier = torch.nn.Sequential (
+            torch.nn.Linear(latent_dim, 32),
             torch.nn.ReLU(),
             torch.nn.Dropout(p=0.8),
-            torch.nn.Linear(64, GRB_LABELS),
+            torch.nn.Linear(32, 3), # 3 labels
         )
 
     def spec_encoder_forward(self, x):
@@ -695,10 +706,18 @@ class MARTA(torch.nn.Module):
     
     def mt_grb_forward(self, x, manner):
         """Forward function of the GRB rating scale predicting network. It receives the spectrogram (x)."""
+        # Encoding (expected to be pre-trained with albayzin data).
+        h = self.encoder_vae_grb(x)
+        # Sample from latent space.
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        z_smp = mu + eps * std
+        # Classify (ordinally).
+        g_label = self.ordinal_classifier(z_smp)
 
-        g_pred = self.mt_grb(x)
-
-        return g_pred
+        return g_label
 
     def forward(self, x):
         """Forward function of the MARTA. It receives the spectrogram (x) and outputs the spectrogram reconstruction (x_hat)."""

@@ -73,18 +73,25 @@ def main(args, hyperparams):
         )
         tmp = torch.load(name, map_location='cuda:0')
 
+        name = 'local_results/models_z/VAR_GRB.pt'
+        tmp_vae = torch.load(name, map_location='cuda:1')
+
         # Append GRB MTL parameters to MARTA's GMVAE parameters.
         model_state_dict = model.state_dict()
         for key in model_state_dict.keys():
             if key in tmp['model_state_dict']:
-                model_state_dict[key] = tmp['model_state_dict'][key]
+                    model_state_dict[key] = tmp['model_state_dict'][key]
+        # Overrite pre-trained VAE parameters.
+        for key in model_state_dict.keys():
+            if key in tmp_vae['model_state_dict']:
+                model_state_dict[key] = tmp_vae['model_state_dict'][key]
         model.load_state_dict(model_state_dict)
 
         # Make GRB MTL parameters the only ones trainable.
         for param in model.parameters():
             param.requires_grad = False
         model.multi_task()
-        for param in model.mt_grb.parameters():
+        for param in model.ordinal_classifier.parameters():
             param.requires_grad = True
         model.to(device)
 
