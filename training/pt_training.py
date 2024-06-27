@@ -1411,7 +1411,20 @@ def MARTA_tester(
             g_acc  = accuracy_score(g_real_tensor, g_hat_tensor)
             g_bacc = balanced_accuracy_score(g_real_tensor, g_hat_tensor)
             g_auc  = roc_auc_score(g_real_tensor, g_hat_p_tensor, multi_class='ovo')
-            print(f"ACC: ({g_acc:.2f}), BACC: ({g_bacc:.2f}), AUC: ({g_auc:.2f})")
+
+            # Calculate AMAE
+            num_classes = 3
+            amae_value = amae_with_tolerance(torch.tensor(g_hat_tensor), torch.tensor(g_real_tensor), num_classes, 1)
+
+            print(f"ACC: ({g_acc:.2f}), BACC: ({g_bacc:.2f}), AUC: ({g_auc:.2f}), AMAE: ({amae_value:.2f})")
+
+            # Consensus methods.
+            mean_log_odds_g, consensus_true_g, consensus_pred_g = soft_output_by_subject_logits(
+                g_hat_tensor, g_real_tensor, test_data["id_patient"].to_numpy(), test_data["text"].to_numpy())
+            # mean_log_odds_r, consensus_true_r, consensus_pred_r = soft_output_by_subject_logits(
+            #     r_hat_tensor, r_real_tensor, test_data["id_patient"].to_numpy())
+            # mean_log_odds_b, consensus_true_b, consensus_pred_b = soft_output_by_subject_logits(
+            #     b_hat_tensor, b_real_tensor, test_data["id_patient"].to_numpy())
             
             # Plot and save confusion matrices
             def save_confusion_matrix(cm, title, filename):
@@ -1427,16 +1440,8 @@ def MARTA_tester(
                 plt.close()
 
             # Confusion matrix for g
-            g_cm = confusion_matrix(g_real_tensor, g_hat_tensor)
+            g_cm = confusion_matrix(consensus_true_g, torch.tensor(consensus_pred_g,   dtype=torch.float))
             save_confusion_matrix(g_cm, 'Confusion Matrix of G', '/confusion_matrix_g.png')
-
-            # Consensus methods.
-            mean_log_odds_g, consensus_true_g, consensus_pred_g = soft_output_by_subject_logits(
-                g_hat_tensor, g_real_tensor, test_data["id_patient"].to_numpy(), test_data["text"].to_numpy())
-            # mean_log_odds_r, consensus_true_r, consensus_pred_r = soft_output_by_subject_logits(
-            #     r_hat_tensor, r_real_tensor, test_data["id_patient"].to_numpy())
-            # mean_log_odds_b, consensus_true_b, consensus_pred_b = soft_output_by_subject_logits(
-            #     b_hat_tensor, b_real_tensor, test_data["id_patient"].to_numpy())
 
             # Calculate metrics for consensus predictions.
             g_acc_consensus = accuracy_score(consensus_true_g.numpy(), np.array(consensus_pred_g))
@@ -1584,3 +1589,18 @@ def soft_output_by_subject_logits(output_test, Y_test, subject_group_test, text_
     Y_test_bySubject = torch.tensor(Y_test_bySubject, dtype=torch.long)
 
     return mean_log_odds, Y_test_bySubject, estimated_labels
+
+
+def amae_with_tolerance(predictions, targets, num_classes, tolerance=1):
+    mae_per_class = []
+    for c in range(num_classes):
+        mask = (targets == c)
+        if mask.sum() > 0:
+            # Create a tolerance range
+            lower_bound = max(0, c - tolerance)
+            upper_bound = min(num_classes - 1, c + tolerance)
+            # Calculate mean absolute error within the tolerance range
+            tolerance_mask = (predictions >= lower_bound) & (predictions <= upper_bound)
+            mae = torch.abs(predictions[tolerance_mask & mask] - c).mean().item()
+            mae_per_class.append(mae)
+    return np.mean(mae_per_class)
