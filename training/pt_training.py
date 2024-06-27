@@ -29,6 +29,7 @@ import matplotlib.cm as cm
 from utils.utils import cluster_acc, nmi
 from tqdm import tqdm
 from training.gradman import *
+from sklearn.preprocessing import OneHotEncoder
 
 
 class StratifiedBatchSampler:
@@ -1430,31 +1431,32 @@ def MARTA_tester(
             save_confusion_matrix(g_cm, 'Confusion Matrix of G', '/confusion_matrix_g.png')
 
             # Consensus methods.
-            # mean_log_odds_g, consensus_true_g, consensus_pred_g = soft_output_by_subject_logits(
-            #     g_hat_tensor, g_real_tensor, test_data["id_patient"].to_numpy())
+            mean_log_odds_g, consensus_true_g, consensus_pred_g = soft_output_by_subject_logits(
+                g_hat_tensor, g_real_tensor, test_data["id_patient"].to_numpy(), test_data["text"].to_numpy())
             # mean_log_odds_r, consensus_true_r, consensus_pred_r = soft_output_by_subject_logits(
             #     r_hat_tensor, r_real_tensor, test_data["id_patient"].to_numpy())
             # mean_log_odds_b, consensus_true_b, consensus_pred_b = soft_output_by_subject_logits(
             #     b_hat_tensor, b_real_tensor, test_data["id_patient"].to_numpy())
 
             # Calculate metrics for consensus predictions.
-            # g_acc_consensus = accuracy_score(consensus_true_g.numpy(), consensus_pred_g.numpy())
+            g_acc_consensus = accuracy_score(consensus_true_g.numpy(), np.array(consensus_pred_g))
             # r_acc_consensus = accuracy_score(consensus_true_r.numpy(), consensus_pred_r.numpy())
             # b_acc_consensus = accuracy_score(consensus_true_b.numpy(), consensus_pred_b.numpy())
             
-            # g_bacc_consensus = balanced_accuracy_score(consensus_true_g.numpy(), consensus_pred_g.numpy())
+            g_bacc_consensus = balanced_accuracy_score(consensus_true_g.numpy(), np.array(consensus_pred_g))
             # r_bacc_consensus = balanced_accuracy_score(consensus_true_r.numpy(), consensus_pred_r.numpy())
             # b_bacc_consensus = balanced_accuracy_score(consensus_true_b.numpy(), consensus_pred_b.numpy())
             
-            # g_auc_consensus = roc_auc_score(consensus_true_g.numpy(), torch.sigmoid(mean_log_odds_g).numpy(), multi_class='ovo')
+            g_auc_consensus = roc_auc_score(consensus_true_g.numpy(), torch.nn.functional.softmax(mean_log_odds_g, dim=1).numpy(), multi_class='ovo')
             # r_auc_consensus = roc_auc_score(consensus_true_r.numpy(), torch.sigmoid(mean_log_odds_r).numpy(), multi_class='ovo')
             # b_auc_consensus = roc_auc_score(consensus_true_b.numpy(), torch.sigmoid(mean_log_odds_b).numpy(), multi_class='ovo')
 
             # Print the consensus results
-            # print("Consensus results with logits:")
-            # print(
-            #     f"C-ACC: ({g_acc_consensus:.2f}, {r_acc_consensus:.2f}, {b_acc_consensus:.2f}), C-BACC: ({g_bacc_consensus:.2f}, {r_bacc_consensus:.2f}, {b_bacc_consensus:.2f}), C-AUC: ({g_auc_consensus:.2f}, {r_auc_consensus:.2f}, {b_auc_consensus:.2f})"
-            # )
+            print("Consensus results with logits:")
+            print(
+                f"C-ACC: ({g_acc_consensus:.2f}), C-BACC: ({g_bacc_consensus:.2f}), C-AUC: ({g_auc_consensus:.2f})"
+                # f"C-ACC: ({g_acc_consensus:.2f}, {r_acc_consensus:.2f}, {b_acc_consensus:.2f}), C-BACC: ({g_bacc_consensus:.2f}, {r_bacc_consensus:.2f}, {b_bacc_consensus:.2f}), C-AUC: ({g_auc_consensus:.2f}, {r_auc_consensus:.2f}, {b_auc_consensus:.2f})"
+            )
 
             # Calculate results per patient
             # accuracy_per_patient = []
@@ -1462,35 +1464,34 @@ def MARTA_tester(
             # g_acc_per_patient,  r_acc_per_patient,  b_acc_per_patient  = [], [], []
             # g_bacc_per_patient, r_bacc_per_patient, b_bacc_per_patient = [], [], []
             # for i in test_data["id_patient"].unique():
-            #     # Get the predictions for the patient
-            #     g_real_patient_i = g_real_list[test_data.id_patient == i]
-            #     g_hat_patient_i  = g_hat_list[test_data.id_patient == i]
-            #     r_real_patient_i = r_real_list[test_data.id_patient == i]
-            #     r_hat_patient_i  = r_hat_list[test_data.id_patient == i]
-            #     b_real_patient_i = b_real_list[test_data.id_patient == i]
-            #     b_hat_patient_i  = b_hat_list[test_data.id_patient == i]
+                # Get the predictions for the patient
+                # g_real_patient_i = g_real_list[test_data.id_patient == i]
+                # g_hat_patient_i  = g_hat_list[test_data.id_patient == i]
+                # r_real_patient_i = r_real_list[test_data.id_patient == i]
+                # r_hat_patient_i  = r_hat_list[test_data.id_patient == i]
+                # b_real_patient_i = b_real_list[test_data.id_patient == i]
+                # b_hat_patient_i  = b_hat_list[test_data.id_patient == i]
 
-            #     # Calculate the metrics
-            #     g_acc_patient_i  = accuracy_score(g_real_patient_i, np.round(g_hat_patient_i))
-            #     g_bacc_patient_i = balanced_accuracy_score(g_real_patient_i, np.round(g_hat_patient_i))
-            #     r_acc_patient_i  = accuracy_score(r_real_patient_i, np.round(r_hat_patient_i))
-            #     r_bacc_patient_i = balanced_accuracy_score(r_real_patient_i, np.round(r_hat_patient_i))
-            #     b_acc_patient_i  = accuracy_score(b_real_patient_i, np.round(b_hat_patient_i))
-            #     b_bacc_patient_i = balanced_accuracy_score(b_real_patient_i, np.round(b_hat_patient_i))
+                # Calculate the metrics
+                # g_acc_patient_i  = accuracy_score(g_real_patient_i, np.round(g_hat_patient_i))
+                # g_bacc_patient_i = balanced_accuracy_score(g_real_patient_i, np.round(g_hat_patient_i))
+                # r_acc_patient_i  = accuracy_score(r_real_patient_i, np.round(r_hat_patient_i))
+                # r_bacc_patient_i = balanced_accuracy_score(r_real_patient_i, np.round(r_hat_patient_i))
+                # b_acc_patient_i  = accuracy_score(b_real_patient_i, np.round(b_hat_patient_i))
+                # b_bacc_patient_i = balanced_accuracy_score(b_real_patient_i, np.round(b_hat_patient_i))
 
-            #     # Store the results
-            #     g_acc_per_patient.append(g_acc_patient_i)
-            #     g_bacc_per_patient.append(g_bacc_patient_i)
-            #     r_acc_per_patient.append(r_acc_patient_i)
-            #     r_bacc_per_patient.append(r_bacc_patient_i)
-            #     b_acc_per_patient.append(b_acc_patient_i)
-            #     b_bacc_per_patient.append(b_bacc_patient_i)
+                # Store the results
+                # g_acc_per_patient.append(g_acc_patient_i)
+                # g_bacc_per_patient.append(g_bacc_patient_i)
+                # r_acc_per_patient.append(r_acc_patient_i)
+                # r_bacc_per_patient.append(r_bacc_patient_i)
+                # b_acc_per_patient.append(b_acc_patient_i)
+                # b_bacc_per_patient.append(b_bacc_patient_i)
 
-            # # Print the results
+            # Print the results
             # print("Results per patient in mean and std:")
             # print(f"[G] Accuracy: {np.mean(g_acc_per_patient):.2f} +- {np.std(g_acc_per_patient):.2f}, Balanced accuracy: {np.mean(g_bacc_per_patient):.2f} +- {np.std(g_bacc_per_patient):.2f}")
-            # print(f"[R] Accuracy: {np.mean(r_acc_per_patient):.2f} +- {np.std(r_acc_per_patient):.2f}, Balanced accuracy: {np.mean(r_bacc_per_patient):.2f} +- {np.std(r_bacc_per_patient):.2f}")
-            # print(f"[B] Accuracy: {np.mean(b_acc_per_patient):.2f} +- {np.std(b_acc_per_patient):.2f}, Balanced accuracy: {np.mean(b_bacc_per_patient):.2f} +- {np.std(b_bacc_per_patient):.2f}")
+            # print(f"[G] Accuracy: {np.mean(g_acc_per_patient):.2f} +- {np.std(g_acc_per_patient):.2f}, Balanced accuracy: {np.mean(g_bacc_per_patient):.2f} +- {np.std(g_bacc_per_patient):.2f}")
 
 
 def threshold_selection(y_true, y_pred_soft, verbose=0):
@@ -1535,28 +1536,51 @@ def soft_output_by_subject(output_test, Y_test, subject_group_test):
     return mean_probabilities, Y_test_tensor_bySubject, estimated_labels
 
 
-def soft_output_by_subject_logits(output_test, Y_test, subject_group_test):
+def soft_output_by_subject_logits(output_test, Y_test, subject_group_test, text_test):
     unique_subjects = np.unique(subject_group_test)
+    unique_text = np.unique(text_test)
+    unique_classes = range(3) # FIXME
     Y_test_bySubject = []
-    mean_log_odds = torch.zeros(len(unique_subjects))
+    mean_log_odds = torch.zeros(int(len(unique_subjects)*len(unique_text)), len(unique_classes))
+    enc = OneHotEncoder(categories=[range(3)], sparse_output=False)
+    removed_indices = []
 
     for i, subject in enumerate(unique_subjects):
-        subject_indices = np.where(subject_group_test == subject)
-        subject_outputs = output_test[subject_indices]
+        for j, text in enumerate(unique_text):
 
-        # Calculate mean log odds for the subject
-        log_odds = torch.log(subject_outputs + 1e-6) - torch.log(
-            1 - subject_outputs + 1e-6
-        )
-        mean_log_odds[i] = torch.mean(log_odds)
+            k = int(i*len(unique_text) + j)
 
-        # Store the first label found for the subject
-        Y_test_bySubject.append(Y_test[subject_indices][0])
+            subject_indices = np.where(subject_group_test == subject)
+            text_indices = np.where(text_test == text)
+            indices = np.intersect1d(subject_indices[0], text_indices[0])
+
+            if len(indices) == 0: 
+                removed_indices.append(k)
+                continue
+
+            # Select y and y_hat for one patient
+            subject_outputs = np.array([int(output_test[i]) for i in indices])
+
+            rating_outputs_enc = subject_outputs.reshape(-1, 1)
+            rating_outputs_enc = enc.fit_transform(rating_outputs_enc)
+            rating_outputs_enc = torch.tensor(rating_outputs_enc)
+
+            # Calculate mean log odds for the subject
+            log_odds = torch.log(rating_outputs_enc + 1e-6) - torch.log(
+                1 - rating_outputs_enc + 1e-6
+            )
+            mean_log_odds[k] = torch.mean(log_odds, axis=0)
+
+            # Store the mode across the patient ratings.
+            Y_test_bySubject.append(int(torch.mode(Y_test[indices]).values))
 
     # Estimate labels based on mean log odds
-    estimated_labels = torch.zeros_like(mean_log_odds)
-    estimated_labels[mean_log_odds >= 0] = 1
+    mask = torch.ones(mean_log_odds.size(0), dtype=torch.bool)
+    mask[removed_indices] = False
+    mean_log_odds = mean_log_odds[mask]
+    mean_probs = torch.nn.functional.softmax(mean_log_odds, dim=1)
+    estimated_labels = [int(np.argmax(row)) for row in mean_probs]
 
-    Y_test_tensor_bySubject = torch.tensor(Y_test_bySubject, dtype=torch.long)
+    Y_test_bySubject = torch.tensor(Y_test_bySubject, dtype=torch.long)
 
-    return mean_log_odds, Y_test_tensor_bySubject, estimated_labels
+    return mean_log_odds, Y_test_bySubject, estimated_labels
