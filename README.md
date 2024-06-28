@@ -77,3 +77,14 @@ This project is licensed under the [MIT License](LICENSE). Please see the `LICEN
 ## Contact
 
 For any queries or further assistance, please reach out to [Dr. Alejandro Guerrero-López](mailto:alejandro.guerrero@upm.es).
+
+If you find our work helpful, please consider citing the paper:
+
+```
+@article{guerrero2024marta,
+  title={MARTA: a model for the automatic phonemic grouping of the parkinsonian speech},
+  author={Guerrero-L{\'o}pez, Alejandro and Arias-Londo{\~n}o, Juli{\'a}n D and Shattuck-Hufnagel, Stefanie and Godino-Llorente, Juan I},
+  journal={TechRxiv preprint TechRxiv.171084943.31044695},
+  year={2024}
+}
+```
