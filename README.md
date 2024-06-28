@@ -82,7 +82,7 @@ If you find our work helpful, please consider citing the paper:
 
 ```
 @article{guerrero2024marta,
-  title={MARTA: a model for the automatic phonemic grouping of the parkinsonian speech},
+  title={{MARTA}: a model for the automatic phonemic grouping of the parkinsonian speech},
   author={Guerrero-L{\'o}pez, Alejandro and Arias-Londo{\~n}o, Juli{\'a}n D and Shattuck-Hufnagel, Stefanie and Godino-Llorente, Juan I},
   journal={TechRxiv preprint TechRxiv.171084943.31044695},
   year={2024}
