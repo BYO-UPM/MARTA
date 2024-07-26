@@ -45,6 +45,10 @@ import os
 import pandas as pd
 import librosa
 import textgrids as tg
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+import bisect
 
 
 # Function to collapse the matrix into a 24x1 vector with the most repeated string
@@ -95,12 +99,16 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         texts = []
         phonemes = []
 
-        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/ "
+        datapath = (
+            "/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/gita_htk_forced_alignment/"
+        )
 
         for root, dirs, files in os.walk(datapath):
             for file in files:
                 # If the file does not end with .wav, skip it
                 if not file.endswith(".wav"):
+                    continue
+                if file.endswith("_normalized.wav"):
                     continue
                 file_path = os.path.join(root, file)
                 file_paths.append(file_path)
@@ -150,6 +158,69 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
+    def read_italian(self):
+        file_paths = []
+        labels = []
+        id_patient = []
+        texts = []
+        phonemes = []
+
+        datapath = "/home/aguerrero@gaps_domain.ssr.upm.es/Projects/MARTA/data_loaders/italian_data/anonymized_italian"
+
+        for root, dirs, files in os.walk(datapath):
+            for file in files:
+                # If the file does not end with .wav, skip it
+                if not file.endswith(".wav"):
+                    continue
+                if file.endswith("_normalized.wav"):
+                    continue
+                file_path = os.path.join(root, file)
+                file_paths.append(file_path)
+
+                # ID patient
+                id_name = root.split("/")[-1]
+                parent_folder = root.split("/")[-2]
+                id_patient.append(parent_folder + id_name)
+                # Label
+                if "Healthy" in root:
+                    labels.append(0)
+                elif "Parkinson" in root:
+                    labels.append(1)
+                # Text
+                texts.append(file.split(".")[0][:2])
+
+                # Read the text grid file
+                tg_file = os.path.join(root, file).replace(".wav", ".TextGrid")
+                # Check if the file exists
+                if not os.path.exists(tg_file):
+                    print("File does not exist: ", tg_file)
+                    phonemes.append(None)
+                    continue
+                tg_file = tg.TextGrid(tg_file)
+                phonemes.append(tg_file["phones"])
+
+        # Generate a dataframe with all the data
+        data = pd.DataFrame(
+            {
+                "file_path": file_paths,
+                "label": labels,
+                "text": texts,
+                "phonemes": phonemes,
+                "id_patient": id_patient,
+            }
+        )
+        # Drop na
+        data = data.dropna()
+        # sort by id_patient
+        data = data.sort_values(by=["id_patient"])
+        # reset index
+        data = data.reset_index(drop=True)
+
+        # Keep only texts= ["PR", "FB", "B1", "B2"], that is removing vowels and DDKs
+        data = data[data["text"].isin(["PR", "FB", "B1", "B2"])]
+
+        return data
+
     def read_neurovoz(self):
         file_paths = []
         labels = []
@@ -163,6 +234,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             for file in files:
                 # If the file does not end with .wav, skip it
                 if not file.endswith(".wav"):
+                    continue
+                # if file ends with _normalized.wav continue
+                if file.endswith("_normalized.wav"):
                     continue
                 file_path = os.path.join(root, file)
                 file_paths.append(file_path)
@@ -220,12 +294,14 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         texts = []
         phonemes = []
 
-        datapath_wav = "/media/my_ftp/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
+        datapath_wav = "/media/my_ftp/BasesDeDatos_Voz_Habla/ALBAYZIN/ALBAYZIN/corpora/Albayzin1/CF/albayzin_htk_forced_alignment"
 
         i = 0
         for file in os.listdir(datapath_wav):
             # If the file does not end with .wav, skip it
             if not file.endswith(".wav"):
+                continue
+            if file.endswith("_normalized.wav"):
                 continue
             file_path = os.path.join(datapath_wav, file)
             file_paths.append(file_path)
@@ -269,28 +345,50 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         return data
 
     def match_phonemes(self, phonemes, signal, sr):
+        # Prepare a list of (start, end, label) tuples and sort it
+        intervals = sorted(
+            (interval.xmin, interval.xmax, interval.text) for interval in phonemes
+        )
+        starts = [interval[0] for interval in intervals]  # Extract the start times
+
         phoneme_labels = []
 
         for timestamp in range(len(signal)):
             # Convert the timestamp to seconds
             timestamp_seconds = timestamp / sr
 
-            # Find the Interval object that corresponds to the current timestamp
-            matching_interval = None
-            for interval in phonemes:
-                if interval.xmin <= timestamp_seconds <= interval.xmax:
-                    matching_interval = interval
-                    break
-            # Append the phoneme label to the phoneme_labels list (or None if no match is found)
-            if matching_interval is not None:
-                phoneme_labels.append(matching_interval.text)
+            # Find the index of the first interval whose start time is greater than the timestamp
+            idx = bisect.bisect_left(starts, timestamp_seconds)
+
+            # Check if the previous interval (if any) contains the timestamp
+            if (
+                idx > 0
+                and intervals[idx - 1][0] <= timestamp_seconds <= intervals[idx - 1][1]
+            ):
+                phoneme_labels.append(intervals[idx - 1][2])
             else:
                 phoneme_labels.append(None)
 
         return phoneme_labels
 
+    def ebu_r128_normalize(self, file_path):
+        normalized_file_path = file_path.replace(".wav", "_normalized.wav")
+        if not os.path.exists(normalized_file_path):
+            command = [
+                "ffmpeg-normalize",
+                file_path,
+                "-o",
+                normalized_file_path,
+            ]
+            subprocess.run(command, check=True)
+        return normalized_file_path
+
     def read_dataset(self):
         print("Reading the data...")
+
+        # Italian removed from study as it has bad quality
+        # data_it = self.read_italian()
+        # data_it["dataset"] = "italian"
 
         data_alb = self.read_albayzin()
         # add a column with the dataset name
@@ -305,19 +403,68 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         data_gita["id_patient"] = data_gita["id_patient"] + 1000
 
         data = pd.concat([data_alb, data_neuro, data_gita])
+        # data = pd.concat([data_alb, data_neuro, data_gita, data_it])
+
+        # Assert that all datasets have been read
+        assert len(data[data["dataset"] == "albayzin"]) > 0
+        assert len(data[data["dataset"] == "neurovoz"]) > 0
+        assert len(data[data["dataset"] == "gita"]) > 0
+        # assert len(data[data["dataset"] == "italian"]) > 0
+
+        print("Data read successfully...")
 
         # Categorise label to 0 and 1
         data["label"] = data["label"].astype("category").cat.codes
 
         print("Reading the .wav files...")
         target_sr = 16000  # Because Albayzin has 16kHz sampling rate and is the lowest sampling rate in our datasets
-        # Read the .wav files and store the signals and sampling rates
+
+        # Normalize all audio files using EBU R128 with a progress bar and parallel processing
+        file_paths = data["file_path"].tolist()
+
+        # Define a function to handle the normalization in parallel
+        def parallel_ebu_r128_normalize(file_paths):
+            with ThreadPoolExecutor() as executor:
+                results = list(
+                    tqdm(
+                        executor.map(self.ebu_r128_normalize, file_paths),
+                        total=len(file_paths),
+                        desc="Normalizing audio files",
+                    )
+                )
+            return results
+
+        # Apply parallel normalization
+        data["normalized_file_path"] = parallel_ebu_r128_normalize(file_paths)
+
+        # Read the normalized .wav files and store the signals and sampling rates
+        print("Loading .wav files...")
         data["signal"], data["sr"] = zip(
-            *data["file_path"].map(lambda x: librosa.load(x, sr=target_sr))
+            *tqdm(
+                data["normalized_file_path"].map(
+                    lambda x: librosa.load(x, sr=target_sr)
+                ),
+                total=len(data),
+                desc="Reading normalized .wav files",
+            )
         )
 
-        # Normalize the audio
+        # Check that there is no nan signal
+        assert len(data[data["signal"].isna()]) == 0
+
+        # Apply logmmse to all signals
+        print("Applying logmmse to all signals...")
+        import logmmse
+
+        data["signal"] = data["signal"].apply(
+            lambda x: logmmse.logmmse(x, target_sr, output_file=None)
+        )
+
+        # Normalize the audio (assuming self.normalize_audio is defined elsewhere in your code)
         data["signal"] = data["signal"].apply(self.normalize_audio)
+
+        # Check that there is no nan signal
+        assert len(data[data["signal"].isna()]) == 0
 
         # Frame the signals into 400ms frames with 50% overlap
         frame_length = int(
@@ -336,14 +483,20 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
         )
 
+        # Check that there is no nan signal framed
+        assert len(data[data["signal_framed"].isna()]) == 0
+
         print("Matching text grid phonemes to the signals...")
 
-        # Match phonemes
-        data["phonemes_matched"] = data.apply(
+        # Match phonemes (this takes too long, we have to optimise it)
+        # Use the optimized match_phonemes function
+        tqdm.pandas(desc="Matching phonemes")
+        data["phonemes_matched"] = data.progress_apply(
             lambda x: self.match_phonemes(x["phonemes"], x["signal"], x["sr"]), axis=1
         )
 
         # Frame the phonemes with 50% overlap
+        print("Framing the phonemes with 50% overlap...")
         data["phonemes_framed_overlap"] = data["phonemes_matched"].apply(
             lambda x: librosa.util.frame(
                 x, frame_length=frame_length, hop_length=hop_length, axis=0
@@ -382,14 +535,28 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 )
             )
 
+            # Check that no spectrogram gave nan
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
+            )
+
             # Calculate the power to db for each frame
             data["spectrogram"] = data["spectrogram"].apply(
                 lambda x: librosa.power_to_db(x, ref=np.max)
             )
 
+            # Assert nans after power to db
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
+            )
+
             # Normalise each spectrogram by substraction the mean and dividing by the standard deviation
             data["spectrogram"] = data["spectrogram"].apply(
-                lambda x: (x - x.mean()) / x.std()
+                lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1)
+            )
+
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
             )
 
             # Frame again the phonemes to match spectrogram frames
@@ -427,54 +594,44 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         supervised=False,
         verbose=True,
     ):
-        # Map phonemes to manner classes
-        manner_classes = {
-            "p": 0,  # plosives
-            "t": 0,
-            "k": 0,
-            "b": 1,  # plosives voiced
-            "B": 1,
-            "d": 1,
-            "D": 1,
-            "g": 1,
-            "G": 1,
-            "n": 2,  # nasals
-            "N": 2,
-            "m": 2,
-            "NY": 2,
-            "J": 2,
-            "f": 3,  # fricatives
-            "s": 3,
-            "z": 3,
-            "x": 3,
-            "h": 3,
-            "T": 3,
-            "R": 4,  # liquids
-            "r": 4,
-            "4": 4,
-            "l": 4,
-            "y": 4,
-            "jj": 4,
-            "L": 4,
-            "a": 5,  # vowels
-            "e": 5,
-            "e ": 5,
-            "i": 5,
-            "j": 5,
-            "o": 5,
-            "u": 5,
-            "w": 5,
-            "CH": 6,  # affricates
-            "tS": 6,
-            "sil": 7,  # silence
-            "_": 7,
-            "sp": 7,  # short pause
-        }
+        # Load manner class map from yaml
+        import yaml
+
+        with open(
+            "/home/aguerrero@gaps_domain.ssr.upm.es/Projects/MARTA/data_loaders/manner_classes.yaml",
+            "r",
+        ) as file:
+            manner_classes = yaml.load(file, Loader=yaml.FullLoader)
+
+        # First the spanish data
+        spanish_data = self.data[self.data["dataset"] != "italian"]
 
         # Map all self.data["collapsed_phonemes"] to manner classes
-        self.data["manner_class"] = self.data["collapsed_phonemes"].apply(
-            lambda x: [manner_classes[phoneme] for phoneme in x]
+        spanish_data["manner_class"] = spanish_data["collapsed_phonemes"].apply(
+            lambda x: [
+                manner_classes["manner_classes"]["spanish"][phoneme] for phoneme in x
+            ]
         )
+
+        # Italian data
+        # italian_data = self.data[self.data["dataset"] == "italian"]
+
+        # # Map all self.data["collapsed_phonemes"] to manner classes
+        # italian_data["manner_class"] = italian_data["collapsed_phonemes"].apply(
+        #     lambda x: [
+        #         phoneme.split("_")[0]  # Split by '_' and get the manner class
+        #         for phoneme in x
+        #     ]
+        # )
+        # italian_data["manner_class"] = italian_data["manner_class"].apply(
+        #     lambda x: [
+        #         manner_classes["manner_classes"]["italian"][phoneme] for phoneme in x
+        #     ]
+        # )
+
+        # Merge
+        # self.data = pd.concat([spanish_data, italian_data])
+        self.data = spanish_data
 
         # Current data has 3 ["label"] values: 0, 1, 2. However, 0 and 1 are both Healthy and 2 is Parkinson. We need to map that: 0 and 1 to 0 and 2 to 1
         # self.data["label"] = self.data["label"].apply(lambda x: 0 if x < 2 else 1)
@@ -491,6 +648,12 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         albayzin_data = self.data[self.data["dataset"] == "albayzin"]
         neurovoz_data = self.data[self.data["dataset"] == "neurovoz"]
         gita_data = self.data[self.data["dataset"] == "gita"]
+        # italian_data = self.data[self.data["dataset"] == "italian"]
+
+        # # Italian IDs are strings, categorize it to integers above 2000 (neurovoz are under 100, gita above 1000)
+        # italian_data["id_patient"] = (
+        #     italian_data["id_patient"].astype("category").cat.codes + 2000
+        # )
 
         albayzin_patients = albayzin_data["id_patient"].unique()
         np.random.shuffle(albayzin_patients)
@@ -532,7 +695,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
         elif experiment == "fourth":
-            # Create 10 folds of neurovoz and gita patients
+            # Create 10 folds of neurovoz and gita patients and italian patients
             healthy_gita_patients = gita_data[gita_data["label"] == 0][
                 "id_patient"
             ].unique()
@@ -543,17 +706,28 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             pd_neurovoz_patients = neurovoz_data[neurovoz_data["label"] == 1][
                 "id_patient"
             ].unique()
+            # healthy_italian_patients = italian_data[italian_data["label"] == 0][
+            #     "id_patient"
+            # ].unique()
+            # pd_italian_patients = italian_data[italian_data["label"] == 1][
+            #     "id_patient"
+            # ].unique()
+
             # Randomly shuffle the patients
             np.random.shuffle(healthy_gita_patients)
             np.random.shuffle(pd_gita_patients)
             np.random.shuffle(healthy_neurovoz_patients)
             np.random.shuffle(pd_neurovoz_patients)
+            # np.random.shuffle(healthy_italian_patients)
+            # np.random.shuffle(pd_italian_patients)
 
             # Split in 10 folds all lists
             healthy_gita_patients = np.array_split(healthy_gita_patients, 10)
             pd_gita_patients = np.array_split(pd_gita_patients, 10)
             healthy_neurovoz_patients = np.array_split(healthy_neurovoz_patients, 10)
             pd_neurovoz_patients = np.array_split(pd_neurovoz_patients, 10)
+            # healthy_italian_patients = np.array_split(healthy_italian_patients, 10)
+            # pd_italian_patients = np.array_split(pd_italian_patients, 10)
 
             # Create the 10 folds
             for f in range(10):
@@ -564,6 +738,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                         pd_gita_patients[f],
                         healthy_neurovoz_patients[f],
                         pd_neurovoz_patients[f],
+                        # healthy_italian_patients[f],
+                        # pd_italian_patients[f],
                     ]
                 )
                 # Get the val patients, the fold just before the test fold (if it is the first fold, then the last fold is the val fold)
@@ -574,6 +750,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                             pd_gita_patients[-1],
                             healthy_neurovoz_patients[-1],
                             pd_neurovoz_patients[-1],
+                            # healthy_italian_patients[-1],
+                            # pd_italian_patients[-1],
                         ]
                     )
                 else:
@@ -583,6 +761,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                             pd_gita_patients[f - 1],
                             healthy_neurovoz_patients[f - 1],
                             pd_neurovoz_patients[f - 1],
+                            healthy_italian_patients[f - 1],
+                            pd_italian_patients[f - 1],
                         ]
                     )
 
@@ -593,6 +773,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                         np.concatenate(pd_gita_patients),
                         np.concatenate(healthy_neurovoz_patients),
                         np.concatenate(pd_neurovoz_patients),
+                        # np.concatenate(healthy_italian_patients),
+                        # np.concatenate(pd_italian_patients),
                     ]
                 )
                 # Drop now the patients athat already are in test and val
@@ -615,6 +797,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                         train_data,
                         neurovoz_data[neurovoz_data["id_patient"].isin(train_patients)],
                         gita_data[gita_data["id_patient"].isin(train_patients)],
+                        # italian_data[italian_data["id_patient"].isin(train_patients)],
                     ]
                 )
 
@@ -623,6 +806,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     [
                         neurovoz_data[neurovoz_data["id_patient"].isin(val_patients)],
                         gita_data[gita_data["id_patient"].isin(val_patients)],
+                        # italian_data[italian_data["id_patient"].isin(val_patients)],
                     ]
                 )
 
@@ -631,6 +815,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     [
                         neurovoz_data[neurovoz_data["id_patient"].isin(test_patients)],
                         gita_data[gita_data["id_patient"].isin(test_patients)],
+                        # italian_data[italian_data["id_patient"].isin(test_patients)],
                     ]
                 )
 
@@ -660,6 +845,12 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
     def create_dataloader(self, train_data, val_data, test_data, supervised, f=0):
 
         audio_features = "spectrogram"
+
+        # X = Spectrograms (N, C, H, W)
+        # Y = Labels (N)
+        # P = Manner classes (N, 8)
+        # Z = New labels (N, 16) (Y + P)
+        # D = Dataset (N)
 
         # Make sure that x_train is shape N, Channels, Height, Width (N,C,H,W) where C is 1
         x_train = np.stack(train_data[audio_features].values)

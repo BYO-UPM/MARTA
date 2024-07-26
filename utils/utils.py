@@ -10,60 +10,33 @@ from collections import Counter
 import copy
 
 
-def augment_data(dataset, validation=False, p=0.8, q=0.8, r=0.2):
+import copy
+
+import copy
+import numpy as np
+
+
+def augment_data(dataset, num_augmentations=4, validation=False, p=0.8, q=0.8, r=0.8):
     augmented_data = []
+    mask_percentages = np.linspace(0, 0.8, num_augmentations)
+
     for data in dataset:
         if validation:
             spectrogram, label, manner, ds, id = data
         else:
             spectrogram, label, manner, ds = data
 
-        spectrogram_to_modify1 = copy.deepcopy(spectrogram)
-        spectrogram_to_modify2 = copy.deepcopy(spectrogram)
-        spectrogram_to_modify3 = copy.deepcopy(spectrogram)
-        spectrogram_to_modify4 = copy.deepcopy(spectrogram)
-
-        # First augmentation
-        augmented_spectrogram_1 = augment_spectrogram(
-            spectrogram_to_modify1,
-            p,
-            q,
-            r,
-        )
-        if validation:
-            augmented_data.append((augmented_spectrogram_1, label, manner, ds, id))
-        else:
-            augmented_data.append((augmented_spectrogram_1, label, manner, ds))
-
-        # Second augmentation
-        augmented_spectrogram_2 = augment_spectrogram(
-            spectrogram_to_modify2, p, q, r, mask_percentage=0.25
-        )
-        if validation:
-            augmented_data.append((augmented_spectrogram_2, label, manner, ds, id))
-        else:
-            augmented_data.append((augmented_spectrogram_2, label, manner, ds))
-
-        # Third augmentation
-        augmented_spectrogram_3 = augment_spectrogram(
-            spectrogram_to_modify3, p, q, r, mask_percentage=0.35
-        )
-        if validation:
-            augmented_data.append((augmented_spectrogram_3, label, manner, ds, id))
-        else:
-            augmented_data.append((augmented_spectrogram_3, label, manner, ds))
-
-        # Fourth augmentation
-        augmented_spectrogram_4 = augment_spectrogram(
-            spectrogram_to_modify4, p, q, r, mask_percentage=0.45
-        )
-        if validation:
-            augmented_data.append((augmented_spectrogram_4, label, manner, ds, id))
-        else:
-            augmented_data.append((augmented_spectrogram_4, label, manner, ds))
+        for mask_percentage in mask_percentages:
+            spectrogram_to_modify = copy.deepcopy(spectrogram)
+            augmented_spectrogram = augment_spectrogram(
+                spectrogram_to_modify, p, q, r, mask_percentage=mask_percentage
+            )
+            if validation:
+                augmented_data.append((augmented_spectrogram, label, manner, ds, id))
+            else:
+                augmented_data.append((augmented_spectrogram, label, manner, ds))
 
     dataset += augmented_data
-
     return dataset
 
 
@@ -93,16 +66,16 @@ def augment_spectrogram(spectrogram, p=0.5, q=0.5, r=0.2, mask_percentage=0.15):
     return spectrogram
 
 
-def find_minority_class(dataset):
-    labels = [data[1] for data in dataset]
+def find_minority_class(dataset, axis=1):
+    labels = [data[axis] for data in dataset]
     label_counts = Counter(labels)
     minority_class = min(label_counts, key=label_counts.get)
     return minority_class, label_counts
 
 
-def stratify_dataset(dataset, validation=False):
+def stratify_dataset(dataset, axis=1, validation=False):
     # Check stratification of labels (they are the second element of the triplet)
-    minority_class, label_counts = find_minority_class(dataset)
+    minority_class, label_counts = find_minority_class(dataset, axis=axis)
     majority_class_count = max(label_counts.values())
 
     if label_counts[minority_class] < majority_class_count:
@@ -136,6 +109,49 @@ def stratify_dataset(dataset, validation=False):
         balanced_dataset = dataset + additional_augmented_data
     else:
         balanced_dataset = dataset
+
+    return balanced_dataset
+
+
+def stratify_per_dataset(dataset, validation=False):
+    # We have D datasets, check how many samples we have per dataset
+    datasets = [data[3] for data in dataset]
+    dataset_counts = Counter(datasets)
+    # Equal all datasets samples to the maximum
+    max_samples = max(dataset_counts.values())
+    for dataset_name, count in dataset_counts.items():
+        if count < max_samples:
+            print("Augmenting dataset", dataset_name, "to match maximum samples")
+            additional_augmented_data = []
+            augmentations_needed = max_samples - count
+            dataset_data = [data for data in dataset if data[3] == dataset_name]
+
+            while augmentations_needed > 0:
+                for data in dataset_data:
+                    if augmentations_needed <= 0:
+                        break
+                    if validation:
+                        spectrogram, label, manner, ds, id = data
+                    else:
+                        spectrogram, label, manner, ds = data
+
+                    spectrogram_to_modify3 = copy.deepcopy(spectrogram)
+
+                    augmented_spectrogram = augment_spectrogram(spectrogram_to_modify3)
+                    if validation:
+                        additional_augmented_data.append(
+                            (augmented_spectrogram, label, manner, ds, id)
+                        )
+                    else:
+                        additional_augmented_data.append(
+                            (augmented_spectrogram, label, manner, ds)
+                        )
+                    augmentations_needed -= 1
+
+            # Combine additional augmented data
+            balanced_dataset = dataset + additional_augmented_data
+        else:
+            balanced_dataset = dataset
 
     return balanced_dataset
 
@@ -331,31 +347,42 @@ def plot_logopeda_alb_neuro(
 
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ==========================================
 
-    # print("Calculating jensen shannon")
-    # print("Calculating distances in a space of dimensions: ", lm_test_original.shape[1])
-    # calculate_distances_manner(
-    #     model,
-    #     lm_train_original,
-    #     lm_test_original,
-    #     manner_train,
-    #     manner_test,
-    #     labels_train,
-    #     labels_test,
-    #     dataset_train,
-    #     dataset_test,
-    #     None,
-    #     wandb_flag,
-    #     path_to_plot=path_to_plot,
-    # )
+    print("Calculating jensen shannon")
+    print("Calculating distances in a space of dimensions: ", lm_test_original.shape[1])
+    pairs = [
+        ("albayzin", "neurovoz"),
+        ("albayzin", "gita"),
+        ("albayzin", "italian"),
+        ("neurovoz", "gita"),
+        ("neurovoz", "italian"),
+        ("gita", "italian"),
+    ]
 
-    # Check the latent space dimension, if its 3D, plot it
+    # calculate distance manner for all combinations
+    for i, pair in enumerate(pairs):
+        if i == len(pairs) - 1:
+            break
+        calculate_distances_manner(
+            model,
+            lm_test_original,
+            manner_test,
+            labels_test,
+            dataset_test,
+            pair[0],
+            pair[1],
+            None,
+            wandb_flag,
+            path_to_plot,
+        )
+
+    # # Check the latent space dimension, if its 3D, plot it
     if latent_mu_train.shape[1] == 3:
         # Plot all datasets at the same time
         plot_versus_space3D(
-            latent_mu_train,
-            labels_train,
-            manner_train,
-            dataset_train,
+            latent_mu_test,
+            labels_test,
+            manner_test,
+            dataset_test,
             2000,
             path_to_plot,
         )
@@ -417,6 +444,29 @@ def plot_logopeda_alb_neuro(
             gita_latent_mu, gita_labels, gita_manner, 1000, path_to_plot, "Gita"
         )
 
+        # P^lot the italian latent space
+        italian_idx = np.argwhere(dataset_train == "italian").ravel()
+        italian_test_idx = np.argwhere(dataset_test == "italian").ravel()
+
+        italian_latent_mu = np.concatenate(
+            (latent_mu_train[italian_idx], latent_mu_test[italian_test_idx]), axis=0
+        )
+        italian_labels = np.concatenate(
+            (labels_train[italian_idx], labels_test[italian_test_idx]), axis=0
+        )
+        italian_manner = np.concatenate(
+            (manner_train[italian_idx], manner_test[italian_test_idx]), axis=0
+        )
+
+        plot_latent_space3D(
+            italian_latent_mu,
+            italian_labels,
+            italian_manner,
+            1000,
+            path_to_plot,
+            "Italian",
+        )
+
 
 def plot_versus_space3D(latent, labels, manner, dataset, N, path_to_plot):
     import numpy as np
@@ -433,17 +483,18 @@ def plot_versus_space3D(latent, labels, manner, dataset, N, path_to_plot):
     selected_manner = manner[indices]
     selected_dataset = dataset[indices]
 
-    # Categorize dataset (albayzin = 0, neurovoz = 1, gita = 2)
+    # Categorize dataset (albayzin = 0, neurovoz = 1, gita = 2, italian=3)
     dataset = np.zeros(len(selected_dataset))
     dataset[selected_dataset == "neurovoz"] = 1
     dataset[selected_dataset == "gita"] = 2
+    dataset[selected_dataset == "italian"] = 3
 
     # Create a 3D scatter plot
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection="3d")
 
     # Define markers and get colormap
-    markers = {2: "*", 1: "s", 0: "o"}
+    markers = {3: "^", 2: "*", 1: "s", 0: "o"}
     manner_name = {
         0: "Plosives",
         1: "Plosives voiced",
@@ -490,6 +541,7 @@ def plot_versus_space3D(latent, labels, manner, dataset, N, path_to_plot):
         Line2D([0], [0], marker="*", color="gray", label="Gita", linestyle=""),
         Line2D([0], [0], marker="s", color="gray", label="Neurovoz", linestyle=""),
         Line2D([0], [0], marker="o", color="gray", label="Albayzin", linestyle=""),
+        Line2D([0], [0], marker="^", color="gray", label="Italian", linestyle=""),
     ]
 
     ax.legend(
@@ -1432,14 +1484,12 @@ def plot_latent_space_vowels_3D(
 
 def calculate_distances_manner(
     model,
-    latent_mu_train,
-    latent_mu_test,
-    manner_train,
-    manner_test,
-    labels_train,
-    labels_test,
-    dataset_train,
-    dataset_test,
+    latent_mu,
+    manner,
+    labels,
+    dataset,
+    dataset_one,
+    dataset_two,
     umapmodel,
     wandb_flag,
     path_to_plot,
@@ -1488,307 +1538,184 @@ def calculate_distances_manner(
         return distance
 
     # Get unique manner classes
-    unique_manner_train = np.unique(manner_train)
-    unique_manner_test = np.unique(manner_test)
+    unique_manner = np.unique(manner)
 
-    distances_albayzin = np.zeros((len(unique_manner_train), len(unique_manner_train)))
-    distances_healthy = np.zeros((len(unique_manner_train), len(unique_manner_test)))
-    distances_healthy_parkinson = np.zeros(
-        (len(unique_manner_train), len(unique_manner_test))
-    )
-    distances_neuropark_neurosanos = np.zeros(
-        (len(unique_manner_train), len(unique_manner_test))
-    )
-    distances_healthy_gita = np.zeros(
-        (len(unique_manner_train), len(unique_manner_test))
-    )
-    distances_healthy_parkinson_gita = np.zeros(
-        (len(unique_manner_train), len(unique_manner_test))
-    )
-    distances_gitapark_gitasanos = np.zeros(
-        (len(unique_manner_train), len(unique_manner_test))
-    )
-    distances_gitasanos_neurosanos = np.zeros(
-        (len(unique_manner_train), len(unique_manner_test))
-    )
-    distance_gitapark_neuropark = np.zeros(
-        (len(unique_manner_train), len(unique_manner_test))
-    )
+    distance_h_h_one = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_p_one = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_p_p_one = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_h_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_p_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_p_p_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_h_one_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_p_one_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_p_p_one_two = np.zeros((len(unique_manner), len(unique_manner)))
 
-    # Check if unique_manner_train is not empty before performing operations
-    kde_albayzin = [
-        calculate_kde(latent_mu_train[(labels_train == 0) & (manner_train == manner)])
-        for manner in unique_manner_train
-    ]
-    kde_neurovoz_healhty = [
+    if dataset_one == "italian" or dataset_two == "italian":
+        hola = "ola"
+
+    kde_one_h = [
         calculate_kde(
-            latent_mu_test[
-                (labels_test == 0)
-                & (manner_test == manner)
-                & (dataset_test == "neurovoz")
-            ]
+            latent_mu[(labels == 0) & (manner == m) & (dataset == dataset_one)]
         )
-        for manner in unique_manner_test
+        for m in unique_manner
     ]
-    kde_gita_healhty = [
+    kde_two_h = [
         calculate_kde(
-            latent_mu_test[
-                (labels_test == 0) & (manner_test == manner) & (dataset_test == "gita")
-            ]
+            latent_mu[(labels == 0) & (manner == m) & (dataset == dataset_two)]
         )
-        for manner in unique_manner_test
-    ]
-    kde_neurovoz_parkinson = [
-        calculate_kde(
-            latent_mu_test[
-                (labels_test == 1)
-                & (manner_test == manner)
-                & (dataset_test == "neurovoz")
-            ]
-        )
-        for manner in unique_manner_test
-    ]
-    kde_gita_parkinson = [
-        calculate_kde(
-            latent_mu_test[
-                (labels_test == 1) & (manner_test == manner) & (dataset_test == "gita")
-            ]
-        )
-        for manner in unique_manner_test
+        for m in unique_manner
     ]
 
-    for i, manner_i in enumerate(unique_manner_train):
-        for j, manner_j in enumerate(unique_manner_test):
+    kde_one_p = [
+        calculate_kde(
+            latent_mu[(labels == 1) & (manner == m) & (dataset == dataset_one)]
+        )
+        for m in unique_manner
+    ]
+
+    kde_two_p = [
+        calculate_kde(
+            latent_mu[(labels == 1) & (manner == m) & (dataset == dataset_two)]
+        )
+        for m in unique_manner
+    ]
+
+    for i, manner_i in enumerate(unique_manner):
+        for j, manner_j in enumerate(unique_manner):
             print(
-                "Calculating distance for Albayzin vs Albayzin for manner classes "
-                + str(manner_i)
-                + " and "
-                + str(manner_j)
-                + "..."
+                "Calculating distances for " + str(manner_i) + " and " + str(manner_j)
             )
-            distances_albayzin[i, j] = calculate_cluster_distance(
-                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
-                latent_mu_train[(labels_train == 0) & (manner_train == manner_j)],
-                kde_albayzin[i],
-                kde_albayzin[j],
-                umapmodel=umapmodel,
+            distance_h_h_one[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i) & (dataset == dataset_one)],
+                latent_mu[(manner == manner_j) & (dataset == dataset_one)],
+                kde_one_h[i],
+                kde_one_h[j],
+                umapmodel,
             )
-            print(
-                "Calculating distance for Albayzin Healthy vs Neurovoz Healthy for manner classes "
-                + str(manner_i)
-                + " and "
-                + str(manner_j)
-                + "..."
+            distance_h_p_one[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i) & (dataset == dataset_one)],
+                latent_mu[(manner == manner_j) & (dataset == dataset_one)],
+                kde_one_h[i],
+                kde_one_p[j],
+                umapmodel,
             )
-            distances_healthy[i, j] = calculate_cluster_distance(
-                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
-                latent_mu_test[
-                    (labels_test == 0)
-                    & (manner_test == manner_j)
-                    & (dataset_test == "neurovoz")
-                ],
-                kde_albayzin[i],
-                kde_neurovoz_healhty[j],
-                umapmodel=umapmodel,
+            distance_p_p_one[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i) & (dataset == dataset_one)],
+                latent_mu[(manner == manner_j) & (dataset == dataset_one)],
+                kde_one_p[i],
+                kde_one_p[j],
+                umapmodel,
             )
-            print(
-                "Calculating distance from Albayzin Healthy vs GITA Healthy for manner classes "
-                + str(manner_i)
-                + " and "
-                + str(manner_j)
-                + "..."
+
+            distance_h_h_two[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i) & (dataset == dataset_two)],
+                latent_mu[(manner == manner_j) & (dataset == dataset_two)],
+                kde_two_h[i],
+                kde_two_h[j],
+                umapmodel,
             )
-            distances_healthy_gita[i, j] = calculate_cluster_distance(
-                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
-                latent_mu_test[
-                    (labels_test == 0)
-                    & (manner_test == manner_j)
-                    & (dataset_test == "gita")
-                ],
-                kde_albayzin[i],
-                kde_gita_healhty[j],
-                umapmodel=umapmodel,
+            distance_h_p_two[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i) & (dataset == dataset_two)],
+                latent_mu[(manner == manner_j) & (dataset == dataset_two)],
+                kde_two_h[i],
+                kde_two_p[j],
+                umapmodel,
             )
-            print(
-                "Calculating distance for Albayzin Healthy vs Neurovoz Parkinson for manner classes "
-                + str(manner_i)
-                + " and "
-                + str(manner_j)
-                + "..."
+            distance_p_p_two[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i) & (dataset == dataset_two)],
+                latent_mu[(manner == manner_j) & (dataset == dataset_two)],
+                kde_two_p[i],
+                kde_two_p[j],
+                umapmodel,
             )
-            distances_healthy_parkinson[i, j] = calculate_cluster_distance(
-                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
-                latent_mu_test[
-                    (labels_test == 1)
-                    & (manner_test == manner_j)
-                    & (dataset_test == "neurovoz")
-                ],
-                kde_albayzin[i],
-                kde_neurovoz_parkinson[j],
-                umapmodel=umapmodel,
+            distance_h_h_one_two[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i)],
+                latent_mu[(manner == manner_j)],
+                kde_one_h[i],
+                kde_two_h[j],
+                umapmodel,
             )
-            print(
-                "Calculating distance for Albayzin Healthy vs GITA Parkinson for manner classes "
-                + str(manner_i)
-                + " and "
-                + str(manner_j)
-                + "..."
+            distance_h_p_one_two[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i)],
+                latent_mu[(manner == manner_j)],
+                kde_one_h[i],
+                kde_two_p[j],
+                umapmodel,
             )
-            distances_healthy_parkinson_gita[i, j] = calculate_cluster_distance(
-                latent_mu_train[(labels_train == 0) & (manner_train == manner_i)],
-                latent_mu_test[
-                    (labels_test == 1)
-                    & (manner_test == manner_j)
-                    & (dataset_test == "gita")
-                ],
-                kde_albayzin[i],
-                kde_gita_parkinson[j],
-                umapmodel=umapmodel,
-            )
-            print("Caculating distance for Neurovoz Healthy vs Neurovoz Parkinson")
-            distances_neuropark_neurosanos[i, j] = calculate_cluster_distance(
-                latent_mu_test[
-                    (labels_test == 0)
-                    & (manner_test == manner_i)
-                    & (dataset_test == "neurovoz")
-                ],
-                latent_mu_test[
-                    (labels_test == 1)
-                    & (manner_test == manner_j)
-                    & (dataset_test == "neurovoz")
-                ],
-                kde_neurovoz_healhty[i],
-                kde_neurovoz_parkinson[j],
-                umapmodel=umapmodel,
-            )
-            print("Caculating distance for GITA Healthy vs GITA Parkinson")
-            distances_gitapark_gitasanos[i, j] = calculate_cluster_distance(
-                latent_mu_test[
-                    (labels_test == 0)
-                    & (manner_test == manner_i)
-                    & (dataset_test == "gita")
-                ],
-                latent_mu_test[
-                    (labels_test == 1)
-                    & (manner_test == manner_j)
-                    & (dataset_test == "gita")
-                ],
-                kde_gita_healhty[i],
-                kde_gita_parkinson[j],
-                umapmodel=umapmodel,
-            )
-            print("Calculating idstance for GITA Healthy vs Neurovoz Healthy")
-            distances_gitasanos_neurosanos[i, j] = calculate_cluster_distance(
-                latent_mu_test[
-                    (labels_test == 0)
-                    & (manner_test == manner_i)
-                    & (dataset_test == "gita")
-                ],
-                latent_mu_test[
-                    (labels_test == 0)
-                    & (manner_test == manner_j)
-                    & (dataset_test == "neurovoz")
-                ],
-                kde_gita_healhty[i],
-                kde_neurovoz_healhty[j],
-                umapmodel=umapmodel,
-            )
-            print("Calculating distance for GITA Parkinson vs Neurovoz Parkinson")
-            distance_gitapark_neuropark[i, j] = calculate_cluster_distance(
-                latent_mu_test[
-                    (labels_test == 1)
-                    & (manner_test == manner_i)
-                    & (dataset_test == "gita")
-                ],
-                latent_mu_test[
-                    (labels_test == 1)
-                    & (manner_test == manner_j)
-                    & (dataset_test == "neurovoz")
-                ],
-                kde_gita_parkinson[i],
-                kde_neurovoz_parkinson[j],
-                umapmodel=umapmodel,
+            distance_p_p_one_two[i, j] = calculate_cluster_distance(
+                latent_mu[(manner == manner_i)],
+                latent_mu[(manner == manner_j)],
+                kde_one_p[i],
+                kde_two_p[j],
+                umapmodel,
             )
 
     # Calculate the mean and std of the diagonals
-    alb_diag = np.diag(distances_albayzin)
-    healthy_diag = np.diag(distances_healthy)
-    parkinson_diag = np.diag(distances_healthy_parkinson)
-    neuro_diag = np.diag(distances_neuropark_neurosanos)
-    healthy_diag_gita = np.diag(distances_healthy_gita)
-    parkinson_diag_gita = np.diag(distances_healthy_parkinson_gita)
-    gita_diag = np.diag(distances_gitapark_gitasanos)
-    neurogita_healthy_diag = np.diag(distances_gitasanos_neurosanos)
-    neurogita_park_diag = np.diag(distance_gitapark_neuropark)
+    healthy_diag_one = np.diag(distance_h_h_one)
+    parkinson_diag_one = np.diag(distance_p_p_one)
+    healthy_diag_two = np.diag(distance_h_h_two)
+    parkinson_diag_two = np.diag(distance_p_p_two)
+    healthy_diag_one_two = np.diag(distance_h_h_one_two)
+    parkinson_diag_one_two = np.diag(distance_p_p_one_two)
 
-    print("Diagonal distances in train vs train:")
-    print("Diagonal: " + str(alb_diag))
-    print("Mean: " + str(np.mean(alb_diag)))
-    print("Std: " + str(np.std(alb_diag)))
+    print("Diagonal distances in healthy patients of dataset " + dataset_one)
+    print("Diagonal: " + str(healthy_diag_one))
+    print("Mean: " + str(np.mean(healthy_diag_one)))
+    print("Std: " + str(np.std(healthy_diag_one)))
 
-    print("Diagonal distance in train vs healthy test NEUROVOZ")
-    print("Diagonal: " + str(healthy_diag))
-    print("Mean: " + str(np.mean(healthy_diag)))
-    print("Std: " + str(np.std(healthy_diag)))
+    print("Diagonal distances in parkinsonian patients of dataset " + dataset_one)
+    print("Diagonal: " + str(parkinson_diag_one))
+    print("Mean: " + str(np.mean(parkinson_diag_one)))
+    print("Std: " + str(np.std(parkinson_diag_one)))
 
-    print("Diagonal distance in train vs parkinson test NEUROVOZ")
-    print("Diagonal: " + str(parkinson_diag))
-    print("Mean: " + str(np.mean(parkinson_diag)))
-    print("Std: " + str(np.std(parkinson_diag)))
+    print("Diagonal distances in healthy patients of dataset " + dataset_two)
+    print("Diagonal: " + str(healthy_diag_two))
+    print("Mean: " + str(np.mean(healthy_diag_two)))
+    print("Std: " + str(np.std(healthy_diag_two)))
 
-    print("Diagonal distance in train vs healthy test GITA")
-    print("Diagonal: " + str(healthy_diag_gita))
-    print("Mean: " + str(np.mean(healthy_diag_gita)))
-    print("Std: " + str(np.std(healthy_diag_gita)))
+    print("Diagonal distances in parkinsonian patients of dataset " + dataset_two)
+    print("Diagonal: " + str(parkinson_diag_two))
+    print("Mean: " + str(np.mean(parkinson_diag_two)))
+    print("Std: " + str(np.std(parkinson_diag_two)))
 
-    print("Diagonal distance in train vs parkinson test GITA")
-    print("Diagonal: " + str(parkinson_diag_gita))
-    print("Mean: " + str(np.mean(parkinson_diag_gita)))
-    print("Std: " + str(np.std(parkinson_diag_gita)))
+    print(
+        "Diagonal distances in healthy patients between dataset "
+        + dataset_one
+        + " and "
+        + dataset_two
+    )
+    print("Diagonal: " + str(healthy_diag_one_two))
+    print("Mean: " + str(np.mean(healthy_diag_one_two)))
+    print("Std: " + str(np.std(healthy_diag_one_two)))
 
-    print("Diagonal distance in healthy neurovoz test vs parkinson neurovoz test")
-    print("Diagonal: " + str(neuro_diag))
-    print("Mean: " + str(np.mean(neuro_diag)))
-    print("Std: " + str(np.std(neuro_diag)))
+    print(
+        "Diagonal distances in parkinsonian patients between dataset "
+        + dataset_one
+        + " and "
+        + dataset_two
+    )
+    print("Diagonal: " + str(parkinson_diag_one_two))
+    print("Mean: " + str(np.mean(parkinson_diag_one_two)))
+    print("Std: " + str(np.std(parkinson_diag_one_two)))
 
-    print("Diagonal distance in healthy gita test vs parkinson gita test")
-    print("Diagonal: " + str(gita_diag))
-    print("Mean: " + str(np.mean(gita_diag)))
-    print("Std: " + str(np.std(gita_diag)))
-
-    print("Diagonal distance in healthy gita test vs healthy neurovoz test")
-    print("Diagonal: " + str(neurogita_healthy_diag))
-    print("Mean: " + str(np.mean(neurogita_healthy_diag)))
-    print("Std: " + str(np.std(neurogita_healthy_diag)))
-
-    print("Diagonal distance in parkinson gita test vs parkinson neurovoz test")
-    print("Diagonal: " + str(neurogita_park_diag))
-    print("Mean: " + str(np.mean(neurogita_park_diag)))
-    print("Std: " + str(np.std(neurogita_park_diag)))
-
-    print("Difference between train vs parkinson and train vs healthy")
-    print("Diagonal: " + str(parkinson_diag - healthy_diag))
-    print("Mean: " + str(np.mean(parkinson_diag - healthy_diag)))
-    print("Std: " + str(np.std(parkinson_diag - healthy_diag)))
-
-    # Calculate MAPE of the difference
-    mape = np.mean(np.abs((healthy_diag - parkinson_diag) / healthy_diag)) * 100
-    print("MAPE: " + str(mape))
+    # # Calculate MAPE of the difference
+    # mape = np.mean(np.abs((healthy_diag - parkinson_diag) / healthy_diag)) * 100
+    # print("MAPE: " + str(mape))
 
     # Plot the distances as a heatmap using seaborn
     print("Plotting distances...")
     import seaborn as sns
 
     distances = [
-        distances_albayzin,  # 0
-        distances_healthy,  # 1
-        distances_healthy_parkinson,  # 2
-        distances_neuropark_neurosanos,  # 3
-        distances_healthy_gita,  # 4
-        distances_healthy_parkinson_gita,  # 5
-        distances_gitapark_gitasanos,  # 6
-        distances_gitasanos_neurosanos,  # 7
-        distance_gitapark_neuropark,  # 8
+        distance_h_h_one,
+        distance_h_p_one,
+        distance_p_p_one,
+        distance_h_h_two,
+        distance_h_p_two,
+        distance_p_p_two,
+        distance_h_h_one_two,
+        distance_h_p_one_two,
+        distance_p_p_one_two,
     ]
 
     for i in range(len(distances)):
@@ -1802,23 +1729,63 @@ def calculate_distances_manner(
             annot_kws={"size": 18},
         )
         if i == 0:
-            savename = "js_dist_Albayzin_Albayzin"
+            savename = "js_dist_" + dataset_one + "_h_" + dataset_one + "_h"
+            title = "JSD of Healthy in " + dataset_one + " vs Healthy in " + dataset_one
         elif i == 1:
-            savename = "js_dist_Albayzin_h_Neurovoz_h"
+            savename = "js_dist_" + dataset_one + "_h_" + dataset_one + "_p"
+            title = (
+                "JSD of Healthy in "
+                + dataset_one
+                + " vs Parkinsonian in "
+                + dataset_one
+            )
         elif i == 2:
-            savename = "js_dist_Albayzin_h_Neurovoz_pd"
+            savename = "js_dist_" + dataset_one + "_p_" + dataset_one + "_p"
+            title = (
+                "JSD of Parkinsonian in "
+                + dataset_one
+                + " vs Parkinsonian in "
+                + dataset_one
+            )
         elif i == 3:
-            savename = "js_dist_Neurovoz_h_Neurovoz_pd"
+            savename = "js_dist_" + dataset_two + "_h_" + dataset_two + "_h"
+            title = "JSD of Healthy in " + dataset_two + " vs Healthy in " + dataset_two
         elif i == 4:
-            savename = "js_dist_Albayzin_h_Gita_h"
+            savename = "js_dist_" + dataset_two + "_h_" + dataset_two + "_p"
+            title = (
+                "JSD of Healthy in "
+                + dataset_two
+                + " vs Parkinsonian in "
+                + dataset_two
+            )
         elif i == 5:
-            savename = "js_dist_Albayzin_h_Gita_pd"
+            savename = "js_dist_" + dataset_two + "_p_" + dataset_two + "_p"
+            title = (
+                "JSD of Parkinsonian in "
+                + dataset_two
+                + " vs Parkinsonian in "
+                + dataset_two
+            )
         elif i == 6:
-            savename = "js_dist_Gita_h_Gita_pd"
+            savename = "js_dist_" + dataset_one + "_h_" + dataset_two + "_h"
+            title = "JSD of Healthy in " + dataset_one + " vs Healthy in " + dataset_two
         elif i == 7:
-            savename = "js_dist_Gita_h_Neurovoz_h"
+            savename = "js_dist_" + dataset_one + "_h_" + dataset_two + "_p"
+            title = (
+                "JSD of Healthy in "
+                + dataset_one
+                + " vs Parkinsonian in "
+                + dataset_two
+            )
         elif i == 8:
-            savename = "js_dist_Gita_pd_Neurovoz_pd"
+            savename = "js_dist_" + dataset_one + "_p_" + dataset_two + "_p"
+            title = (
+                "JSD of Parkinsonian in "
+                + dataset_one
+                + " vs Parkinsonian in "
+                + dataset_two
+            )
+        ax.set_title(title)
 
         ax.set_xticklabels(
             [
@@ -1861,58 +1828,58 @@ def calculate_distances_manner(
 
     plt.close()
 
-    # Plot difference of the distances as a heatmap using seaborn. Make a colorbar where the positive values are red, and the negative are blue.
-    # Make the color change smooth.
-    # Difference of the distances
-    distances_diff = [
-        distances_healthy_parkinson - distances_healthy,
-    ]
-    print("Plotting distances...")
-    import seaborn as sns
+    # # Plot difference of the distances as a heatmap using seaborn. Make a colorbar where the positive values are red, and the negative are blue.
+    # # Make the color change smooth.
+    # # Difference of the distances
+    # distances_diff = [
+    #     distances_healthy_parkinson - distances_healthy,
+    # ]
+    # print("Plotting distances...")
+    # import seaborn as sns
 
-    for i in range(len(distances_diff)):
-        fig, ax = plt.subplots(figsize=(10, 10))
-        sns.heatmap(
-            distances_diff[i], annot=True, ax=ax, cmap="RdBu_r", vmax=0.1, vmin=-0.1
-        )
-        if i == 0:
-            title = "Diff. of JSD of Healthy in test vs Parkinsonian in test"
-            savename = "diff_healthy_park_test"
-        ax.set_title(title)
-        ax.set_xticklabels(
-            [
-                "Plosives",
-                "Plosives voiced",
-                "Nasals",
-                "Fricatives",
-                "Liquids",
-                "Vowels",
-                # "Affricates",
-                # "Silence",
-            ],
-            rotation=45,
-        )
-        ax.set_yticklabels(
-            [
-                "Plosives",
-                "Plosives voiced",
-                "Nasals",
-                "Fricatives",
-                "Liquids",
-                "Vowels",
-                # "Affricates",
-                # "Silence",
-            ]
-        )
-        ax.set_xlabel("Manner classes (Healthy train clusters)")
-        ax.set_ylabel("Manner classes (Test clusters)")
-        save_path = path_to_plot + "/" + f"{savename}.png"
-        fig.savefig(save_path)
-        if wandb_flag:
-            wandb.log({"test/" + savename: wandb.Image(fig)})
+    # for i in range(len(distances_diff)):
+    #     fig, ax = plt.subplots(figsize=(10, 10))
+    #     sns.heatmap(
+    #         distances_diff[i], annot=True, ax=ax, cmap="RdBu_r", vmax=0.1, vmin=-0.1
+    #     )
+    #     if i == 0:
+    #         title = "Diff. of JSD of Healthy in test vs Parkinsonian in test"
+    #         savename = "diff_healthy_park_test"
+    #     ax.set_title(title)
+    #     ax.set_xticklabels(
+    #         [
+    #             "Plosives",
+    #             "Plosives voiced",
+    #             "Nasals",
+    #             "Fricatives",
+    #             "Liquids",
+    #             "Vowels",
+    #             # "Affricates",
+    #             # "Silence",
+    #         ],
+    #         rotation=45,
+    #     )
+    #     ax.set_yticklabels(
+    #         [
+    #             "Plosives",
+    #             "Plosives voiced",
+    #             "Nasals",
+    #             "Fricatives",
+    #             "Liquids",
+    #             "Vowels",
+    #             # "Affricates",
+    #             # "Silence",
+    #         ]
+    #     )
+    #     ax.set_xlabel("Manner classes (Healthy train clusters)")
+    #     ax.set_ylabel("Manner classes (Test clusters)")
+    #     save_path = path_to_plot + "/" + f"{savename}.png"
+    #     fig.savefig(save_path)
+    #     if wandb_flag:
+    #         wandb.log({"test/" + savename: wandb.Image(fig)})
 
-        plt.close()
-    plt.close()
+    #     plt.close()
+    # plt.close()
 
 
 def calculate_euclidean_distances_manner(

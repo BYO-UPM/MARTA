@@ -45,18 +45,17 @@ Note:
 
 from models.pt_models import MARTA
 from training.pt_training import MARTA_trainer, MARTA_tester
-from utils.utils import (
-    plot_logopeda_alb_neuro,
-)
+from utils.utils import plot_logopeda_alb_neuro, stratify_per_dataset
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
 import torch
 import wandb
 import pandas as pd
 import sys
 import os
+import numpy as np
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -82,7 +81,7 @@ def main(args, hyperparams):
     log_file = open(hyperparams["path_to_save"] + "/log.txt", "w")
     sys.stdout = log_file
 
-    if hyperparams["train"] and hyperparams["new_data_partition"]:
+    if hyperparams["new_data_partition"]:
         print("Reading data...")
         # Read the data
         dataset = Dataset_AudioFeatures(
@@ -92,8 +91,8 @@ def main(args, hyperparams):
             train_loader,
             val_loader,
             test_loader,
-            _,  # train_data, not used
-            _,  # val_data, not used
+            train_data,  # train_data, not used
+            val_data,  # val_data, not used
             test_data,
         ) = dataset.get_dataloaders(experiment=hyperparams["experiment"])
     else:
@@ -111,6 +110,52 @@ def main(args, hyperparams):
             "local_results/folds/test_data_supervised_False_frame_size_0.4spec_winsize_0.03hopsize_0.5foldsecond_experiment.pt"
         )
 
+    # Modify the dataloaders to have, in train, only healthy patients and move all parkinsonan  to test
+
+    # Remove from training all parkinsonian
+    parkinsonian_train = [i for i, t in enumerate(train_loader.dataset) if t[1] == 1]
+    train_dataset = torch.utils.data.Subset(
+        train_loader.dataset,
+        [i for i in range(len(train_loader.dataset)) if i not in parkinsonian_train],
+    )
+    # Do the same for train_data which is a dataframe
+    train_data_park = train_data.loc[train_data["label"] == 1]
+    train_data = train_data.loc[train_data["label"] == 0]
+
+    # Remove from validation all parkinsonian
+    parkinsonian_val = [i for i, t in enumerate(val_loader.dataset) if t[1] == 1]
+    val_dataset = torch.utils.data.Subset(
+        val_loader.dataset,
+        [i for i in range(len(val_loader.dataset)) if i not in parkinsonian_val],
+    )
+    val_data_park = val_data.loc[val_data["label"] == 1]
+    val_data = val_data.loc[val_data["label"] == 0]
+
+    # Add to test_loader all train and val parkinsonian
+    parkinsonian_train_val = parkinsonian_train + parkinsonian_val
+    test_dataset = torch.utils.data.ConcatDataset(
+        [
+            test_loader.dataset,
+            torch.utils.data.Subset(train_loader.dataset, parkinsonian_train_val),
+        ]
+    )
+    park_data = train_data_park.append(val_data_park)
+    test_data = test_data.append(park_data)
+
+    # Stratify dataset to have same number of samples per dataset
+    train_dataset = stratify_per_dataset(train_dataset)
+
+    # Redefine the dataloaders
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=hyperparams["batch_size"], shuffle=True
+    )
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=hyperparams["batch_size"], shuffle=True
+    )
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset, batch_size=hyperparams["batch_size"], shuffle=False
+    )
+
     print("Defining models...")
     # Create the model
     model = MARTA(
@@ -122,6 +167,7 @@ def main(args, hyperparams):
         weights=hyperparams["weights"],
         device=device,
         reducer="sum",
+        domain_adversarial_bool=True,
     )
 
     # model = torch.compile(model)
@@ -153,16 +199,37 @@ def main(args, hyperparams):
     audio_features = "spectrogram"
     print("Testing GMVAE...")
 
-    # Test the model
-    MARTA_tester(
-        model=model,
-        testloader=test_loader,
-        test_data=test_data,
-        supervised=False,
-        wandb_flag=None,
-        path_to_plot=hyperparams["path_to_save"],
+    # Drop all samples that have any nan in the test_loader.dataset and count how many
+    # Initialize a list to hold indices of samples to be removed
+    indices_to_remove = []
+
+    # Iterate through the dataset to find samples with nan values
+    for i, t in enumerate(test_loader.dataset):
+        if np.isnan(t[0]).any() or np.isnan(t[1]).any() or np.isnan(t[2]).any():
+            indices_to_remove.append(i)
+
+    # Print the number of samples to be removed
+    print(f"Number of samples with nan values to be removed: {len(indices_to_remove)}")
+
+    # Remove samples with nan values from the dataset
+    new_test = [
+        t for i, t in enumerate(test_loader.dataset) if i not in indices_to_remove
+    ]
+
+    test_loader = torch.utils.data.DataLoader(
+        new_test, batch_size=hyperparams["batch_size"], shuffle=False
     )
-    print("Testing finished!")
+
+    # Test the model
+    # MARTA_tester(
+    #     model=model,
+    #     testloader=test_loader,
+    #     test_data=test_data,
+    #     supervised=False,
+    #     wandb_flag=None,
+    #     path_to_plot=hyperparams["path_to_save"],
+    # )
+    # print("Testing finished!")
 
     # Create an empty pd dataframe with three columns: data, label and manner
     df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
@@ -177,6 +244,29 @@ def main(args, hyperparams):
     df_test["label"] = [t[1] for t in test_loader.dataset]
     df_test["manner"] = [t[2] for t in test_loader.dataset]
     df_test["dataset"] = [t[3] for t in test_loader.dataset]
+
+    # Plot 5 spectrograms from plosives from "italian" and "neurovoz"
+
+    italian = df_test[df_test["dataset"] == "italian"]
+    neurovoz = df_test[df_test["dataset"] == "neurovoz"]
+    gita = df_test[df_test["dataset"] == "gita"]
+    albayzin = df_test[df_test["dataset"] == "albayzin"]
+
+    # Plot them in a 2x5 grid using seaborn
+    print("Plotting 5 spectrograms from italian and neurovoz...")
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+    fig, axs = plt.subplots(3, 5, figsize=(20, 10))
+    for p in range(5):
+        # Select randomnly the index
+        i = np.random.randint(0, len(italian))
+        sns.heatmap(italian.iloc[i][audio_features][0], ax=axs[0, p])
+        axs[1, p].set_title(f"neurovoz")
+        axs[2, p].set_title(f"gita")
+        axs[3, p].set_title(f"albayzin")
+
+    plt.savefig(hyperparams["path_to_save"] + "/5_spectrograms_per_dataset.png")
 
     print("Starting to calculate distances...")
     plot_logopeda_alb_neuro(
@@ -205,9 +295,9 @@ if __name__ == "__main__":
         "hop_size_percent": 0.5,  # Hop size (0.5 means 50%) between each window in the spectrogram
         # ================ GMVAE parameters ===================
         "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
-        "batch_size": 128,  # Batch size
+        "batch_size": 512,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
-        "latent_dim": 3,  # Latent dimension of the z vector (remember it is also the input to the classifier)
+        "latent_dim": 64,  # Latent dimension of the z vector (remember it is also the input to the classifier)
         "n_gaussians": 16,  # Number of gaussians in the GMVAE
         "hidden_dims_enc": [
             64,
@@ -222,13 +312,13 @@ if __name__ == "__main__":
             10,  # w5 is metric loss
         ],
         # ================ Experiment parameters ===================
-        "experiment": "second",  # Experiment name, from 1 to 6. It is used to load the correct data.
+        "experiment": "fourth",  # Experiment name, from 1 to 6. It is used to load the correct data.
         # ================ Classifier parameters ===================
         "cnn_classifier": False,  # Here no classifier is used
         "supervised": False,  # Here no classifier is used
         # ================ Training parameters ===================
-        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
-        "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
+        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "new_data_partition": True,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
     }
 
     main(args, hyperparams)

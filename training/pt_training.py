@@ -609,15 +609,21 @@ def MARTA_trainer(
         ) = (0, 0, 0, 0, 0, 0)
 
         for batch_idx, (data, labels, manner, dataset) in enumerate(tqdm(trainloader)):
+            # Assert no nan in data, labels, manner or dataset
+            assert not torch.isnan(data).any()
+            assert not torch.isnan(labels).any()
+            assert not torch.isnan(manner).any()
+
             # Make sure dtype is Tensor float
             data = data.to(model.device).float()
             # Dataset is "albayzin", "neurovoz" or "gita". Map them to 0, 1 and 2 respectively
-            mapping = {"albayzin": 0, "neurovoz": 1, "gita": 2}
+            mapping = {"albayzin": 0, "neurovoz": 1, "gita": 2, "italian": 3}
             dataset = torch.tensor([mapping[dataset[i]] for i in range(len(dataset))])
             # Repeat each dataset window_size times
             dataset = (
                 dataset.repeat_interleave(manner.shape[1]).to(model.device).float()
             )
+            assert not torch.isnan(dataset).any()
 
             # ==== Forward pass ====
 
@@ -657,6 +663,7 @@ def MARTA_trainer(
                     e_hat_s,
                     domain_pred,
                 ) = model(data)
+
                 # ==== Loss ====
                 (
                     complete_loss,
@@ -789,7 +796,7 @@ def MARTA_trainer(
                     # Make sure dtype is Tensor float
                     data = data.to(model.device).float()
                     # Dataset is "albayzin", "neurovoz" or "gita". Map them to 0, 1 and 2 respectively
-                    mapping = {"albayzin": 0, "neurovoz": 1, "gita": 2}
+                    mapping = {"albayzin": 0, "neurovoz": 1, "gita": 2, "italian": 3}
                     dataset = torch.tensor(
                         [mapping[dataset[i]] for i in range(len(dataset))]
                     )
@@ -1160,7 +1167,7 @@ def MARTA_tester(
 
         print("Calculating MSE")
         for dataset_i in np.unique(dataset_array):
-            if dataset_i != "neurovoz" and dataset_i != "gita":
+            if dataset_i == "albayzin":
                 continue
             print("==============================================================")
             print("Calculating results for dataset ", dataset_i)
@@ -1213,6 +1220,7 @@ def MARTA_tester(
                         path_to_plot,
                         dataset_i,
                         best_threshold,
+                        train,
                     )
 
 

@@ -165,10 +165,11 @@ def main(args, hyperparams):
                     test_data[test_data["dataset"] == "gita"],
                 ]
             )
-        elif hyperparams["crosslingual"] == "gita_nv":
+        elif hyperparams["crosslingual"] == "testing_neurovoz":
             # Train data is gita
             new_train = gita_data_train + gita_data_test
             new_val = gita_data_val
+
             # For neurovoz_data_val remove last element of each tuple
             neurovoz_data_val = [
                 (data[0], data[1], data[2], data[3]) for data in neurovoz_data_val
@@ -190,11 +191,13 @@ def main(args, hyperparams):
             new_test = test_loader.dataset
 
         # Augment the train dataset
-        extended_dataset = augment_data(new_train)
+        extended_dataset = new_train  # augment_data(
+        # new_train, num_augmentations=1, p=0.8, q=0.8, r=0.8
+        # )
 
         # Stratify train dataset
         balanced_dataset = stratify_dataset(extended_dataset)
-        new_val = stratify_dataset(new_val, validation=True)
+        # new_val = stratify_dataset(new_val, validation=True)
 
         train_sampler = make_balanced_sampler(balanced_dataset)
         val_sampler = make_balanced_sampler(new_val, validation=True)
@@ -228,6 +231,8 @@ def main(args, hyperparams):
         classifier=hyperparams["classifier_type"],
         weights=hyperparams["weights"],
         device=device,
+        domain_adversarial_bool=hyperparams["domain_adversarial"],
+        datasets=4,
     )
 
     if hyperparams["train"]:
@@ -237,7 +242,7 @@ def main(args, hyperparams):
             + hyperparams["crosslingual"]
             + "_latentdim_"
             + str(hyperparams["latent_dim"])
-            + "_domainadversarial_1"
+            + "_domainadversarial_0"
             + "supervised"
             + "90-10-fold"
             + str(hyperparams["fold"])
@@ -350,7 +355,10 @@ if __name__ == "__main__":
         "--domain_adversarial", type=int, default=0, help="Use domain adversarial"
     )
     parser.add_argument(
-        "--cross_lingual", type=str, default="gita_nv", help="crosslingual scenario"
+        "--cross_lingual",
+        type=str,
+        default="testing_neurovoz",
+        help="crosslingual scenario",
     )
 
     args = parser.parse_args()
@@ -362,7 +370,7 @@ if __name__ == "__main__":
         "spectrogram_win_size": 0.030,  # Window size of each window in the spectrogram
         "hop_size_percent": 0.5,  # Hop size (0.5 means 50%) between each window in the spectrogram
         # ================ GMVAE parameters ===================
-        "epochs": 300,  # Number of epochs to train the model (at maximum, we have early stopping)
+        "epochs": 20,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 128,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
         "latent_dim": args.latent_dim,  # Latent dimension of the z vector (remember it is also the input to the classifier)
@@ -382,7 +390,7 @@ if __name__ == "__main__":
         "domain_adversarial": args.domain_adversarial,  # If true, use domain adversarial model
         "crosslingual": args.cross_lingual,  # Crosslingual scenario
         # ================ Classifier parameters ===================
-        "classifier_type": "mlp",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
+        "classifier_type": "cnn",  # classifier architecture (cnn or mlp)-.Their dimensions are hard-coded in pt_models.py (we should fix this)
         "classifier": True,  # If true, train the classifier
         "supervised": True,  # It must be true
         # ================ Training parameters ===================
