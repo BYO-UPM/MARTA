@@ -44,12 +44,13 @@ import wandb
 import sys
 import os
 import argparse
-from utils.utils import make_balanced_sampler, augment_data, stratify_dataset
+from utils.utils import make_balanced_sampler, augment_data, stratify_per_dataset
 
 
 def main(args, hyperparams):
     gpu = args.gpu
     device = torch.device("cuda:" + str(gpu) if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
     print("Device being used:", device)
 
     hyperparams["path_to_save"] = (
@@ -186,36 +187,31 @@ def main(args, hyperparams):
             )
         else:
             # All stays the same
-            new_train = train_loader.dataset
-            new_val = val_loader.dataset
-            new_test = test_loader.dataset
+            new_train = gita_data_train + neurovoz_data_train
+            new_val = gita_data_val + neurovoz_data_val
+            new_test = gita_data_test + neurovoz_data_test
+            print("Multilingual scenario:")
 
         # Augment the train dataset
-        extended_dataset = new_train  # augment_data(
-        # new_train, num_augmentations=1, p=0.8, q=0.8, r=0.8
-        # )
+        new_train = stratify_per_dataset(new_train)
 
-        # Stratify train dataset
-        balanced_dataset = stratify_dataset(extended_dataset)
-        # new_val = stratify_dataset(new_val, validation=True)
-
-        train_sampler = make_balanced_sampler(balanced_dataset)
+        train_sampler = make_balanced_sampler(new_train, validation=False)
         val_sampler = make_balanced_sampler(new_val, validation=True)
 
         # Create new dataloaders
         new_train_loader = torch.utils.data.DataLoader(
-            balanced_dataset,
-            batch_size=1024,
+            new_train,
+            batch_size=512,
             sampler=train_sampler,
         )
         val2_loader = torch.utils.data.DataLoader(
             new_val,
-            batch_size=1024,
+            batch_size=512,
             sampler=val_sampler,
         )
         test_loader = torch.utils.data.DataLoader(
             new_test,
-            batch_size=1024,
+            batch_size=512,
             shuffle=False,
         )
 
@@ -238,14 +234,11 @@ def main(args, hyperparams):
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
         name = (
-            "local_results/spectrograms/cross_lingual_"
-            + hyperparams["crosslingual"]
-            + "_latentdim_"
+            "local_results/spectrograms/marta_"
             + str(hyperparams["latent_dim"])
-            + "_domainadversarial_0"
-            + "supervised"
-            + "90-10-fold"
-            + str(hyperparams["fold"])
+            + "_supervised_"
+            + "_domain_adversarial_"
+            + str(hyperparams["domain_adversarial"])
             + "/GMVAE_cnn_best_model_2d.pt"
         )
         tmp = torch.load(name)
@@ -343,13 +336,13 @@ def main(args, hyperparams):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script configuration")
     parser.add_argument(
-        "--fold", type=int, default=2, help="Fold number for the experiment"
+        "--fold", type=int, default=0, help="Fold number for the experiment"
     )
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number for the experiment"
     )
     parser.add_argument(
-        "--latent_dim", type=int, default=32, help="Latent dimension of the model"
+        "--latent_dim", type=int, default=3, help="Latent dimension of the model"
     )
     parser.add_argument(
         "--domain_adversarial", type=int, default=0, help="Use domain adversarial"
@@ -357,8 +350,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cross_lingual",
         type=str,
-        default="testing_neurovoz",
-        help="crosslingual scenario",
+        default="multilingual",
+        choices=["multilingual", "testing_gita", "testing_neurovoz", "testing_italian"],
+        help="Select one choice of crosslingual scenario, choices are: multilingual, testing_gita, testing_neurovoz, testing_italian",
     )
 
     args = parser.parse_args()
@@ -370,7 +364,7 @@ if __name__ == "__main__":
         "spectrogram_win_size": 0.030,  # Window size of each window in the spectrogram
         "hop_size_percent": 0.5,  # Hop size (0.5 means 50%) between each window in the spectrogram
         # ================ GMVAE parameters ===================
-        "epochs": 20,  # Number of epochs to train the model (at maximum, we have early stopping)
+        "epochs": 200,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 128,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
         "latent_dim": args.latent_dim,  # Latent dimension of the z vector (remember it is also the input to the classifier)

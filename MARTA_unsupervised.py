@@ -55,7 +55,7 @@ import os
 import numpy as np
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -252,22 +252,6 @@ def main(args, hyperparams):
     gita = df_test[df_test["dataset"] == "gita"]
     albayzin = df_test[df_test["dataset"] == "albayzin"]
 
-    # Plot them in a 2x5 grid using seaborn
-    print("Plotting 5 spectrograms from italian and neurovoz...")
-    import seaborn as sns
-    import matplotlib.pyplot as plt
-
-    fig, axs = plt.subplots(3, 5, figsize=(20, 10))
-    for p in range(5):
-        # Select randomnly the index
-        i = np.random.randint(0, len(italian))
-        sns.heatmap(italian.iloc[i][audio_features][0], ax=axs[0, p])
-        axs[1, p].set_title(f"neurovoz")
-        axs[2, p].set_title(f"gita")
-        axs[3, p].set_title(f"albayzin")
-
-    plt.savefig(hyperparams["path_to_save"] + "/5_spectrograms_per_dataset.png")
-
     print("Starting to calculate distances...")
     plot_logopeda_alb_neuro(
         model,
@@ -297,7 +281,7 @@ if __name__ == "__main__":
         "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 512,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
-        "latent_dim": 64,  # Latent dimension of the z vector (remember it is also the input to the classifier)
+        "latent_dim": 3,  # Latent dimension of the z vector (remember it is also the input to the classifier)
         "n_gaussians": 16,  # Number of gaussians in the GMVAE
         "hidden_dims_enc": [
             64,
@@ -317,7 +301,7 @@ if __name__ == "__main__":
         "cnn_classifier": False,  # Here no classifier is used
         "supervised": False,  # Here no classifier is used
         # ================ Training parameters ===================
-        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "new_data_partition": True,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
     }
 

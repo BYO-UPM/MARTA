@@ -632,6 +632,7 @@ def MARTA_trainer(
                 manner = manner.to(model.device).int()
                 labels = labels.to(model.device).float()
                 y_pred = model.classifier_forward(data, manner)
+                y_pred = torch.sigmoid(y_pred)
                 (
                     complete_loss,
                     recon_loss,
@@ -639,7 +640,6 @@ def MARTA_trainer(
                     categorical_loss,
                     metric_loss,
                 ) = model.classifier_loss(y_pred, labels)
-                y_pred = torch.sigmoid(y_pred)
                 y_pred_list = np.concatenate(
                     (y_pred_list, y_pred.cpu().detach().numpy().squeeze())
                 )
@@ -816,6 +816,7 @@ def MARTA_trainer(
                         manner = manner.to(model.device).int()
                         labels = labels.to(model.device).float()
                         y_pred = model.classifier_forward(data, manner)
+                        y_pred = torch.sigmoid(y_pred)
                         (
                             complete_loss,
                             recon_loss,
@@ -823,7 +824,6 @@ def MARTA_trainer(
                             categorical_loss,
                             metric_loss,
                         ) = model.classifier_loss(y_pred, labels)
-                        y_pred = torch.sigmoid(y_pred)
                         y_pred_list = np.concatenate(
                             (
                                 y_pred_list,
@@ -1280,7 +1280,7 @@ def check_latent_space(model, train_data, test_data, path_to_plot):
             domain_pred,
         ) = model(x)
 
-        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, 32)
+        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, 3)
 
         store_z_train.append(qz_mu)
         store_x_train.append(x.cpu().detach().numpy().reshape(-1, 65, 25))
@@ -1306,7 +1306,7 @@ def check_latent_space(model, train_data, test_data, path_to_plot):
             domain_pred,
         ) = model(x)
 
-        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, 32)
+        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, 3)
         store_x_test.append(x.cpu().detach().numpy().reshape(-1, 65, 25))
 
         store_z_test.append(qz_mu)

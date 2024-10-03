@@ -761,8 +761,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                             pd_gita_patients[f - 1],
                             healthy_neurovoz_patients[f - 1],
                             pd_neurovoz_patients[f - 1],
-                            healthy_italian_patients[f - 1],
-                            pd_italian_patients[f - 1],
+                            # healthy_italian_patients[f - 1],
+                            # pd_italian_patients[f - 1],
                         ]
                     )
 
@@ -982,10 +982,11 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             + ".pt"
         )
 
-        # torch.save(train_loader, train_name)
-        # torch.save(val_loader, val_name)
-        # torch.save(test_loader, test_name)
-        # torch.save(test_data, test_data_name)
+        torch.save(train_loader, train_name)
+        torch.save(val_loader, val_name)
+        torch.save(test_loader, test_name)
+        torch.save(test_data, test_data_name)
+
         return (
             train_loader,
             val_loader,

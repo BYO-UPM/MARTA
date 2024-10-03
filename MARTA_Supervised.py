@@ -51,7 +51,7 @@ import pandas as pd
 import sys
 import os
 import argparse
-from utils.utils import make_balanced_sampler, augment_data, stratify_dataset
+from utils.utils import make_balanced_sampler, augment_data, stratify_per_dataset
 
 
 def main(args, hyperparams):
@@ -61,15 +61,11 @@ def main(args, hyperparams):
 
     if hyperparams["train_albayzin"]:
         hyperparams["path_to_save"] = (
-            "local_results/spectrograms/cross_lingual_"
-            + hyperparams["crosslingual"]
-            + "_latentdim_"
+            "local_results/spectrograms/marta_"
             + str(hyperparams["latent_dim"])
-            + "_domainadversarial_"
+            + "_supervised_"
+            + "_domain_adversarial_"
             + str(hyperparams["domain_adversarial"])
-            + "supervised"
-            + "90-10-fold"
-            + str(hyperparams["fold"])
         )
 
     # Create the path if does not exist
@@ -79,19 +75,6 @@ def main(args, hyperparams):
     old_stdout = sys.stdout
     log_file = open(hyperparams["path_to_save"] + "/log.txt", "w")
     sys.stdout = log_file
-
-    if hyperparams["wandb_flag"]:
-        gname = (
-            "SPECTROGRAMS_GMVAE_"
-            + hyperparams["material"]
-            + "_final_model_unsupervised"
-        )
-        wandb.finish()
-        wandb.init(
-            project="parkinson",
-            config=hyperparams,
-            group=gname,
-        )
 
     if hyperparams["train"] and hyperparams["new_data_partition"]:
         print("Reading data...")
@@ -170,14 +153,14 @@ def main(args, hyperparams):
             neurovoz_data_train
             + albayzin_data_train
             + neurovoz_data_test
-            + albayzin_data_test
             # + italian_data_train
             # + italian_data_test
         )
         new_val = neurovoz_data_val + albayzin_data_val  # + italian_data_val
         # Test is all gita
         gita_data_val = [(data[0], data[1], data[2], data[3]) for data in gita_data_val]
-        new_test = gita_data_test + gita_data_train + gita_data_val
+        new_test = gita_data_test + gita_data_train + gita_data_val + albayzin_data_test
+
         print("Crosslingual scenario: everything -> gita")
 
     elif hyperparams["crosslingual"] == "testing_neurovoz":
@@ -185,17 +168,22 @@ def main(args, hyperparams):
         new_train = (
             gita_data_train
             + gita_data_test
-            # + albayzin_data_train
+            + albayzin_data_train
             # + albayzin_data_val
             # + italian_data_train
             # + italian_data_test
         )
-        new_val = gita_data_val  # + albayzin_data_test  # + italian_data_val
+        new_val = gita_data_val + albayzin_data_val  # + italian_data_val
         # Test is all neurovoz
         neurovoz_data_val = [
             (data[0], data[1], data[2], data[3]) for data in neurovoz_data_val
         ]
-        new_test = neurovoz_data_test + neurovoz_data_train + neurovoz_data_val
+        new_test = (
+            neurovoz_data_test
+            + neurovoz_data_train
+            + neurovoz_data_val
+            + albayzin_data_test
+        )
         print("Crosslingual scenario: everything -> neurovoz")
     elif hyperparams["crosslingual"] == "testing_italian":
         # Train data is everything but italian
@@ -216,10 +204,12 @@ def main(args, hyperparams):
         print("Crosslingual scenario: everything -> italian")
     else:
         # All stays the same
-        new_train = train_loader.dataset
-        new_val = val_loader.dataset
-        new_test = test_loader.dataset
+        new_train = gita_data_train + neurovoz_data_train + albayzin_data_train
+        new_val = gita_data_val + neurovoz_data_val + albayzin_data_val
+        new_test = gita_data_test + neurovoz_data_test + albayzin_data_test
         print("Multilingual scenario:")
+
+    new_train = stratify_per_dataset(new_train)
 
     train_sampler = make_balanced_sampler(new_train, validation=False)
     val_sampler = make_balanced_sampler(new_val, validation=True)
@@ -253,7 +243,7 @@ def main(args, hyperparams):
         device=device,
         reducer="sum",
         domain_adversarial_bool=hyperparams["domain_adversarial"],
-        datasets=4,  # [neurovoz, albayzin, gita, italian]
+        datasets=3,  # [neurovoz, albayzin, gita, italian]
     )
 
     if hyperparams["train"]:
@@ -264,8 +254,8 @@ def main(args, hyperparams):
             trainloader=train_loader,
             validloader=val_loader,
             epochs=hyperparams["epochs"],
+            wandb_flag=False,
             lr=hyperparams["lr"],
-            wandb_flag=hyperparams["wandb_flag"],
             path_to_save=hyperparams["path_to_save"],
             supervised=hyperparams["supervised"],
             classifier=hyperparams["classifier"],
@@ -289,7 +279,7 @@ def main(args, hyperparams):
         testloader=test_loader,
         test_data=test_data,
         supervised=False,  # Not implemented yet
-        wandb_flag=hyperparams["wandb_flag"],
+        wandb_flag=False,
         path_to_plot=hyperparams["path_to_save"],
     )
     print("Testing finished!")
@@ -305,41 +295,41 @@ def main(args, hyperparams):
     # )
     # print("Testing finished!")
 
-    # # Create an empty pd dataframe with three columns: data, label and manner
-    # df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    # df_train[audio_features] = [t[0] for t in train_loader.dataset]
-    # df_train["label"] = [t[1] for t in train_loader.dataset]
-    # df_train["manner"] = [t[2] for t in train_loader.dataset]
-    # df_train["dataset"] = [t[3] for t in train_loader.dataset]
+    # Create an empty pd dataframe with three columns: data, label and manner
+    df_train = pd.DataFrame(columns=[audio_features, "label", "manner"])
+    df_train[audio_features] = [t[0] for t in train_loader.dataset]
+    df_train["label"] = [t[1] for t in train_loader.dataset]
+    df_train["manner"] = [t[2] for t in train_loader.dataset]
+    df_train["dataset"] = [t[3] for t in train_loader.dataset]
 
-    # # Substract 8 to manner if their corresponidng label is 1
-    # df_train["manner"] = df_train.apply(
-    #     lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
-    # )
+    # Substract 8 to manner if their corresponidng label is 1
+    df_train["manner"] = df_train.apply(
+        lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
+    )
 
-    # # Create an empty pd dataframe with three columns: data, label and manner
-    # df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
-    # df_test[audio_features] = [t[0] for t in test_loader.dataset]
-    # df_test["label"] = [t[1] for t in test_loader.dataset]
-    # df_test["manner"] = [t[2] for t in test_loader.dataset]
-    # df_test["dataset"] = [t[3] for t in test_loader.dataset]
+    # Create an empty pd dataframe with three columns: data, label and manner
+    df_test = pd.DataFrame(columns=[audio_features, "label", "manner"])
+    df_test[audio_features] = [t[0] for t in test_loader.dataset]
+    df_test["label"] = [t[1] for t in test_loader.dataset]
+    df_test["manner"] = [t[2] for t in test_loader.dataset]
+    df_test["dataset"] = [t[3] for t in test_loader.dataset]
 
-    # # Substract 8 to manner if their corresponidng label is 1
-    # df_test["manner"] = df_test.apply(
-    #     lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
-    # )
+    # Substract 8 to manner if their corresponidng label is 1
+    df_test["manner"] = df_test.apply(
+        lambda x: x["manner"] - 8 if x["label"] == 1 else x["manner"], axis=1
+    )
 
-    # print("Starting to calculate distances...")
-    # plot_logopeda_alb_neuro(
-    #     model,
-    #     df_train,
-    #     df_test,
-    #     hyperparams["wandb_flag"],
-    #     name="test",
-    #     supervised=hyperparams["supervised"],
-    #     samples=5000,
-    #     path_to_plot=hyperparams["path_to_save"],
-    # )
+    print("Starting to calculate distances...")
+    plot_logopeda_alb_neuro(
+        model,
+        df_train,
+        df_test,
+        wandb_flag=False,
+        name="test",
+        supervised=hyperparams["supervised"],
+        samples=5000,
+        path_to_plot=hyperparams["path_to_save"],
+    )
 
     # if hyperparams["wandb_flag"]:
     #     wandb.finish()
@@ -351,13 +341,13 @@ def main(args, hyperparams):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script configuration")
     parser.add_argument(
-        "--fold", type=int, default=2, help="Fold number for the experiment"
+        "--fold", type=int, default=0, help="Fold number for the experiment"
     )
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number to use in the experiment"
     )
     parser.add_argument(
-        "--latent_dim", type=int, default=32, help="Latent dimension of the model"
+        "--latent_dim", type=int, default=3, help="Latent dimension of the model"
     )
     parser.add_argument(
         "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
@@ -365,8 +355,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cross_lingual",
         type=str,
-        default="testing_gita",
-        help="crosslingual scenario",
+        default="multilingual",
+        choices=["multilingual", "testing_gita", "testing_neurovoz", "testing_italian"],
+        help="Select one choice of crosslingual scenario, choices are: multilingual, testing_gita, testing_neurovoz, testing_italian",
     )
 
     args = parser.parse_args()
@@ -378,7 +369,7 @@ if __name__ == "__main__":
         "spectrogram_win_size": 0.030,  # Window size of each window in the spectrogram
         "hop_size_percent": 0.5,  # Hop size (0.5 means 50%) between each window in the spectrogram
         # ================ GMVAE parameters ===================
-        "epochs": 500,  # Number of epochs to train the model (at maximum, we have early stopping)
+        "epochs": 200,  # Number of epochs to train the model (at maximum, we have early stopping)
         "batch_size": 128,  # Batch size
         "lr": 1e-3,  # Learning rate: we use cosine annealing over ADAM optimizer
         "latent_dim": args.latent_dim,  # Latent dimension of the z vector (remember it is also the input to the classifier)
@@ -406,16 +397,9 @@ if __name__ == "__main__":
         # ================ Training parameters ===================
         "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
-        "new_data_partition": True,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
+        "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
         "gpu": args.gpu,  # Which gpu to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh
-        # ================ UNUSED PARAMETERS (we should fix this) ===================
-        # These parameters are not used at all and they are from all versions of the code, we should fix this.
-        "material": "MANNER",  # not used here
-        "n_plps": 0,  # Not used here
-        "n_mfccs": 0,  # Not used here
-        "wandb_flag": False,  # Not used here
-        "semisupervised": False,  # Not used here
     }
 
     main(args, hyperparams)
