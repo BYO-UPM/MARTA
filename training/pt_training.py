@@ -1224,7 +1224,7 @@ def MARTA_tester(
                     )
 
 
-def check_latent_space(model, train_data, test_data, path_to_plot):
+def check_latent_space(model, train_data, test_data, path_to_plot, latent_dim=3):
     import random
 
     # Set model in evaluation mode
@@ -1280,7 +1280,7 @@ def check_latent_space(model, train_data, test_data, path_to_plot):
             domain_pred,
         ) = model(x)
 
-        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, 3)
+        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, latent_dim)
 
         store_z_train.append(qz_mu)
         store_x_train.append(x.cpu().detach().numpy().reshape(-1, 65, 25))
@@ -1306,7 +1306,7 @@ def check_latent_space(model, train_data, test_data, path_to_plot):
             domain_pred,
         ) = model(x)
 
-        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, 3)
+        qz_mu = qz_mu.cpu().detach().numpy().reshape(-1, 25, latent_dim)
         store_x_test.append(x.cpu().detach().numpy().reshape(-1, 65, 25))
 
         store_z_test.append(qz_mu)

@@ -63,9 +63,13 @@ def main(args, hyperparams):
         hyperparams["path_to_save"] = (
             "local_results/spectrograms/marta_"
             + str(hyperparams["latent_dim"])
+            + "_experiment_"
+            + str(hyperparams["crosslingual"])
             + "_supervised_"
             + "_domain_adversarial_"
             + str(hyperparams["domain_adversarial"])
+            + "_fold_"
+            + str(hyperparams["fold"])
         )
 
     # Create the path if does not exist
@@ -341,7 +345,7 @@ def main(args, hyperparams):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script configuration")
     parser.add_argument(
-        "--fold", type=int, default=0, help="Fold number for the experiment"
+        "--fold", type=int, default=1, help="Fold number for the experiment"
     )
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number to use in the experiment"
@@ -350,7 +354,7 @@ if __name__ == "__main__":
         "--latent_dim", type=int, default=3, help="Latent dimension of the model"
     )
     parser.add_argument(
-        "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
+        "--domain_adversarial", type=int, default=0, help="Use domain adversarial"
     )
     parser.add_argument(
         "--cross_lingual",

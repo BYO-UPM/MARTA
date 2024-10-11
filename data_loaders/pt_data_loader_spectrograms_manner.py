@@ -598,7 +598,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         import yaml
 
         with open(
-            "/home/aguerrero@gaps_domain.ssr.upm.es/Projects/MARTA/data_loaders/manner_classes.yaml",
+            "data_loaders/manner_classes.yaml",
             "r",
         ) as file:
             manner_classes = yaml.load(file, Loader=yaml.FullLoader)
@@ -830,19 +830,20 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     train_data,
                     val_data,
                     test_data,
-                    f,
+                    f=f,
                 )
 
-                return (
-                    train_loader,
-                    val_loader,
-                    test_loader,
-                    train_data,  # train_data, not used
-                    val_data,  # val_data, not used
-                    test_data,
-                )
+            raise ValueError("End of the loop")
+            return (
+                train_loader,
+                val_loader,
+                test_loader,
+                train_data,  # train_data, not used
+                val_data,  # val_data, not used
+                test_data,
+            )
 
-    def create_dataloader(self, train_data, val_data, test_data, supervised, f=0):
+    def create_dataloader(self, train_data, val_data, test_data, f=0):
 
         audio_features = "spectrogram"
 
@@ -981,11 +982,39 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             + str(f)
             + ".pt"
         )
+        train_data_name = (
+            "local_results/folds/train_data_supervised_"
+            + str(self.hyperparams["supervised"])
+            + "_frame_size_"
+            + str(self.hyperparams["frame_size_ms"])
+            + "spec_winsize_"
+            + str(self.hyperparams["spectrogram_win_size"])
+            + "hopsize_"
+            + str(self.hyperparams["hop_size_percent"])
+            + "fold"
+            + str(f)
+            + ".pt"
+        )
+        val_data_name = (
+            "local_results/folds/val_data_supervised_"
+            + str(self.hyperparams["supervised"])
+            + "_frame_size_"
+            + str(self.hyperparams["frame_size_ms"])
+            + "spec_winsize_"
+            + str(self.hyperparams["spectrogram_win_size"])
+            + "hopsize_"
+            + str(self.hyperparams["hop_size_percent"])
+            + "fold"
+            + str(f)
+            + ".pt"
+        )
 
         torch.save(train_loader, train_name)
         torch.save(val_loader, val_name)
         torch.save(test_loader, test_name)
         torch.save(test_data, test_data_name)
+        torch.save(train_data, train_data_name)
+        torch.save(val_data, val_data_name)
 
         return (
             train_loader,

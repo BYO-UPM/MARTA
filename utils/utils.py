@@ -1517,9 +1517,7 @@ def calculate_distances_manner(
         q = q / np.sum(q)
         return jensenshannon(p, q)
 
-    def calculate_cluster_distance(
-        latent_mu_one, latent_mu_two, kde_train, kde_test, umapmodel
-    ):
+    def calculate_cluster_distance(latent_mu_one, latent_mu_two, kde_train, kde_test):
         # If any of the kde is len() 0 return 0
         if kde_train is None or kde_test is None:
             return 0
@@ -1541,17 +1539,16 @@ def calculate_distances_manner(
     unique_manner = np.unique(manner)
 
     distance_h_h_one = np.zeros((len(unique_manner), len(unique_manner)))
-    distance_h_p_one = np.zeros((len(unique_manner), len(unique_manner)))
     distance_p_p_one = np.zeros((len(unique_manner), len(unique_manner)))
     distance_h_h_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_p_one = np.zeros((len(unique_manner), len(unique_manner)))
     distance_h_p_two = np.zeros((len(unique_manner), len(unique_manner)))
     distance_p_p_two = np.zeros((len(unique_manner), len(unique_manner)))
-    distance_h_h_one_two = np.zeros((len(unique_manner), len(unique_manner)))
     distance_h_p_one_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_h_one_two = np.zeros((len(unique_manner), len(unique_manner)))
     distance_p_p_one_two = np.zeros((len(unique_manner), len(unique_manner)))
-
-    if dataset_one == "italian" or dataset_two == "italian":
-        hola = "ola"
+    distance_h_h_compact = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_p_p_compact = np.zeros((len(unique_manner), len(unique_manner)))
 
     kde_one_h = [
         calculate_kde(
@@ -1580,6 +1577,8 @@ def calculate_distances_manner(
         for m in unique_manner
     ]
 
+    kde_all = [calculate_kde(latent_mu[(manner == m)]) for m in unique_manner]
+
     for i, manner_i in enumerate(unique_manner):
         for j, manner_j in enumerate(unique_manner):
             print(
@@ -1590,21 +1589,18 @@ def calculate_distances_manner(
                 latent_mu[(manner == manner_j) & (dataset == dataset_one)],
                 kde_one_h[i],
                 kde_one_h[j],
-                umapmodel,
             )
             distance_h_p_one[i, j] = calculate_cluster_distance(
                 latent_mu[(manner == manner_i) & (dataset == dataset_one)],
                 latent_mu[(manner == manner_j) & (dataset == dataset_one)],
                 kde_one_h[i],
                 kde_one_p[j],
-                umapmodel,
             )
             distance_p_p_one[i, j] = calculate_cluster_distance(
                 latent_mu[(manner == manner_i) & (dataset == dataset_one)],
                 latent_mu[(manner == manner_j) & (dataset == dataset_one)],
                 kde_one_p[i],
                 kde_one_p[j],
-                umapmodel,
             )
 
             distance_h_h_two[i, j] = calculate_cluster_distance(
@@ -1612,42 +1608,53 @@ def calculate_distances_manner(
                 latent_mu[(manner == manner_j) & (dataset == dataset_two)],
                 kde_two_h[i],
                 kde_two_h[j],
-                umapmodel,
             )
             distance_h_p_two[i, j] = calculate_cluster_distance(
                 latent_mu[(manner == manner_i) & (dataset == dataset_two)],
                 latent_mu[(manner == manner_j) & (dataset == dataset_two)],
                 kde_two_h[i],
                 kde_two_p[j],
-                umapmodel,
             )
             distance_p_p_two[i, j] = calculate_cluster_distance(
                 latent_mu[(manner == manner_i) & (dataset == dataset_two)],
                 latent_mu[(manner == manner_j) & (dataset == dataset_two)],
                 kde_two_p[i],
                 kde_two_p[j],
-                umapmodel,
             )
             distance_h_h_one_two[i, j] = calculate_cluster_distance(
                 latent_mu[(manner == manner_i)],
                 latent_mu[(manner == manner_j)],
                 kde_one_h[i],
                 kde_two_h[j],
-                umapmodel,
             )
             distance_h_p_one_two[i, j] = calculate_cluster_distance(
                 latent_mu[(manner == manner_i)],
                 latent_mu[(manner == manner_j)],
                 kde_one_h[i],
                 kde_two_p[j],
-                umapmodel,
             )
             distance_p_p_one_two[i, j] = calculate_cluster_distance(
                 latent_mu[(manner == manner_i)],
                 latent_mu[(manner == manner_j)],
                 kde_one_p[i],
                 kde_two_p[j],
-                umapmodel,
+            )
+            # Compactness check distances
+            distance_h_h_compact[i, j] = calculate_cluster_distance(
+                latent_mu[
+                    (manner == manner_i) & (labels == 0) & (dataset == dataset_one)
+                ],
+                latent_mu[(manner == manner_j) & (labels == 0)],
+                kde_one_h[i],
+                kde_all[j],
+            )
+            distance_p_p_compact[i, j] = calculate_cluster_distance(
+                latent_mu[
+                    (manner == manner_i) & (labels == 1) & (dataset == dataset_one)
+                ],
+                latent_mu[(manner == manner_j) & (labels == 1)],
+                kde_one_p[i],
+                kde_all[j],
             )
 
     # Calculate the mean and std of the diagonals
@@ -1716,6 +1723,8 @@ def calculate_distances_manner(
         distance_h_h_one_two,
         distance_h_p_one_two,
         distance_p_p_one_two,
+        distance_h_h_compact,
+        distance_p_p_compact,
     ]
 
     for i in range(len(distances)):
@@ -1785,6 +1794,12 @@ def calculate_distances_manner(
                 + " vs Parkinsonian in "
                 + dataset_two
             )
+        elif i == 9:
+            savename = "js_dist_" + dataset_one + "_h_compact"
+            title = "JSD of Healthy in " + dataset_one + " compactness"
+        elif i == 10:
+            savename = "js_dist_" + dataset_one + "_p_compact"
+            title = "JSD of Parkinsonian in " + dataset_one + " compactness"
         ax.set_title(title)
 
         ax.set_xticklabels(

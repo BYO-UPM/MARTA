@@ -36,15 +36,16 @@ Note:
   based on the specific setup and data organization.
 """
 
+import os
+import sys
+import torch
+import argparse
+import pandas as pd
+import wandb
 from models.pt_models import MARTA
 from training.pt_training import MARTA_trainer, MARTA_tester, check_latent_space
 from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
-import torch
-import wandb
-import sys
-import os
-import argparse
-from utils.utils import make_balanced_sampler, augment_data, stratify_per_dataset
+from utils.utils import make_balanced_sampler, stratify_per_dataset
 
 
 def main(args, hyperparams):
@@ -53,73 +54,28 @@ def main(args, hyperparams):
     # device = torch.device("cpu")
     print("Device being used:", device)
 
-    hyperparams["path_to_save"] = (
-        "local_results/spectrograms/classifier_"
-        + hyperparams["crosslingual"]
-        + str(hyperparams["latent_dim"])
-        + "latent_dim_"
-        + str(hyperparams["domain_adversarial"])
-        + "domain_adversarial_"
-        + "_fold"
-        + str(hyperparams["fold"])
-    )
-
     # Create the path if does not exist
-    if not os.path.exists(hyperparams["path_to_save"]):
-        os.makedirs(hyperparams["path_to_save"])
+    path_to_save = f"local_results/spectrograms/classifier_{hyperparams['crosslingual']}_{hyperparams['latent_dim']}latent_dim_{hyperparams['domain_adversarial']}domain_adversarial_fold_{hyperparams['fold']}"
+    os.makedirs(path_to_save, exist_ok=True)
 
-    old_stdout = sys.stdout
-    log_file = open(hyperparams["path_to_save"] + "/log.txt", "w")
+    # Redirect standard output to a log file
+    log_file = open(f"{path_to_save}/log.txt", "w")
     sys.stdout = log_file
 
     # First check in local_results/ if there eist any .pt file with the dataloaders
     # If not, create them and save them in local_results/
 
     if not hyperparams["new_data_partition"]:
-        # print("Reading train, val and test loaders from local_results/...")
-        # train_loader = torch.load(
-        #     "local_results/folds/train_loader_supervised_True_frame_size_0.4spec_winsize_"
-        #     + str(hyperparams["spectrogram_win_size"])
-        #     + "hopsize_0.5fold"
-        #     + str(hyperparams["fold"])
-        #     + ".pt"
-        # )
-        # val_loader = torch.load(
-        #     "local_results/folds/val_loader_supervised_True_frame_size_0.4spec_winsize_"
-        #     + str(hyperparams["spectrogram_win_size"])
-        #     + "hopsize_0.5fold"
-        #     + str(hyperparams["fold"])
-        #     + ".pt"
-        # )
-        # test_loader = torch.load(
-        #     "local_results/folds/test_loader_supervised_True_frame_size_0.4spec_winsize_"
-        #     + str(hyperparams["spectrogram_win_size"])
-        #     + "hopsize_0.5fold"
-        #     + str(hyperparams["fold"])
-        #     + ".pt"
-        # )
-        # test_data = torch.load(
-        #     "local_results/folds/test_data_supervised_True_frame_size_0.4spec_winsize_"
-        #     + str(hyperparams["spectrogram_win_size"])
-        #     + "hopsize_0.5fold"
-        #     + str(hyperparams["fold"])
-        #     + ".pt"        )
+        print("Reading train, val and test loaders from local_results/...")
+        loader_path = f"local_results/folds/{{}}_loader_supervised_True_frame_size_0.4spec_winsize_{hyperparams['spectrogram_win_size']}hopsize_0.5fold{hyperparams['fold']}.pt"
+        data_path = f"local_results/folds/{{}}_data_supervised_True_frame_size_0.4spec_winsize_{hyperparams['spectrogram_win_size']}hopsize_0.5fold{hyperparams['fold']}.pt"
+        train_loader, val_loader, test_loader = (
+            torch.load(loader_path.format(ds)) for ds in ["train", "val", "test"]
+        )
+        train_data, val_data, test_data = (
+            torch.load(data_path.format(ds)) for ds in ["train", "val", "test"]
+        )
 
-        print("Reading data...")
-        dataset = Dataset_AudioFeatures(
-            hyperparams,
-        )
-        print("Creating train, val and test loaders...")
-        (
-            train_loader,
-            val_loader,
-            test_loader,
-            train_data,  # train_data, not used
-            val_data,  # val_data, not used
-            test_data,
-        ) = dataset.get_dataloaders(
-            supervised=hyperparams["supervised"],
-        )
         # Get all gita data
         gita_data_test = [data for data in test_loader.dataset if data[3] == "gita"]
         gita_data_val = [data for data in val_loader.dataset if data[3] == "gita"]
@@ -146,73 +102,32 @@ def main(args, hyperparams):
         albayzin_data_train = [
             data for data in train_loader.dataset if data[3] == "albayzin"
         ]
-        import pandas as pd
 
-        if hyperparams["crosslingual"] == "nv_gita":
-            # Train data is neurovoz
-            new_train = neurovoz_data_train + neurovoz_data_test
-            new_val = neurovoz_data_val
-            # For gita_data_val remove last element of each tuple
-            gita_data_val = [
-                (data[0], data[1], data[2], data[3]) for data in gita_data_val
-            ]
-            # Test is all gita
-            new_test = gita_data_test + gita_data_val + gita_data_train
-            # new test data is all gita data
-            test_data = pd.concat(
-                [
-                    train_data[train_data["dataset"] == "gita"],
-                    val_data[val_data["dataset"] == "gita"],
-                    test_data[test_data["dataset"] == "gita"],
-                ]
-            )
+        if hyperparams["crosslingual"] == "testing_gita":
+            new_train = stratify_per_dataset(neurovoz_data_train + albayzin_data_train)
+            new_val = neurovoz_data_val + albayzin_data_val
+            new_test = gita_data_test
         elif hyperparams["crosslingual"] == "testing_neurovoz":
-            # Train data is gita
-            new_train = gita_data_train + gita_data_test
-            new_val = gita_data_val
-
-            # For neurovoz_data_val remove last element of each tuple
-            neurovoz_data_val = [
-                (data[0], data[1], data[2], data[3]) for data in neurovoz_data_val
-            ]
-            # Test is all neurovoz
-            new_test = neurovoz_data_test + neurovoz_data_val + neurovoz_data_train
-            # new test data is all data
-            test_data = pd.concat(
-                [
-                    train_data[train_data["dataset"] == "neurovoz"],
-                    val_data[val_data["dataset"] == "neurovoz"],
-                    test_data[test_data["dataset"] == "neurovoz"],
-                ]
-            )
+            new_train = stratify_per_dataset(gita_data_train + albayzin_data_train)
+            new_val = gita_data_val + albayzin_data_val
+            new_test = neurovoz_data_test
         else:
-            # All stays the same
-            new_train = gita_data_train + neurovoz_data_train
-            new_val = gita_data_val + neurovoz_data_val
-            new_test = gita_data_test + neurovoz_data_test
-            print("Multilingual scenario:")
-
-        # Augment the train dataset
-        new_train = stratify_per_dataset(new_train)
+            new_train = stratify_per_dataset(train_loader.dataset)
+            new_val = val_loader.dataset
+            new_test = test_loader.dataset
 
         train_sampler = make_balanced_sampler(new_train, validation=False)
         val_sampler = make_balanced_sampler(new_val, validation=True)
 
         # Create new dataloaders
-        new_train_loader = torch.utils.data.DataLoader(
-            new_train,
-            batch_size=512,
-            sampler=train_sampler,
+        train_loader = torch.utils.data.DataLoader(
+            new_train, batch_size=hyperparams["batch_size"], sampler=train_sampler
         )
-        val2_loader = torch.utils.data.DataLoader(
-            new_val,
-            batch_size=512,
-            sampler=val_sampler,
+        val_loader = torch.utils.data.DataLoader(
+            new_val, batch_size=hyperparams["batch_size"], sampler=val_sampler
         )
         test_loader = torch.utils.data.DataLoader(
-            new_test,
-            batch_size=512,
-            shuffle=False,
+            new_test, batch_size=hyperparams["batch_size"], shuffle=False
         )
 
     print("Defining models...")
@@ -228,21 +143,13 @@ def main(args, hyperparams):
         weights=hyperparams["weights"],
         device=device,
         domain_adversarial_bool=hyperparams["domain_adversarial"],
-        datasets=4,
+        datasets=3,
     )
 
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
-        name = (
-            "local_results/spectrograms/marta_"
-            + str(hyperparams["latent_dim"])
-            + "_supervised_"
-            + "_domain_adversarial_"
-            + str(hyperparams["domain_adversarial"])
-            + "/GMVAE_cnn_best_model_2d.pt"
-        )
-        tmp = torch.load(name)
-        model.load_state_dict(tmp["model_state_dict"])
+        model_path = f"local_results/spectrograms/marta_{hyperparams['latent_dim']}_experiment_{hyperparams['crosslingual']}_supervised__domain_adversarial_{hyperparams['domain_adversarial']}_fold_{hyperparams['fold']}/GMVAE_cnn_best_model_2d.pt"
+        model.load_state_dict(torch.load(model_path)["model_state_dict"])
 
         # Freeze all the network
         for param in model.parameters():
@@ -266,12 +173,12 @@ def main(args, hyperparams):
         # Train the model
         MARTA_trainer(
             model=model,
-            trainloader=new_train_loader,
-            validloader=val2_loader,
+            trainloader=train_loader,
+            validloader=val_loader,
             epochs=hyperparams["epochs"],
             lr=hyperparams["lr"],
             wandb_flag=hyperparams["wandb_flag"],
-            path_to_save=hyperparams["path_to_save"],
+            path_to_save=path_to_save,
             supervised=hyperparams["supervised"],
             classifier=hyperparams["classifier"],
         )
@@ -281,19 +188,24 @@ def main(args, hyperparams):
         print("Loading model...")
 
     # Restoring best model
-    name = hyperparams["path_to_save"] + "/GMVAE_cnn_best_model_2d.pt"
-    tmp = torch.load(name)
-    model.load_state_dict(tmp["model_state_dict"])
+    model.load_state_dict(
+        torch.load(f"{path_to_save}/GMVAE_cnn_best_model_2d.pt")["model_state_dict"]
+    )
 
     # Check latent space
-    print("Checking latent space...")
-    check_latent_space(model, new_train, new_test, hyperparams["path_to_save"])
+    # print("Checking latent space...")
+    # check_latent_space(
+    #     model,
+    #     train_loader.dataset,
+    #     test_loader.dataset,
+    #     path_to_save,
+    #     latent_dim=hyperparams["latent_dim"],
+    # )
 
     print("Testing GMVAE...")
 
     # Read the best threshold
-    path = hyperparams["path_to_save"] + "/best_threshold.txt"
-    with open(path, "r") as f:
+    with open(f"{path_to_save}/best_threshold.txt", "r") as f:
         threshold = float(f.read())
 
     # Test the model
@@ -304,32 +216,13 @@ def main(args, hyperparams):
         test_data=test_data,
         supervised=True,  # Not implemented yet
         wandb_flag=hyperparams["wandb_flag"],
-        path_to_plot=hyperparams["path_to_save"],
+        path_to_plot=path_to_save,
         best_threshold=threshold,
     )
     print("Testing finished!")
 
-    # Test the model
-    print("================ Training DATA ================")
-    MARTA_tester(
-        model=model,
-        testloader=train_loader,
-        test_data=train_data,
-        supervised=True,  # Not implemented yet
-        wandb_flag=hyperparams["wandb_flag"],
-        path_to_plot=hyperparams["path_to_save"],
-        best_threshold=threshold,
-        train=True,
-    )
-    print("Testing finished!")
-
-    print("Checking spectrograms")
-    # Check the spectrograms
-
-    if hyperparams["wandb_flag"]:
-        wandb.finish()
-
-    sys.stdout = old_stdout
+    # Close log file and reset stdout
+    sys.stdout = sys.__stdout__
     log_file.close()
 
 
@@ -339,22 +232,21 @@ if __name__ == "__main__":
         "--fold", type=int, default=0, help="Fold number for the experiment"
     )
     parser.add_argument(
-        "--gpu", type=int, default=0, help="GPU number for the experiment"
+        "--gpu", type=int, default=2, help="GPU number for the experiment"
     )
     parser.add_argument(
-        "--latent_dim", type=int, default=3, help="Latent dimension of the model"
+        "--latent_dim", type=int, default=64, help="Latent dimension of the model"
     )
     parser.add_argument(
-        "--domain_adversarial", type=int, default=0, help="Use domain adversarial"
+        "--domain_adversarial", type=int, default=1, help="Use domain adversarial"
     )
     parser.add_argument(
         "--cross_lingual",
         type=str,
-        default="multilingual",
+        default="testing_gita",
         choices=["multilingual", "testing_gita", "testing_neurovoz", "testing_italian"],
-        help="Select one choice of crosslingual scenario, choices are: multilingual, testing_gita, testing_neurovoz, testing_italian",
+        help="Select one choice of crosslingual scenario",
     )
-
     args = parser.parse_args()
 
     hyperparams = {
