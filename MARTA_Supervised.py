@@ -60,11 +60,20 @@ def main(args, hyperparams):
     print("Device being used:", device)
 
     if hyperparams["train_albayzin"]:
+        # hyperparams["path_to_save"] = (
+        #     "local_results/spectrograms/marta_"
+        #     + str(hyperparams["latent_dim"])
+        #     + "_experiment_"
+        #     + str(hyperparams["crosslingual"])
+        #     + "_supervised_"
+        #     + "_domain_adversarial_"
+        #     + str(hyperparams["domain_adversarial"])
+        #     + "_fold_"
+        #     + str(hyperparams["fold"])
+        # )
         hyperparams["path_to_save"] = (
             "local_results/spectrograms/marta_"
             + str(hyperparams["latent_dim"])
-            + "_experiment_"
-            + str(hyperparams["crosslingual"])
             + "_supervised_"
             + "_domain_adversarial_"
             + str(hyperparams["domain_adversarial"])
@@ -345,7 +354,7 @@ def main(args, hyperparams):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script configuration")
     parser.add_argument(
-        "--fold", type=int, default=1, help="Fold number for the experiment"
+        "--fold", type=int, default=0, help="Fold number for the experiment"
     )
     parser.add_argument(
         "--gpu", type=int, default=0, help="GPU number to use in the experiment"
@@ -399,7 +408,7 @@ if __name__ == "__main__":
         # ================ Experiment parameters ===================
         "experiment": "fourth",  # Experiment name
         # ================ Training parameters ===================
-        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "train_albayzin": True,  # If true, train with albayzin data. If false, only train with neurovoz data.
         "new_data_partition": False,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
         "fold": args.fold,  # Which fold to use, it is said as an argument to automatize the running for all folds using ./run_parallel.sh

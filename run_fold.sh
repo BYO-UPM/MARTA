@@ -7,21 +7,21 @@ do
 echo "Running scripts for fold $FOLD"
 
 # Run the first pair of scripts simultaneously on GPU 0 and GPU 1
-python MARTA_Supervised.py --fold $FOLD --gpu 0 --latent_dim 64 --domain_adversarial 0 --cross_lingual testing_neurovoz &
+python MARTA_Supervised.py --fold $FOLD --gpu 0 --latent_dim 3 --domain_adversarial 0 --cross_lingual multilingual &
 PID_GPU1=$! 
-python MARTA_Supervised.py --fold $FOLD --gpu 1 --latent_dim 64 --domain_adversarial 0 --cross_lingual testing_gita &
+python MARTA_Supervised.py --fold $FOLD --gpu 1 --latent_dim 3 --domain_adversarial 1 --cross_lingual multilingual &
 PID_GPU2=$!
 wait $PID_GPU1
 wait $PID_GPU2
 
 
 
-python MARTA-S_classifier.py --fold $FOLD --gpu 0 --latent_dim 64 --domain_adversarial 0 --cross_lingual testing_neurovoz &
-PID_GPU1=$!  
-python MARTA-S_classifier.py --fold $FOLD --gpu 1 --latent_dim 64 --domain_adversarial 0 --cross_lingual testing_gita &
-PID_GPU2=$!
-wait $PID_GPU1
-wait $PID_GPU2
+# python MARTA-S_classifier.py --fold $FOLD --gpu 0 --latent_dim 64 --domain_adversarial 0 --cross_lingual testing_neurovoz &
+# PID_GPU1=$!  
+# python MARTA-S_classifier.py --fold $FOLD --gpu 1 --latent_dim 64 --domain_adversarial 0 --cross_lingual testing_gita &
+# PID_GPU2=$!
+# wait $PID_GPU1
+# wait $PID_GPU2
 
 echo "Finished scripts for fold $FOLD AND LATENT DIM 3"
 

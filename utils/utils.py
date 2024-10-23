@@ -310,40 +310,40 @@ def plot_logopeda_alb_neuro(
     dataset_train = np.repeat(dataset_train, manner_train.shape[1], axis=0)
     manner_train = manner_train.reshape(-1)
     # Remove all affricates
-    idx = np.argwhere(manner_train == 6).ravel()
-    manner_train = np.delete(manner_train, idx)
-    labels_train = np.delete(labels_train, idx)
-    latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
-    lm_train_original = np.delete(lm_train_original, idx, axis=0)
-    dataset_train = np.delete(dataset_train, idx)
-    # Remove all silence
-    idx = np.argwhere(manner_train == 7).ravel()
-    manner_train = np.delete(manner_train, idx)
-    labels_train = np.delete(labels_train, idx)
-    latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
-    lm_train_original = np.delete(lm_train_original, idx, axis=0)
-    dataset_train = np.delete(dataset_train, idx)
+    # idx = np.argwhere(manner_train == 6).ravel()
+    # manner_train = np.delete(manner_train, idx)
+    # labels_train = np.delete(labels_train, idx)
+    # latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
+    # lm_train_original = np.delete(lm_train_original, idx, axis=0)
+    # dataset_train = np.delete(dataset_train, idx)
+    # # Remove all silence
+    # idx = np.argwhere(manner_train == 7).ravel()
+    # manner_train = np.delete(manner_train, idx)
+    # labels_train = np.delete(labels_train, idx)
+    # latent_mu_train = np.delete(latent_mu_train, idx, axis=0)
+    # lm_train_original = np.delete(lm_train_original, idx, axis=0)
+    # dataset_train = np.delete(dataset_train, idx)
 
-    # Repeat labels manner.shape[1] times
+    # # Repeat labels manner.shape[1] times
     latent_mu_test = copy.copy(latent_mu_test_original_space)
     lm_test_original = latent_mu_test_original_space
     labels_test = np.repeat(labels_test, manner_test.shape[1], axis=0)
     dataset_test = np.repeat(dataset_test, manner_test.shape[1], axis=0)
     manner_test = manner_test.reshape(-1)
-    # Remove all affricates
-    idx = np.argwhere(manner_test == 6).ravel()
-    manner_test = np.delete(manner_test, idx)
-    labels_test = np.delete(labels_test, idx)
-    latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
-    lm_test_original = np.delete(lm_test_original, idx, axis=0)
-    dataset_test = np.delete(dataset_test, idx)
-    # Remove all silence
-    idx = np.argwhere(manner_test == 7).ravel()
-    manner_test = np.delete(manner_test, idx)
-    labels_test = np.delete(labels_test, idx)
-    latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
-    lm_test_original = np.delete(lm_test_original, idx, axis=0)
-    dataset_test = np.delete(dataset_test, idx)
+    # # Remove all affricates
+    # # idx = np.argwhere(manner_test == 6).ravel()
+    # # manner_test = np.delete(manner_test, idx)
+    # # labels_test = np.delete(labels_test, idx)
+    # latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
+    # lm_test_original = np.delete(lm_test_original, idx, axis=0)
+    # dataset_test = np.delete(dataset_test, idx)
+    # # Remove all silence
+    # idx = np.argwhere(manner_test == 7).ravel()
+    # manner_test = np.delete(manner_test, idx)
+    # labels_test = np.delete(labels_test, idx)
+    # latent_mu_test = np.delete(latent_mu_test, idx, axis=0)
+    # lm_test_original = np.delete(lm_test_original, idx, axis=0)
+    # dataset_test = np.delete(dataset_test, idx)
 
     # =========================================== TRAIN SAMPLES AKA TRAIN CLUSTERS AKA HEALTHY CLUSTERS FROM ALBAYZIN ==========================================
 
@@ -377,6 +377,15 @@ def plot_logopeda_alb_neuro(
 
     # # Check the latent space dimension, if its 3D, plot it
     if latent_mu_train.shape[1] == 3:
+        plot_per_dataset_per_manner(
+            latent_mu_train,
+            labels_train,
+            manner_train,
+            dataset_train,
+            1000,
+            path_to_plot,
+        )
+
         # Plot all datasets at the same time
         plot_versus_space3D(
             latent_mu_test,
@@ -468,6 +477,96 @@ def plot_logopeda_alb_neuro(
         )
 
 
+def plot_per_dataset_per_manner(latent, labels, manner, dataset, samples, path_to_plot):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    # Categorize dataset (albayzin = 0, neurovoz = 1, gita = 2)
+    catdataset = np.zeros(len(dataset))
+    catdataset[dataset == "neurovoz"] = 1
+    catdataset[dataset == "gita"] = 2
+
+    manner_name = {
+        0: "Plosives",
+        1: "Plosives voiced",
+        2: "Nasals",
+        3: "Fricatives",
+        4: "Liquids",
+        5: "Vowels",
+        6: "Affricates",
+        7: "Silence",
+    }
+
+    # Markers per dataset
+    markers = {0: "o", 1: "s", 2: "^"}
+
+    # For each manner class, plot the latent space of the three databases one with each marker. Also, use three tones of the same colour.
+    for m in range(8):
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection="3d")
+
+
+        # The cmap must be: if m=0 red (3 tones of red), if m=1 blue (3 tones of blue), if m=2 green (3 tones of green)
+        # if m=3 purple (3 tones of purple), if m=4 yellow (3 tones of yellow), if m=5 orange (3 tones of orange), if m=6 pink (3 tones of pink), if m=7 gray (3 tones of gray)
+        cmap = plt.get_cmap("Set1")
+
+        unique_datasets = np.unique(catdataset)
+
+        latent_samples_from_manner_m_and_dataset_alb = latent[
+            (manner == m) & (catdataset == 0)
+        ]
+        latent_samples_from_manner_m_and_dataset_neuro = latent[
+            (manner == m) & (catdataset == 1)
+        ]
+        latent_samples_from_manner_m_and_dataset_gita = latent[
+            (manner == m) & (catdataset == 2)
+        ]
+
+        for i, d in enumerate(unique_datasets):
+            if d == 0:
+                latent_samples = latent_samples_from_manner_m_and_dataset_alb
+            elif d == 1:
+                latent_samples = latent_samples_from_manner_m_and_dataset_neuro
+            else:
+                latent_samples = latent_samples_from_manner_m_and_dataset_gita
+
+            # Select N samples from the latent space
+            N = min(samples, len(latent_samples))
+            indices = np.random.choice(len(latent_samples), size=N, replace=False)
+            latent_samples = latent_samples[indices]
+
+            color = cmap(m)
+            # alpha: 0.2 for albayzin, 0.5 for neurovoz, 1 for gita
+            alpha = 0.2 if d == 0 else 0.5 if d == 1 else 1
+            marker = markers[d]
+
+            ax.scatter(
+                latent_samples[:, 0],
+                latent_samples[:, 1],
+                latent_samples[:, 2],
+                color=color,
+                marker=marker,
+                alpha=alpha,
+            )
+
+        # Create legend for markers (condition)
+        marker_legend = [
+            Line2D([0], [0], marker="o", color="gray", label="Albayzin", linestyle=""),
+            Line2D([0], [0], marker="s", color="gray", label="Neurovoz", linestyle=""),
+            Line2D([0], [0], marker="^", color="gray", label="Gita", linestyle=""),
+        ]
+
+        ax.legend(handles=marker_legend, loc="best")
+
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        plt.title("Latent space of" + manner_name[m])
+        plt.savefig(path_to_plot + "/3D_scatter_plot_by_manner_" + str(m) + ".png")
+        plt.show()
+
+
 def plot_versus_space3D(latent, labels, manner, dataset, N, path_to_plot):
     import numpy as np
     import matplotlib.pyplot as plt
@@ -487,7 +586,6 @@ def plot_versus_space3D(latent, labels, manner, dataset, N, path_to_plot):
     dataset = np.zeros(len(selected_dataset))
     dataset[selected_dataset == "neurovoz"] = 1
     dataset[selected_dataset == "gita"] = 2
-    dataset[selected_dataset == "italian"] = 3
 
     # Create a 3D scatter plot
     fig = plt.figure(figsize=(10, 10))
@@ -502,6 +600,8 @@ def plot_versus_space3D(latent, labels, manner, dataset, N, path_to_plot):
         3: "Fricatives",
         4: "Liquids",
         5: "Vowels",
+        6: "Affricates",
+        7: "Silence",
     }
     cmap = plt.get_cmap("Set1")
     unique_manners = np.unique(manner)
@@ -541,7 +641,6 @@ def plot_versus_space3D(latent, labels, manner, dataset, N, path_to_plot):
         Line2D([0], [0], marker="*", color="gray", label="Gita", linestyle=""),
         Line2D([0], [0], marker="s", color="gray", label="Neurovoz", linestyle=""),
         Line2D([0], [0], marker="o", color="gray", label="Albayzin", linestyle=""),
-        Line2D([0], [0], marker="^", color="gray", label="Italian", linestyle=""),
     ]
 
     ax.legend(
@@ -596,6 +695,8 @@ def plot_latent_space3D(
         3: "Fricatives",
         4: "Liquids",
         5: "Vowels",
+        6: "Affricates",
+        7: "Silence",
     }
     cmap = plt.get_cmap("Set1")
     unique_manners = np.unique(dataset_manner)
@@ -1810,8 +1911,8 @@ def calculate_distances_manner(
                 "Fricatives",
                 "Liquids",
                 "Vowels",
-                # "Affricates",
-                # "Silence",
+                "Affricates",
+                "Silence",
             ],
             rotation=45,
         )
@@ -1823,8 +1924,8 @@ def calculate_distances_manner(
                 "Fricatives",
                 "Liquids",
                 "Vowels",
-                # "Affricates",
-                # "Silence",
+                "Affricates",
+                "Silence",
             ]
         )
         ax.tick_params(axis="both", which="major", labelsize=16)
