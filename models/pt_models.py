@@ -663,15 +663,15 @@ class MARTA(torch.nn.Module):
             # Sum them and reshape to (batch, 1, window_size, z_dim) for the CNN
             z = z / torch.norm(z, dim=2).unsqueeze(2)
             hmc = hmc / torch.norm(hmc, dim=2).unsqueeze(2)
-            z_hat = (z + hmc).unsqueeze(1)
-            # z_hat = z.unsqueeze(1)
+            # z_hat = (z + hmc).unsqueeze(1)
+            z_hat = z.unsqueeze(1)
         else:
             # Sum them, now the shape is (batch, window_size*z_dim)
             # Make sure z and hmc have norm 1 by dim=1
             z = z / torch.norm(z, dim=1).unsqueeze(1)
             hmc = hmc / torch.norm(hmc, dim=1).unsqueeze(1)
-            z_hat = z + hmc
-            # z_hat = z
+            # z_hat = z + hmc
+            z_hat = z
 
         if self.classifier_type == "cnn":
             y_pred = self.clf_cnn(z_hat)

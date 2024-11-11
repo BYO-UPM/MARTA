@@ -1101,6 +1101,8 @@ def MARTA_tester(
 
                 y_logit = model.classifier_forward(x, manner)
                 y_pred = torch.sigmoid(y_logit)
+                # Check that y_pred unique values are between 0 and 1
+                assert torch.max(y_pred) <= 1
                 y_hat_array = np.concatenate(
                     (
                         y_hat_array,

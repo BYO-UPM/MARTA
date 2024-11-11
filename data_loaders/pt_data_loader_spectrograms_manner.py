@@ -74,34 +74,47 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         self.spectrogram = self.hyperparams["spectrogram"]
 
         # Check if the data has been already processed and saved
-        name_save = (
-            "local_results/data_frame_with_phonemes"
-            + str(self.hyperparams["frame_size_ms"])
-            + "spec_winsize_"
-            + str(self.hyperparams["spectrogram_win_size"])
-            + "hopsize_"
-            + str(self.hyperparams["hop_size_percent"])
-            + ".pkl"
-        )
+        if not hyperparams["whisper"]:
+            name_save = (
+                "local_results/data_frame_with_phonemes"
+                + str(self.hyperparams["frame_size_ms"])
+                + "spec_winsize_"
+                + str(self.hyperparams["spectrogram_win_size"])
+                + "hopsize_"
+                + str(self.hyperparams["hop_size_percent"])
+                + ".pkl"
+            )
+        else:
+            name_save = (
+                "local_results/data_frame_with_WHISPERphonemes"
+                + str(self.hyperparams["frame_size_ms"])
+                + "spec_winsize_"
+                + str(self.hyperparams["spectrogram_win_size"])
+                + "hopsize_"
+                + str(self.hyperparams["hop_size_percent"])
+                + ".pkl"
+            )
 
         if os.path.exists(name_save):
             self.data = pd.read_pickle(name_save)["data"]
         else:
-            self.data = self.read_dataset()
+            if hyperparams["whisper"]:
+                self.data = self.read_whisper_data()
+            else:
+                self.data = self.read_dataset()
 
     def __len__(self):
         return len(self.data)
 
-    def read_gita(self):
+    def read_gita(
+        self,
+        datapath="/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/gita_htk_forced_alignment/",
+    ):
         file_paths = []
         labels = []
         id_patient = []
         texts = []
         phonemes = []
-
-        datapath = (
-            "/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/gita_htk_forced_alignment/"
-        )
 
         for root, dirs, files in os.walk(datapath):
             for file in files:
@@ -137,7 +150,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     phonemes.append(None)
                     continue
                 tg_file = tg.TextGrid(tg_file)
-                phonemes.append(tg_file["speaker : phones"])
+                try:
+                    phonemes.append(tg_file["speaker : phones"])
+                except:
+                    phonemes.append(tg_file["phones"])
 
         # Generate a dataframe with all the data
         data = pd.DataFrame(
@@ -197,6 +213,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     phonemes.append(None)
                     continue
                 tg_file = tg.TextGrid(tg_file)
+                print(tg_file.keys())
                 phonemes.append(tg_file["phones"])
 
         # Generate a dataframe with all the data
@@ -221,14 +238,15 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
-    def read_neurovoz(self):
+    def read_neurovoz(
+        self,
+        datapath="/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/neurovoz_htk_forced_alignment/",
+    ):
         file_paths = []
         labels = []
         id_patient = []
         texts = []
         phonemes = []
-
-        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/neurovoz_htk_forced_alignment/"
 
         for root, dirs, files in os.walk(datapath):
             for file in files:
@@ -266,7 +284,11 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     phonemes.append(None)
                     continue
                 tg_file = tg.TextGrid(tg_file)
-                phonemes.append(tg_file["speaker : phones"])
+                print(tg_file.keys())
+                try:
+                    phonemes.append(tg_file["speaker : phones"])
+                except:
+                    phonemes.append(tg_file["phones"])
 
         # Generate a dataframe with all the data
         data = pd.DataFrame(
@@ -383,15 +405,214 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             subprocess.run(command, check=True)
         return normalized_file_path
 
-    def read_dataset(self):
+    def read_whisper_data(self):
         print("Reading the data...")
-
-        # Italian removed from study as it has bad quality
-        # data_it = self.read_italian()
-        # data_it["dataset"] = "italian"
 
         data_alb = self.read_albayzin()
         # add a column with the dataset name
+        data_alb["dataset"] = "albayzin"
+
+        data_neuro = self.read_neurovoz(
+            datapath="/media/my_ftp/BasesDeDatos_Voz_Habla/Neurovoz/neurovoz_automatically_transcribed_with_whisperv3turbo"
+        )
+        data_neuro["dataset"] = "neurovoz"
+
+        data_gita = self.read_gita(
+            datapath="/media/my_ftp/BasesDeDatos_Voz_Habla/PC-GITA/gita_automatically_transcribed_with_whisperv3turbo"
+        )
+        data_gita["dataset"] = "gita"
+        # Sum 1000 to all id_patient in gita to avoid overlapping with neurovoz
+        data_gita["id_patient"] = data_gita["id_patient"] + 1000
+
+        data = pd.concat([data_alb, data_neuro, data_gita])
+
+        # Assert that all datasets have been read
+        assert len(data[data["dataset"] == "albayzin"]) > 0
+        assert len(data[data["dataset"] == "neurovoz"]) > 0
+        assert len(data[data["dataset"] == "gita"]) > 0
+
+        print("Data read successfully...")
+
+        # Categorise label to 0 and 1
+        data["label"] = data["label"].astype("category").cat.codes
+
+        print("Reading the .wav files...")
+        target_sr = 16000  # Because Albayzin has 16kHz sampling rate and is the lowest sampling rate in our datasets
+
+        # Normalize all audio files using EBU R128 with a progress bar and parallel processing
+        file_paths = data["file_path"].tolist()
+
+        # Define a function to handle the normalization in parallel
+        def parallel_ebu_r128_normalize(file_paths):
+            with ThreadPoolExecutor() as executor:
+                results = list(
+                    tqdm(
+                        executor.map(self.ebu_r128_normalize, file_paths),
+                        total=len(file_paths),
+                        desc="Normalizing audio files",
+                    )
+                )
+            return results
+
+        # Apply parallel normalization
+        # data["normalized_file_path"] = parallel_ebu_r128_normalize(file_paths)
+        data["normalized_file_path"] = data["file_path"]
+
+        # Read the normalized .wav files and store the signals and sampling rates
+        print("Loading .wav files...")
+        data["signal"], data["sr"] = zip(
+            *tqdm(
+                data["normalized_file_path"].map(
+                    lambda x: librosa.load(x, sr=target_sr)
+                ),
+                total=len(data),
+                desc="Reading normalized .wav files",
+            )
+        )
+
+        # Check that there is no nan signal
+        assert len(data[data["signal"].isna()]) == 0
+
+        # Apply logmmse to all signals
+        print("Applying logmmse to all signals...")
+        import logmmse
+
+        data["signal"] = data["signal"].apply(
+            lambda x: logmmse.logmmse(x, target_sr, output_file=None)
+        )
+
+        # Normalize the audio (assuming self.normalize_audio is defined elsewhere in your code)
+        data["signal"] = data["signal"].apply(self.normalize_audio)
+
+        # Check that there is no nan signal
+        assert len(data[data["signal"].isna()]) == 0
+
+        # Frame the signals into 400ms frames with 50% overlap
+        frame_length = int(
+            data["sr"].iloc[0] * self.hyperparams["frame_size_ms"]
+        )  # 400ms
+        hop_length = int(frame_length * self.hyperparams["hop_size_percent"])
+        # 200ms = 50% overlap
+
+        # Drop all signals that are shorter than frame_length
+        data = data[data["signal"].apply(lambda x: len(x) >= frame_length)]
+
+        # Frame the signals
+        data["signal_framed"] = data["signal"].apply(
+            lambda x: librosa.util.frame(
+                x, frame_length=frame_length, hop_length=hop_length, axis=0
+            )
+        )
+
+        # Check that there is no nan signal framed
+        assert len(data[data["signal_framed"].isna()]) == 0
+
+        print("Matching text grid phonemes to the signals...")
+
+        # Match phonemes (this takes too long, we have to optimise it)
+        # Use the optimized match_phonemes function
+        tqdm.pandas(desc="Matching phonemes")
+        data["phonemes_matched"] = data.progress_apply(
+            lambda x: self.match_phonemes(x["phonemes"], x["signal"], x["sr"]), axis=1
+        )
+
+        # Frame the phonemes with 50% overlap
+        print("Framing the phonemes with 50% overlap...")
+        data["phonemes_framed_overlap"] = data["phonemes_matched"].apply(
+            lambda x: librosa.util.frame(
+                x, frame_length=frame_length, hop_length=hop_length, axis=0
+            )
+        )
+
+        # Remove unused columns
+        data = data.drop(columns=["signal", "phonemes", "phonemes_matched"])
+
+        # Explode the DataFrame by signal_framed and phonemes_framed_overlap
+        data = data.explode(["signal_framed", "phonemes_framed_overlap"])
+
+        # Reset index
+        data.reset_index(drop=True, inplace=True)
+
+        if self.spectrogram:
+            # Calculate the spectrogram. We want that each spectrogram is 400ms long with X windows of 30ms each.
+            win_length = int(
+                self.hyperparams["spectrogram_win_size"] * data["sr"].iloc[0]
+            )
+            hop_length = win_length // 2  # 50% overlap
+
+            n_fft = 512
+            n_mels = 65  # if hifigan use 80
+
+            # Calculate the melspectrogram using librosa
+            data["spectrogram"] = data["signal_framed"].apply(
+                lambda x: librosa.feature.melspectrogram(
+                    y=x,
+                    sr=data["sr"].iloc[0],
+                    win_length=win_length,
+                    n_fft=n_fft,
+                    hop_length=hop_length,
+                    n_mels=n_mels,
+                    center=False,
+                )
+            )
+
+            # Check that no spectrogram gave nan
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
+            )
+
+            # Calculate the power to db for each frame
+            data["spectrogram"] = data["spectrogram"].apply(
+                lambda x: librosa.power_to_db(x, ref=np.max)
+            )
+
+            # Assert nans after power to db
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
+            )
+
+            # Normalise each spectrogram by substraction the mean and dividing by the standard deviation
+            data["spectrogram"] = data["spectrogram"].apply(
+                lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1)
+            )
+
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
+            )
+
+            # Frame again the phonemes to match spectrogram frames
+            data["phonemes_framed_spectrogram"] = data["phonemes_framed_overlap"].apply(
+                lambda x: librosa.util.frame(
+                    x, frame_length=win_length, hop_length=hop_length, axis=0
+                )
+            )
+
+            # Collapse to most common phoneme
+            data["collapsed_phonemes"] = data["phonemes_framed_spectrogram"].apply(
+                collapse_to_most_repeated
+            )
+
+        # Save data to this to not compute this again if it is not necessary. This is a heavy process.
+        name_save = (
+            "local_results/data_frame_with_WHISPERphonemes"
+            + str(self.hyperparams["frame_size_ms"])
+            + "spec_winsize_"
+            + str(self.hyperparams["spectrogram_win_size"])
+            + "hopsize_"
+            + str(self.hyperparams["hop_size_percent"])
+            + ".pkl"
+        )
+
+        if not os.path.exists(name_save):
+            # Save the data
+            pd.to_pickle({"data": data}, name_save)
+
+        return data
+
+    def read_dataset(self):
+        print("Reading the data...")
+
+        data_alb = self.read_albayzin()
         data_alb["dataset"] = "albayzin"
 
         data_neuro = self.read_neurovoz()
@@ -606,6 +827,11 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # First the spanish data
         spanish_data = self.data[self.data["dataset"] != "italian"]
 
+        # There are some errors, if the phoneme starts with #, substitue it for "sil" only when whisper is used
+        spanish_data["collapsed_phonemes"] = spanish_data["collapsed_phonemes"].apply(
+            lambda x: ["sil" if phoneme.startswith("#") else phoneme for phoneme in x]
+        )
+
         # Map all self.data["collapsed_phonemes"] to manner classes
         spanish_data["manner_class"] = spanish_data["collapsed_phonemes"].apply(
             lambda x: [
@@ -613,28 +839,8 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             ]
         )
 
-        # Italian data
-        # italian_data = self.data[self.data["dataset"] == "italian"]
-
-        # # Map all self.data["collapsed_phonemes"] to manner classes
-        # italian_data["manner_class"] = italian_data["collapsed_phonemes"].apply(
-        #     lambda x: [
-        #         phoneme.split("_")[0]  # Split by '_' and get the manner class
-        #         for phoneme in x
-        #     ]
-        # )
-        # italian_data["manner_class"] = italian_data["manner_class"].apply(
-        #     lambda x: [
-        #         manner_classes["manner_classes"]["italian"][phoneme] for phoneme in x
-        #     ]
-        # )
-
         # Merge
-        # self.data = pd.concat([spanish_data, italian_data])
         self.data = spanish_data
-
-        # Current data has 3 ["label"] values: 0, 1, 2. However, 0 and 1 are both Healthy and 2 is Parkinson. We need to map that: 0 and 1 to 0 and 2 to 1
-        # self.data["label"] = self.data["label"].apply(lambda x: 0 if x < 2 else 1)
 
         # Modify the manner class: sum to each manner class the label multiplied by the number of manner classes (8)
         if supervised:
@@ -648,12 +854,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         albayzin_data = self.data[self.data["dataset"] == "albayzin"]
         neurovoz_data = self.data[self.data["dataset"] == "neurovoz"]
         gita_data = self.data[self.data["dataset"] == "gita"]
-        # italian_data = self.data[self.data["dataset"] == "italian"]
-
-        # # Italian IDs are strings, categorize it to integers above 2000 (neurovoz are under 100, gita above 1000)
-        # italian_data["id_patient"] = (
-        #     italian_data["id_patient"].astype("category").cat.codes + 2000
-        # )
 
         albayzin_patients = albayzin_data["id_patient"].unique()
         np.random.shuffle(albayzin_patients)
@@ -718,16 +918,12 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             np.random.shuffle(pd_gita_patients)
             np.random.shuffle(healthy_neurovoz_patients)
             np.random.shuffle(pd_neurovoz_patients)
-            # np.random.shuffle(healthy_italian_patients)
-            # np.random.shuffle(pd_italian_patients)
 
             # Split in 10 folds all lists
             healthy_gita_patients = np.array_split(healthy_gita_patients, 10)
             pd_gita_patients = np.array_split(pd_gita_patients, 10)
             healthy_neurovoz_patients = np.array_split(healthy_neurovoz_patients, 10)
             pd_neurovoz_patients = np.array_split(pd_neurovoz_patients, 10)
-            # healthy_italian_patients = np.array_split(healthy_italian_patients, 10)
-            # pd_italian_patients = np.array_split(pd_italian_patients, 10)
 
             # Create the 10 folds
             for f in range(10):
@@ -738,8 +934,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                         pd_gita_patients[f],
                         healthy_neurovoz_patients[f],
                         pd_neurovoz_patients[f],
-                        # healthy_italian_patients[f],
-                        # pd_italian_patients[f],
                     ]
                 )
                 # Get the val patients, the fold just before the test fold (if it is the first fold, then the last fold is the val fold)

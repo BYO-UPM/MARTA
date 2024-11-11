@@ -55,7 +55,7 @@ def main(args, hyperparams):
     print("Device being used:", device)
 
     # Create the path if does not exist
-    path_to_save = f"local_results/spectrograms/classifier_{hyperparams['crosslingual']}_{hyperparams['latent_dim']}latent_dim_{hyperparams['domain_adversarial']}domain_adversarial_fold_{hyperparams['fold']}"
+    path_to_save = f"local_results/spectrograms/whisper_multilingual/withoutMannerClassLabel/classifier_{hyperparams['crosslingual']}_{hyperparams['latent_dim']}latent_dim_{hyperparams['domain_adversarial']}domain_adversarial_fold_{hyperparams['fold']}"
     os.makedirs(path_to_save, exist_ok=True)
 
     # Redirect standard output to a log file
@@ -67,8 +67,8 @@ def main(args, hyperparams):
 
     if not hyperparams["new_data_partition"]:
         print("Reading train, val and test loaders from local_results/...")
-        loader_path = f"local_results/folds/{{}}_loader_supervised_True_frame_size_0.4spec_winsize_{hyperparams['spectrogram_win_size']}hopsize_0.5fold{hyperparams['fold']}.pt"
-        data_path = f"local_results/folds/{{}}_data_supervised_True_frame_size_0.4spec_winsize_{hyperparams['spectrogram_win_size']}hopsize_0.5fold{hyperparams['fold']}.pt"
+        loader_path = f"local_results/folds/manually_transcribed/{{}}_loader_supervised_True_frame_size_0.4spec_winsize_{hyperparams['spectrogram_win_size']}hopsize_0.5fold{hyperparams['fold']}.pt"
+        data_path = f"local_results/folds/manually_transcribed/{{}}_data_supervised_True_frame_size_0.4spec_winsize_{hyperparams['spectrogram_win_size']}hopsize_0.5fold{hyperparams['fold']}.pt"
         train_loader, val_loader, test_loader = (
             torch.load(loader_path.format(ds)) for ds in ["train", "val", "test"]
         )
@@ -148,7 +148,7 @@ def main(args, hyperparams):
 
     if hyperparams["train"]:
         # Load the best unsupervised model to supervise it
-        model_path = f"local_results/spectrograms/marta_{hyperparams['latent_dim']}_experiment_{hyperparams['crosslingual']}_supervised__domain_adversarial_{hyperparams['domain_adversarial']}_fold_{hyperparams['fold']}/GMVAE_cnn_best_model_2d.pt"
+        model_path = f"local_results/spectrograms/crosslingual/marta_{hyperparams['latent_dim']}_experiment_{hyperparams['crosslingual']}_supervised__domain_adversarial_{hyperparams['domain_adversarial']}_fold_{hyperparams['fold']}/GMVAE_cnn_best_model_2d.pt"
         model.load_state_dict(torch.load(model_path)["model_state_dict"])
 
         # Freeze all the network
@@ -160,7 +160,7 @@ def main(args, hyperparams):
         # Unfreeze the classifier
         for param in model.hmc.parameters():
             # Unfreezing the manner class embeddings
-            param.requires_grad = True
+            param.requires_grad = False
         for param in model.clf_cnn.parameters():
             # Unfreezing the cnn classifier
             param.requires_grad = True

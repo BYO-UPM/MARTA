@@ -4,31 +4,48 @@ manner_classes:
     p: 0
     t: 0
     k: 0
+    t̪: 0
+    c: 0
     # VOICED STOPS
+    ɟ: 1
     b: 1
     B: 1
     d: 1
+    d̪: 1
     D: 1
     g: 1
     G: 1
+    ɡ: 1
+    ɣ: 1
     # NASALS
     n: 2
+    ɲ: 2
     N: 2
     m: 2
     NY: 2
     J: 2
+    ŋ: 2
     # FRICATIVES
+    ð: 3 
+    ç: 3
     f: 3
     s: 3
     z: 3
     x: 3
+    β: 3
     h: 3
+    ʃ: 3
     T: 3
+    ɟʝ: 3
+    ʝ: 3
+    θ: 3
     # LIQUIDS
     R: 4
+    ɾ: 4
     r: 4
     4: 4
     l: 4
+    ʎ: 4
     y: 4
     jj: 4
     L: 4
@@ -44,10 +61,12 @@ manner_classes:
     # Africates
     CH: 6
     tS: 6
+    tʃ: 6
     # Silences
     sil: 7
     _: 7
     sp: 7
+    '': 7
   italian:
     # Stops
     p: 0
