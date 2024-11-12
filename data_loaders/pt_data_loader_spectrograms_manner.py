@@ -213,7 +213,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     phonemes.append(None)
                     continue
                 tg_file = tg.TextGrid(tg_file)
-                print(tg_file.keys())
                 phonemes.append(tg_file["phones"])
 
         # Generate a dataframe with all the data
@@ -284,7 +283,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     phonemes.append(None)
                     continue
                 tg_file = tg.TextGrid(tg_file)
-                print(tg_file.keys())
                 try:
                     phonemes.append(tg_file["speaker : phones"])
                 except:
@@ -343,9 +341,67 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             tg_file = tg.TextGrid(tg_file)
             phonemes.append(tg_file["speaker : phones"])
 
-        print("Total WAV files: ", len(os.listdir(datapath_wav)))
+        print("Total WAV files in Albayzin: ", len(os.listdir(datapath_wav)))
         print("Total TextGrid files: ", len(os.listdir(datapath_wav)))
         print("Total files without textgrid: ", i)
+
+        # Generate a dataframe with all the data
+        data = pd.DataFrame(
+            {
+                "file_path": file_paths,
+                "label": labels,
+                "text": texts,
+                "phonemes": phonemes,
+                "id_patient": id_patient,
+            }
+        )
+        # Drop na
+        data = data.dropna()
+        # sort by id_patient
+        data = data.sort_values(by=["id_patient"])
+        # reset index
+        data = data.reset_index(drop=True)
+
+        return data
+
+    def read_librispeech(self):
+        import soundfile
+
+        file_paths = []
+        labels = []
+        id_patient = []
+        texts = []
+        phonemes = []
+
+        datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/LibriSpeech/LibriSpeech/train-clean-100"
+
+        for root, dirs, files in os.walk(datapath):
+            for file in files:
+                # If the file does not end with .wav, skip it
+                if not file.endswith(".flac"):
+                    continue
+                if file.endswith("_normalized.wav"):
+                    continue
+                file_path = os.path.join(root, file)
+                file_paths.append(file_path)
+
+                # ID patient are the two first things of the file name if splitting with "-"
+                id_patient.append(file.split("-")[0])
+                # they are all healthy
+                labels.append(0)
+                # Text
+                texts.append("text")
+                # Read the text grid file
+                tg_file = os.path.join(root, file).replace(".flac", ".TextGrid")
+                # Check if the file exists
+                if not os.path.exists(tg_file):
+                    print("File does not exist: ", tg_file)
+                    phonemes.append(None)
+                    continue
+                tg_file = tg.TextGrid(tg_file)
+                phonemes.append(tg_file["phones"])
+
+        print("Total WAV files in LibriSpeech: ", len(file_paths))
 
         # Generate a dataframe with all the data
         data = pd.DataFrame(
@@ -615,6 +671,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         data_alb = self.read_albayzin()
         data_alb["dataset"] = "albayzin"
 
+        data_ls = self.read_librispeech()
+        data_ls["dataset"] = "librispeech"
+
         data_neuro = self.read_neurovoz()
         data_neuro["dataset"] = "neurovoz"
 
@@ -623,14 +682,14 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         # Sum 1000 to all id_patient in gita to avoid overlapping with neurovoz
         data_gita["id_patient"] = data_gita["id_patient"] + 1000
 
-        data = pd.concat([data_alb, data_neuro, data_gita])
+        data = pd.concat([data_alb, data_ls, data_neuro, data_gita])
         # data = pd.concat([data_alb, data_neuro, data_gita, data_it])
 
         # Assert that all datasets have been read
         assert len(data[data["dataset"] == "albayzin"]) > 0
         assert len(data[data["dataset"] == "neurovoz"]) > 0
         assert len(data[data["dataset"] == "gita"]) > 0
-        # assert len(data[data["dataset"] == "italian"]) > 0
+        assert len(data[data["dataset"] == "librispeech"]) > 0
 
         print("Data read successfully...")
 
