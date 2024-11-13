@@ -84,6 +84,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 + str(self.hyperparams["hop_size_percent"])
                 + ".pkl"
             )
+
         else:
             name_save = (
                 "local_results/data_frame_with_WHISPERphonemes"
@@ -101,7 +102,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             if hyperparams["whisper"]:
                 self.data = self.read_whisper_data()
             else:
-                self.data = self.read_dataset()
+                data_librispeech = self.read_librispeech_dataset()
+                data_other = self.read_full_dataset()
+
+                self.data = pd.concat([data_librispeech, data_other])
 
     def __len__(self):
         return len(self.data)
@@ -665,7 +669,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
-    def read_dataset(self):
+    def read_full_dataset(self):
         print("Reading the data...")
 
         data_alb = self.read_albayzin()
@@ -868,6 +872,207 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
+    def read_librispeech_dataset(self):
+        print("Reading the data...")
+
+        data = self.read_librispeech()
+        data["dataset"] = "librispeech"
+
+        # Assert that all datasets have been read
+        assert len(data[data["dataset"] == "librispeech"]) > 0
+
+        print("Data read successfully...")
+
+        # Categorise label to 0 and 1
+        data["label"] = data["label"].astype("category").cat.codes
+
+        print("Reading the .wav files...")
+        target_sr = 16000  # Because Albayzin has 16kHz sampling rate and is the lowest sampling rate in our datasets
+
+        # Normalize all audio files using EBU R128 with a progress bar and parallel processing
+        file_paths = data["file_path"].tolist()
+
+        # Define a function to handle the normalization in parallel
+        def parallel_ebu_r128_normalize(file_paths):
+            with ThreadPoolExecutor() as executor:
+                results = list(
+                    tqdm(
+                        executor.map(self.ebu_r128_normalize, file_paths),
+                        total=len(file_paths),
+                        desc="Normalizing audio files",
+                    )
+                )
+            return results
+
+        # Apply parallel normalization
+        data["normalized_file_path"] = parallel_ebu_r128_normalize(file_paths)
+
+        # Read the normalized .wav files and store the signals and sampling rates
+        print("Loading .wav files...")
+
+        def parallel_load_wav(file_paths):
+            with ThreadPoolExecutor() as executor:
+                results = list(
+                    tqdm(
+                        executor.map(
+                            lambda x: librosa.load(x, sr=target_sr), file_paths
+                        ),
+                        total=len(file_paths),
+                        desc="Reading normalized .wav files",
+                    )
+                )
+            return zip(*results)
+
+        data["signal"], data["sr"] = parallel_load_wav(
+            data["normalized_file_path"].tolist()
+        )
+
+        # Check that there is no nan signal
+        assert len(data[data["signal"].isna()]) == 0
+
+        # Apply logmmse to all signals
+        print("Applying logmmse to all signals...")
+        import logmmse
+
+        data["signal"] = list(
+            tqdm(
+                map(
+                    lambda x: logmmse.logmmse(x, target_sr, output_file=None),
+                    data["signal"],
+                ),
+                total=len(data),
+                desc="Applying logmmse to all signals",
+            )
+        )
+
+        # Normalize the audio (assuming self.normalize_audio is defined elsewhere in your code)
+        data["signal"] = data["signal"].apply(self.normalize_audio)
+
+        # Check that there is no nan signal
+        assert len(data[data["signal"].isna()]) == 0
+
+        # Frame the signals into 400ms frames with 50% overlap
+        frame_length = int(
+            data["sr"].iloc[0] * self.hyperparams["frame_size_ms"]
+        )  # 400ms
+        hop_length = int(frame_length * self.hyperparams["hop_size_percent"])
+        # 200ms = 50% overlap
+
+        # Drop all signals that are shorter than frame_length
+        data = data[data["signal"].apply(lambda x: len(x) >= frame_length)]
+
+        # Frame the signals
+        data["signal_framed"] = data["signal"].apply(
+            lambda x: librosa.util.frame(
+                x, frame_length=frame_length, hop_length=hop_length, axis=0
+            )
+        )
+
+        # Check that there is no nan signal framed
+        assert len(data[data["signal_framed"].isna()]) == 0
+
+        print("Matching text grid phonemes to the signals...")
+
+        # Match phonemes (this takes too long, we have to optimise it)
+        # Use the optimized match_phonemes function
+        tqdm.pandas(desc="Matching phonemes")
+        data["phonemes_matched"] = data.progress_apply(
+            lambda x: self.match_phonemes(x["phonemes"], x["signal"], x["sr"]), axis=1
+        )
+
+        # Frame the phonemes with 50% overlap
+        print("Framing the phonemes with 50% overlap...")
+        data["phonemes_framed_overlap"] = data["phonemes_matched"].apply(
+            lambda x: librosa.util.frame(
+                x, frame_length=frame_length, hop_length=hop_length, axis=0
+            )
+        )
+
+        # Remove unused columns
+        data = data.drop(columns=["signal", "phonemes", "phonemes_matched"])
+
+        # Explode the DataFrame by signal_framed and phonemes_framed_overlap
+        data = data.explode(["signal_framed", "phonemes_framed_overlap"])
+
+        # Reset index
+        data.reset_index(drop=True, inplace=True)
+
+        if self.spectrogram:
+            # Calculate the spectrogram. We want that each spectrogram is 400ms long with X windows of 30ms each.
+            win_length = int(
+                self.hyperparams["spectrogram_win_size"] * data["sr"].iloc[0]
+            )
+            hop_length = win_length // 2  # 50% overlap
+
+            n_fft = 512
+            n_mels = 65  # if hifigan use 80
+
+            # Calculate the melspectrogram using librosa
+            data["spectrogram"] = data["signal_framed"].apply(
+                lambda x: librosa.feature.melspectrogram(
+                    y=x,
+                    sr=data["sr"].iloc[0],
+                    win_length=win_length,
+                    n_fft=n_fft,
+                    hop_length=hop_length,
+                    n_mels=n_mels,
+                    center=False,
+                )
+            )
+
+            # Check that no spectrogram gave nan
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
+            )
+
+            # Calculate the power to db for each frame
+            data["spectrogram"] = data["spectrogram"].apply(
+                lambda x: librosa.power_to_db(x, ref=np.max)
+            )
+
+            # Assert nans after power to db
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
+            )
+
+            # Normalise each spectrogram by substraction the mean and dividing by the standard deviation
+            data["spectrogram"] = data["spectrogram"].apply(
+                lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1)
+            )
+
+            assert (
+                len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
+            )
+
+            # Frame again the phonemes to match spectrogram frames
+            data["phonemes_framed_spectrogram"] = data["phonemes_framed_overlap"].apply(
+                lambda x: librosa.util.frame(
+                    x, frame_length=win_length, hop_length=hop_length, axis=0
+                )
+            )
+
+            # Collapse to most common phoneme
+            data["collapsed_phonemes"] = data["phonemes_framed_spectrogram"].apply(
+                collapse_to_most_repeated
+            )
+
+        # Save data to this to not compute this again if it is not necessary. This is a heavy process.
+        name_save = (
+            "local_results/data_frame_with_phonemes_LIBRISPEECH"
+            + str(self.hyperparams["frame_size_ms"])
+            + "spec_winsize_"
+            + str(self.hyperparams["spectrogram_win_size"])
+            + "hopsize_"
+            + str(self.hyperparams["hop_size_percent"])
+            + ".pkl"
+        )
+
+        if not os.path.exists(name_save):
+            # Save the data
+            pd.to_pickle({"data": data}, name_save)
+
+        return data
+
     def get_dataloaders(
         self,
         experiment="fourth",
@@ -884,7 +1089,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             manner_classes = yaml.load(file, Loader=yaml.FullLoader)
 
         # First the spanish data
-        spanish_data = self.data[self.data["dataset"] != "italian"]
+        spanish_data = self.data[self.data["dataset"] != "librispeech"]
 
         # There are some errors, if the phoneme starts with #, substitue it for "sil" only when whisper is used
         spanish_data["collapsed_phonemes"] = spanish_data["collapsed_phonemes"].apply(
@@ -895,6 +1100,19 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         spanish_data["manner_class"] = spanish_data["collapsed_phonemes"].apply(
             lambda x: [
                 manner_classes["manner_classes"]["spanish"][phoneme] for phoneme in x
+            ]
+        )
+
+        # do the same with english data (librispeech)
+        librispeech_data = self.data[self.data["dataset"] == "librispeech"]
+        librispeech_data["collapsed_phonemes"] = librispeech_data[
+            "collapsed_phonemes"
+        ].apply(
+            lambda x: ["sil" if phoneme.startswith("#") else phoneme for phoneme in x]
+        )
+        librispeech_data["manner_class"] = librispeech_data["collapsed_phonemes"].apply(
+            lambda x: [
+                manner_classes["manner_classes"]["english"][phoneme] for phoneme in x
             ]
         )
 

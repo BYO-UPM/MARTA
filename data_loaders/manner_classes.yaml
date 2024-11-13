@@ -137,3 +137,87 @@ manner_classes:
     sil: 7
     sp: 7
     spn: 7
+  english:
+    # Stops
+    K: 0
+    P: 0
+    # Voiced stops
+    D: 1
+    B: 1
+    G: 1
+    # Nasals
+    N: 2
+    M: 2
+    NG: 2
+    # Fricatives
+    T: 3
+    S: 3
+    DH: 3
+    Z: 3
+    HH: 3
+    V: 3
+    F: 3
+    SH: 3
+    TH: 3
+    ZH: 3
+    # Liquids
+    R: 4
+    L: 4
+    W: 4
+    Y: 4
+    # vowels (it follows ARPABET)
+    AH0: 5
+    AA0: 5
+    AA1: 5
+    AA2: 5
+    AW0: 5
+    AW1: 5
+    AW2: 5
+    AO0: 5
+    AO1: 5
+    AO2: 5
+    AY0: 5
+    AY1: 5
+    AY2: 5
+    AH0: 5
+    AH1: 5
+    AH2: 5
+    AE0: 5
+    AE1: 5 
+    AE2: 5
+    EH2: 5
+    EH0: 5
+    EH1: 5
+    EY0: 5
+    EY1: 5
+    EY2: 5
+    ER0: 5
+    ER1: 5
+    ER2: 5
+    IH0: 5
+    IH1: 5
+    IH2: 5
+    IY0: 5 
+    IY1: 5
+    IY2: 5
+    OW0: 5
+    OW1: 5
+    OW2: 5
+    OY0: 5
+    OY1: 5
+    OY2: 5
+    UW0: 5
+    UW1: 5
+    UW2: 5
+    UH0: 5
+    UH1: 5
+    UH2: 5
+    # Affricates
+    CH: 6
+    JH: 6
+    # Silences
+    sp: 7
+    '': 7
+    sil: 7
+    spn: 7
+
