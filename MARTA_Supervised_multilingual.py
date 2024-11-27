@@ -44,7 +44,10 @@ from training.pt_training import MARTA_trainer, MARTA_tester
 from utils.utils import (
     plot_logopeda_alb_neuro,
 )
-from data_loaders.pt_data_loader_spectrograms_manner import Dataset_AudioFeatures
+from data_loaders.pt_data_loader_spectrograms_manner import (
+    Dataset_AudioFeatures,
+    create_dataloaders,
+)
 import torch
 import pandas as pd
 import sys
@@ -59,17 +62,6 @@ def main(args, hyperparams):
     print("Device being used:", device)
 
     if hyperparams["train_albayzin"]:
-        # hyperparams["path_to_save"] = (
-        #     "local_results/spectrograms/marta_"
-        #     + str(hyperparams["latent_dim"])
-        #     + "_experiment_"
-        #     + str(hyperparams["crosslingual"])
-        #     + "_supervised_"
-        #     + "_domain_adversarial_"
-        #     + str(hyperparams["domain_adversarial"])
-        #     + "_fold_"
-        #     + str(hyperparams["fold"])
-        # )
         hyperparams["path_to_save"] = (
             "local_results/spectrograms/marta_"
             + str(hyperparams["latent_dim"])
@@ -88,52 +80,17 @@ def main(args, hyperparams):
     log_file = open(hyperparams["path_to_save"] + "/log.txt", "w")
     sys.stdout = log_file
 
-    if hyperparams["train"] and hyperparams["new_data_partition"]:
+    if hyperparams["new_data_partition"]:
         print("Reading data...")
         # Read the data
         dataset = Dataset_AudioFeatures(
             hyperparams,
         )
-        (
-            train_loader,
-            val_loader,
-            test_loader,
-            train_data,  # train_data, not used
-            _,  # val_data, not used
-            test_data,
-        ) = dataset.get_dataloaders(
-            experiment=hyperparams["experiment"], supervised=hyperparams["supervised"]
-        )
-    else:
-        print("Reading train, val and test loaders from local_results/...")
-        train_loader = torch.load(
-            "local_results/folds/train_loader_supervised_True_frame_size_0.4spec_winsize_"
-            + str(hyperparams["spectrogram_win_size"])
-            + "hopsize_0.5fold"
-            + str(hyperparams["fold"])
-            + ".pt"
-        )
-        val_loader = torch.load(
-            "local_results/folds/val_loader_supervised_True_frame_size_0.4spec_winsize_"
-            + str(hyperparams["spectrogram_win_size"])
-            + "hopsize_0.5fold"
-            + str(hyperparams["fold"])
-            + ".pt"
-        )
-        test_loader = torch.load(
-            "local_results/folds/test_loader_supervised_True_frame_size_0.4spec_winsize_"
-            + str(hyperparams["spectrogram_win_size"])
-            + "hopsize_0.5fold"
-            + str(hyperparams["fold"])
-            + ".pt"
-        )
-        test_data = torch.load(
-            "local_results/folds/test_data_supervised_True_frame_size_0.4spec_winsize_"
-            + str(hyperparams["spectrogram_win_size"])
-            + "hopsize_0.5fold"
-            + str(hyperparams["fold"])
-            + ".pt"
-        )
+        dataset.create_folds(experiment=hyperparams["experiment"], supervised=True)
+
+    train_loader, val_loader, test_loader = create_dataloaders(
+        f=hyperparams["fold"], batch_size=hyperparams["batch_size"]
+    )
 
     # Get all gita data
     gita_data_test = [data for data in test_loader.dataset if data[3] == "gita"]

@@ -49,6 +49,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 import bisect
+import h5py
 
 
 # Function to collapse the matrix into a 24x1 vector with the most repeated string
@@ -73,39 +74,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         self.hyperparams = hyperparams
         self.spectrogram = self.hyperparams["spectrogram"]
 
-        # Check if the data has been already processed and saved
-        if not hyperparams["whisper"]:
-            name_save = (
-                "local_results/data_frame_with_phonemes"
-                + str(self.hyperparams["frame_size_ms"])
-                + "spec_winsize_"
-                + str(self.hyperparams["spectrogram_win_size"])
-                + "hopsize_"
-                + str(self.hyperparams["hop_size_percent"])
-                + ".pkl"
-            )
+        data_librispeech = self.read_librispeech_dataset()
+        data_other = self.read_full_dataset()
 
-        else:
-            name_save = (
-                "local_results/data_frame_with_WHISPERphonemes"
-                + str(self.hyperparams["frame_size_ms"])
-                + "spec_winsize_"
-                + str(self.hyperparams["spectrogram_win_size"])
-                + "hopsize_"
-                + str(self.hyperparams["hop_size_percent"])
-                + ".pkl"
-            )
-
-        if os.path.exists(name_save):
-            self.data = pd.read_pickle(name_save)["data"]
-        else:
-            if hyperparams["whisper"]:
-                self.data = self.read_whisper_data()
-            else:
-                data_librispeech = self.read_librispeech_dataset()
-                data_other = self.read_full_dataset()
-
-                self.data = pd.concat([data_librispeech, data_other])
+        self.data = pd.concat([data_librispeech, data_other])
 
     def __len__(self):
         return len(self.data)
@@ -378,6 +350,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         phonemes = []
 
         datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/LibriSpeech/LibriSpeech/train-clean-100"
+
+        # Assert that datapath exists
+        assert os.path.exists(datapath)
 
         for root, dirs, files in os.walk(datapath):
             for file in files:
@@ -856,19 +831,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
         # Save data to this to not compute this again if it is not necessary. This is a heavy process.
-        name_save = (
-            "local_results/data_frame_with_phonemes"
-            + str(self.hyperparams["frame_size_ms"])
-            + "spec_winsize_"
-            + str(self.hyperparams["spectrogram_win_size"])
-            + "hopsize_"
-            + str(self.hyperparams["hop_size_percent"])
-            + ".pkl"
-        )
-
-        if not os.path.exists(name_save):
-            # Save the data
-            pd.to_pickle({"data": data}, name_save)
+        self.save_datasets_to_hdf5(data)
 
         return data
 
@@ -1073,7 +1036,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         return data
 
-    def get_dataloaders(
+    def create_folds(
         self,
         experiment="fourth",
         supervised=False,
@@ -1117,7 +1080,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         )
 
         # Merge
-        self.data = spanish_data
+        self.data = pd.concat([spanish_data, librispeech_data])
 
         # Modify the manner class: sum to each manner class the label multiplied by the number of manner classes (8)
         if supervised:
@@ -1131,6 +1094,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         albayzin_data = self.data[self.data["dataset"] == "albayzin"]
         neurovoz_data = self.data[self.data["dataset"] == "neurovoz"]
         gita_data = self.data[self.data["dataset"] == "gita"]
+        librispeech_data = self.data[self.data["dataset"] == "librispeech"]
+
+        # =====================  ALBAYZIN DATASET =====================
 
         albayzin_patients = albayzin_data["id_patient"].unique()
         np.random.shuffle(albayzin_patients)
@@ -1141,6 +1107,24 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
         train_data = albayzin_data[albayzin_data["id_patient"].isin(albayzin_train)]
         val_data = albayzin_data[albayzin_data["id_patient"].isin(albayzin_val)]
+
+        # =====================  LIBRISPEECH DATASET =====================
+        libri_patients = librispeech_data["id_patient"].unique()
+        np.random.shuffle(libri_patients)
+
+        # Split in 80% train and 20% val
+        libri_train = libri_patients[: int(len(libri_patients) * 0.8)]
+        libri_val = libri_patients[int(len(libri_patients) * 0.8) :]
+
+        train_data = pd.concat(
+            [
+                train_data,
+                librispeech_data[librispeech_data["id_patient"].isin(libri_train)],
+            ]
+        )
+        val_data = pd.concat(
+            [val_data, librispeech_data[librispeech_data["id_patient"].isin(libri_val)]]
+        )
 
         if experiment == "first":
             # Test data is all neurovoz and gita  patients
@@ -1172,7 +1156,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
         elif experiment == "fourth":
-            # Create 10 folds of neurovoz and gita patients and italian patients
+            # Create 10 folds of neurovoz and gita patients
             healthy_gita_patients = gita_data[gita_data["label"] == 0][
                 "id_patient"
             ].unique()
@@ -1183,12 +1167,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             pd_neurovoz_patients = neurovoz_data[neurovoz_data["label"] == 1][
                 "id_patient"
             ].unique()
-            # healthy_italian_patients = italian_data[italian_data["label"] == 0][
-            #     "id_patient"
-            # ].unique()
-            # pd_italian_patients = italian_data[italian_data["label"] == 1][
-            #     "id_patient"
-            # ].unique()
 
             # Randomly shuffle the patients
             np.random.shuffle(healthy_gita_patients)
@@ -1221,8 +1199,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                             pd_gita_patients[-1],
                             healthy_neurovoz_patients[-1],
                             pd_neurovoz_patients[-1],
-                            # healthy_italian_patients[-1],
-                            # pd_italian_patients[-1],
                         ]
                     )
                 else:
@@ -1232,8 +1208,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                             pd_gita_patients[f - 1],
                             healthy_neurovoz_patients[f - 1],
                             pd_neurovoz_patients[f - 1],
-                            # healthy_italian_patients[f - 1],
-                            # pd_italian_patients[f - 1],
                         ]
                     )
 
@@ -1244,8 +1218,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                         np.concatenate(pd_gita_patients),
                         np.concatenate(healthy_neurovoz_patients),
                         np.concatenate(pd_neurovoz_patients),
-                        # np.concatenate(healthy_italian_patients),
-                        # np.concatenate(pd_italian_patients),
                     ]
                 )
                 # Drop now the patients athat already are in test and val
@@ -1268,7 +1240,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                         train_data,
                         neurovoz_data[neurovoz_data["id_patient"].isin(train_patients)],
                         gita_data[gita_data["id_patient"].isin(train_patients)],
-                        # italian_data[italian_data["id_patient"].isin(train_patients)],
                     ]
                 )
 
@@ -1277,7 +1248,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     [
                         neurovoz_data[neurovoz_data["id_patient"].isin(val_patients)],
                         gita_data[gita_data["id_patient"].isin(val_patients)],
-                        # italian_data[italian_data["id_patient"].isin(val_patients)],
                     ]
                 )
 
@@ -1286,33 +1256,45 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                     [
                         neurovoz_data[neurovoz_data["id_patient"].isin(test_patients)],
                         gita_data[gita_data["id_patient"].isin(test_patients)],
-                        # italian_data[italian_data["id_patient"].isin(test_patients)],
                     ]
                 )
 
-                (
-                    train_loader,
-                    val_loader,
-                    test_loader,
-                    train_data,  # train_data, not used
-                    val_data,  # val_data, not used
-                    test_data,
-                ) = self.create_dataloader(
-                    train_data,
-                    val_data,
-                    test_data,
-                    f=f,
-                )
+                # Store data in h5 files
+                # Create a directory for folds
+                os.mkdir("local_results/folds_h5", exist_ok=True)
 
-            raise ValueError("End of the loop")
-            return (
-                train_loader,
-                val_loader,
-                test_loader,
-                train_data,  # train_data, not used
-                val_data,  # val_data, not used
-                test_data,
-            )
+                # Save the spectrograms, the parkinson labels, the manner labels, the id_patient and the audio_file to know which spetrogram is of which audiofile
+                with h5py.File(
+                    "local_results/folds_h5/fold_" + str(f) + ".h5", "w"
+                ) as hf:
+                    # Spectrograms are of shape (N, C, H, W) where C is 1
+                    hf.create_dataset(
+                        "train_spectrogram", data=train_data["spectrogram"]
+                    )
+                    hf.create_dataset("val_spectrogram", data=val_data["spectrogram"])
+                    hf.create_dataset("test_spectrogram", data=test_data["spectrogram"])
+                    # Dataset label
+                    hf.create_dataset("train_dataset", data=train_data["dataset"])
+                    hf.create_dataset("val_dataset", data=val_data["dataset"])
+                    hf.create_dataset("test_dataset", data=test_data["dataset"])
+                    # Parkinson label
+                    hf.create_dataset("train_labels", data=train_data["label"])
+                    hf.create_dataset("val_labels", data=val_data["label"])
+                    hf.create_dataset("test_labels", data=test_data["label"])
+                    # Manner labels
+                    hf.create_dataset("train_manner", data=train_data["manner_class"])
+                    hf.create_dataset("val_manner", data=val_data["manner_class"])
+                    hf.create_dataset("test_manner", data=test_data["manner_class"])
+                    # ID patients
+                    hf.create_dataset("train_id_patient", data=train_data["id_patient"])
+                    hf.create_dataset("val_id_patient", data=val_data["id_patient"])
+                    hf.create_dataset("test_id_patient", data=test_data["id_patient"])
+                    # Audio file
+                    hf.create_dataset("train_audio_file", data=train_data["file_path"])
+                    hf.create_dataset("val_audio_file", data=val_data["file_path"])
+                    hf.create_dataset("test_audio_file", data=test_data["file_path"])
+
+                print("Fold ", f, " done")
 
     def create_dataloader(self, train_data, val_data, test_data, f=0):
 
@@ -1504,3 +1486,96 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         normalized_data = audio_data / max_value
 
         return normalized_data
+
+
+from torch.utils.data import Dataset, DataLoader
+
+
+class HDF5Dataset(Dataset):
+    def __init__(self, f, split):
+        """
+        Initialize the HDF5Dataset.
+
+        Args:
+            fold (int): Fold to load from.
+            split (str): One of 'train', 'val', or 'test'.
+        """
+        self.filepath = f"local_results/folds_h5/fold_{f}.h5"
+        self.split = split
+        self.h5file = h5py.File(self.filepath, "r")  # Open HDF5 file
+        self.spectrogram = self.h5file[f"{split}_spectrogram"]
+        self.dataset = self.h5file[f"{split}_dataset"]
+        self.labels = self.h5file[f"{split}_labels"]
+        self.manner = self.h5file[f"{split}_manner"]
+        self.id_patient = self.h5file[f"{split}_id_patient"]
+        self.audio_file = self.h5file[f"{split}_audio_file"]
+
+    def __len__(self):
+        """Return the number of samples in the dataset."""
+        return self.data.shape[0]
+
+    def __getitem__(self, idx):
+        """
+        Get a single sample from the dataset.
+
+        Args:
+            idx (int): Index of the sample to retrieve.
+
+        Returns:
+            Tuple: (spectrogram, label, manner, id_patient, audio_file)
+        """
+        spectrogram = torch.tensor(self.spectrogram[idx], dtype=torch.float32)
+        dataset = torch.tensor(self.dataset[idx], dtype=torch.long)
+        label = torch.tensor(self.labels[idx], dtype=torch.long)
+        manner = torch.tensor(self.manner[idx], dtype=torch.long)
+        id_patient = torch.tensor(self.id_patient[idx], dtype=torch.long)
+        audio_file = self.audio_file[idx].decode("utf-8")  # Decode byte string
+
+        return spectrogram, label, dataset, manner, id_patient, audio_file
+
+    def close(self):
+        """Close the HDF5 file."""
+        if self.h5file:
+            self.h5file.close()
+
+
+def create_dataloaders(filepath, batch_size, num_workers=4, pin_memory=True):
+    """
+    Create DataLoaders for train, val, and test splits.
+
+    Args:
+        filepath (str): Path to the HDF5 file.
+        batch_size (int): Batch size for the DataLoader.
+        num_workers (int): Number of worker processes for data loading.
+        pin_memory (bool): Whether to pin memory for faster transfers to GPU.
+
+    Returns:
+        Tuple: (train_loader, val_loader, test_loader)
+    """
+    train_dataset = HDF5Dataset(filepath, split="train")
+    val_dataset = HDF5Dataset(filepath, split="val")
+    test_dataset = HDF5Dataset(filepath, split="test")
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+
+    return train_loader, val_loader, test_loader
