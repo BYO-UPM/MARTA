@@ -1,18 +1,18 @@
 """
 Unsupervised GMVAE (MARTA) for Parkinson's Disease Analysis
 
-This script implements an unsupervised Gaussian Mixture Variational Autoencoder (GMVAE), 
-named MARTA, for analyzing speech features related to Parkinson's Disease. The model is 
-trained exclusively on healthy patients and then used to evaluate the latent space 
-distances between healthy and Parkinsonian patients (who were never seen by the model 
-during training). This approach aims to identify distinct patterns in speech that could 
+This script implements an unsupervised Gaussian Mixture Variational Autoencoder (GMVAE),
+named MARTA, for analyzing speech features related to Parkinson's Disease. The model is
+trained exclusively on healthy patients and then used to evaluate the latent space
+distances between healthy and Parkinsonian patients (who were never seen by the model
+during training). This approach aims to identify distinct patterns in speech that could
 be indicative of Parkinson's Disease.
 
 Main Components:
 1. Data Preparation: Uses 'Dataset_AudioFeatures' for loading and preprocessing spectrogram data.
 2. Model Definition: Sets up the MARTA model with specified hyperparameters.
 3. Training: Trains the MARTA model in an unsupervised manner using healthy patient data.
-4. Evaluation: Evaluates the model by computing distances in the latent space between healthy 
+4. Evaluation: Evaluates the model by computing distances in the latent space between healthy
    and Parkinsonian spectrograms.
 5. Visualization: Plots and analyzes the results to understand the model's performance.
 
@@ -34,12 +34,12 @@ Requirements:
 - Torch, pandas, and other dependencies for model building and data handling.
 - Properly structured and preprocessed data in expected formats.
 
-Author: Guerrero-López, Alejandro 
+Author: Guerrero-López, Alejandro
 Date: 25/01/2024
 
 Note:
 - The script assumes a specific structure and format for input data.
-- The hyperparameters and model configurations may need tuning based on the specific characteristics 
+- The hyperparameters and model configurations may need tuning based on the specific characteristics
   of the input data and the computational resources available.
 """
 
@@ -55,7 +55,7 @@ import os
 import numpy as np
 
 # Select the free GPU if there is one available
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
 
@@ -94,7 +94,7 @@ def main(args, hyperparams):
             train_data,  # train_data, not used
             val_data,  # val_data, not used
             test_data,
-        ) = dataset.get_dataloaders(experiment=hyperparams["experiment"])
+        ) = dataset.create_folds(experiment=hyperparams["experiment"])
     else:
         print("Reading train, val and test loaders from local_results/...")
         train_loader = torch.load(
@@ -301,7 +301,7 @@ if __name__ == "__main__":
         "cnn_classifier": False,  # Here no classifier is used
         "supervised": False,  # Here no classifier is used
         # ================ Training parameters ===================
-        "train": False,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
+        "train": True,  # If false, the model should have been trained (you have a .pt file with the model) and you only want to evaluate it
         "new_data_partition": True,  # If True, new folds are created. If False, the folds are read from local_results/folds/. IT TAKES A LOT OF TIME TO CREATE THE FOLDS (5-10min aprox).
     }
 

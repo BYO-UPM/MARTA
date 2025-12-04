@@ -74,10 +74,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         self.hyperparams = hyperparams
         self.spectrogram = self.hyperparams["spectrogram"]
 
-        data_librispeech = self.read_librispeech_dataset()
-        data_other = self.read_full_dataset()
-
-        self.data = pd.concat([data_librispeech, data_other])
+        self.data = self.read_full_dataset()
 
     def __len__(self):
         return len(self.data)
@@ -348,12 +345,10 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         id_patient = []
         texts = []
         phonemes = []
-
         datapath = "/media/my_ftp/BasesDeDatos_Voz_Habla/LibriSpeech/LibriSpeech/train-clean-100"
 
         # Assert that datapath exists
         assert os.path.exists(datapath)
-
         for root, dirs, files in os.walk(datapath):
             for file in files:
                 # If the file does not end with .wav, skip it
@@ -579,6 +574,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             n_mels = 65  # if hifigan use 80
 
             # Calculate the melspectrogram using librosa
+            print("Calculating spectrogram...")
             data["spectrogram"] = data["signal_framed"].apply(
                 lambda x: librosa.feature.melspectrogram(
                     y=x,
@@ -596,6 +592,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 len(data[data["spectrogram"].apply(lambda x: np.isnan(x).any())]) == 0
             )
 
+            print("Calculating db power...")
             # Calculate the power to db for each frame
             data["spectrogram"] = data["spectrogram"].apply(
                 lambda x: librosa.power_to_db(x, ref=np.max)
@@ -607,6 +604,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
             # Normalise each spectrogram by substraction the mean and dividing by the standard deviation
+            print("Normalising spectrogram...")
             data["spectrogram"] = data["spectrogram"].apply(
                 lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1)
             )
@@ -616,6 +614,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
             # Frame again the phonemes to match spectrogram frames
+            print("Framing phonemes to match spectrogram frames...")
             data["phonemes_framed_spectrogram"] = data["phonemes_framed_overlap"].apply(
                 lambda x: librosa.util.frame(
                     x, frame_length=win_length, hop_length=hop_length, axis=0
@@ -719,6 +718,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             lambda x: logmmse.logmmse(x, target_sr, output_file=None)
         )
 
+        print("Normalizing the audio signals...")
         # Normalize the audio (assuming self.normalize_audio is defined elsewhere in your code)
         data["signal"] = data["signal"].apply(self.normalize_audio)
 
@@ -736,6 +736,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
         data = data[data["signal"].apply(lambda x: len(x) >= frame_length)]
 
         # Frame the signals
+        print("Framing the signals...")
         data["signal_framed"] = data["signal"].apply(
             lambda x: librosa.util.frame(
                 x, frame_length=frame_length, hop_length=hop_length, axis=0
@@ -782,6 +783,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             n_mels = 65  # if hifigan use 80
 
             # Calculate the melspectrogram using librosa
+            print("Calculating spectrogram...")
             data["spectrogram"] = data["signal_framed"].apply(
                 lambda x: librosa.feature.melspectrogram(
                     y=x,
@@ -800,6 +802,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
             # Calculate the power to db for each frame
+            print("Calculating db power...")
             data["spectrogram"] = data["spectrogram"].apply(
                 lambda x: librosa.power_to_db(x, ref=np.max)
             )
@@ -810,6 +813,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
             # Normalise each spectrogram by substraction the mean and dividing by the standard deviation
+            print("Normalising spectrogram...")
             data["spectrogram"] = data["spectrogram"].apply(
                 lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1)
             )
@@ -819,6 +823,7 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
             # Frame again the phonemes to match spectrogram frames
+            print("Framing phonemes to match spectrogram frames...")
             data["phonemes_framed_spectrogram"] = data["phonemes_framed_overlap"].apply(
                 lambda x: librosa.util.frame(
                     x, frame_length=win_length, hop_length=hop_length, axis=0
@@ -829,9 +834,6 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             data["collapsed_phonemes"] = data["phonemes_framed_spectrogram"].apply(
                 collapse_to_most_repeated
             )
-
-        # Save data to this to not compute this again if it is not necessary. This is a heavy process.
-        self.save_datasets_to_hdf5(data)
 
         return data
 
@@ -1020,19 +1022,19 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
             )
 
         # Save data to this to not compute this again if it is not necessary. This is a heavy process.
-        name_save = (
-            "local_results/data_frame_with_phonemes_LIBRISPEECH"
-            + str(self.hyperparams["frame_size_ms"])
-            + "spec_winsize_"
-            + str(self.hyperparams["spectrogram_win_size"])
-            + "hopsize_"
-            + str(self.hyperparams["hop_size_percent"])
-            + ".pkl"
-        )
+        # name_save = (
+        #     "local_results/data_frame_with_phonemes_LIBRISPEECH"
+        #     + str(self.hyperparams["frame_size_ms"])
+        #     + "spec_winsize_"
+        #     + str(self.hyperparams["spectrogram_win_size"])
+        #     + "hopsize_"
+        #     + str(self.hyperparams["hop_size_percent"])
+        #     + ".pkl"
+        # )
 
-        if not os.path.exists(name_save):
-            # Save the data
-            pd.to_pickle({"data": data}, name_save)
+        # if not os.path.exists(name_save):
+        #     # Save the data
+        #     pd.to_pickle({"data": data}, name_save)
 
         return data
 
@@ -1261,7 +1263,9 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
 
                 # Store data in h5 files
                 # Create a directory for folds
-                os.mkdir("local_results/folds_h5", exist_ok=True)
+                # Check if already exists
+                if not os.path.exists("local_results/folds_h5"):
+                    os.mkdir("local_results/folds_h5")
 
                 # Save the spectrograms, the parkinson labels, the manner labels, the id_patient and the audio_file to know which spetrogram is of which audiofile
                 with h5py.File(
@@ -1269,30 +1273,71 @@ class Dataset_AudioFeatures(torch.utils.data.Dataset):
                 ) as hf:
                     # Spectrograms are of shape (N, C, H, W) where C is 1
                     hf.create_dataset(
-                        "train_spectrogram", data=train_data["spectrogram"]
+                        "train_spectrogram",
+                        data=train_data["spectrogram"].astype(np.float64),
                     )
-                    hf.create_dataset("val_spectrogram", data=val_data["spectrogram"])
-                    hf.create_dataset("test_spectrogram", data=test_data["spectrogram"])
+                    hf.create_dataset(
+                        "val_spectrogram",
+                        data=val_data["spectrogram"].astype(np.float64),
+                    )
+                    hf.create_dataset(
+                        "test_spectrogram",
+                        data=test_data["spectrogram"].astype(np.float64),
+                    )
                     # Dataset label
-                    hf.create_dataset("train_dataset", data=train_data["dataset"])
-                    hf.create_dataset("val_dataset", data=val_data["dataset"])
-                    hf.create_dataset("test_dataset", data=test_data["dataset"])
+                    hf.create_dataset(
+                        "train_dataset", data=train_data["dataset"].astype(np.float64)
+                    )
+                    hf.create_dataset(
+                        "val_dataset", data=val_data["dataset"].astype("string")
+                    )
+                    hf.create_dataset(
+                        "test_dataset", data=test_data["dataset"].astype("string")
+                    )
                     # Parkinson label
-                    hf.create_dataset("train_labels", data=train_data["label"])
-                    hf.create_dataset("val_labels", data=val_data["label"])
-                    hf.create_dataset("test_labels", data=test_data["label"])
+                    hf.create_dataset(
+                        "train_labels", data=train_data["label"].astype(np.float64)
+                    )
+                    hf.create_dataset(
+                        "val_labels", data=val_data["label"].astype(np.float64)
+                    )
+                    hf.create_dataset(
+                        "test_labels", data=test_data["label"].astype(np.float64)
+                    )
                     # Manner labels
-                    hf.create_dataset("train_manner", data=train_data["manner_class"])
-                    hf.create_dataset("val_manner", data=val_data["manner_class"])
-                    hf.create_dataset("test_manner", data=test_data["manner_class"])
+                    hf.create_dataset(
+                        "train_manner",
+                        data=train_data["manner_class"].astype(np.float64),
+                    )
+                    hf.create_dataset(
+                        "val_manner", data=val_data["manner_class"].astype(np.float64)
+                    )
+                    hf.create_dataset(
+                        "test_manner", data=test_data["manner_class"].astype(np.float64)
+                    )
                     # ID patients
-                    hf.create_dataset("train_id_patient", data=train_data["id_patient"])
-                    hf.create_dataset("val_id_patient", data=val_data["id_patient"])
-                    hf.create_dataset("test_id_patient", data=test_data["id_patient"])
+                    hf.create_dataset(
+                        "train_id_patient",
+                        data=train_data["id_patient"].astype(np.float64),
+                    )
+                    hf.create_dataset(
+                        "val_id_patient", data=val_data["id_patient"].astype(np.float64)
+                    )
+                    hf.create_dataset(
+                        "test_id_patient",
+                        data=test_data["id_patient"].astype(np.float64),
+                    )
                     # Audio file
-                    hf.create_dataset("train_audio_file", data=train_data["file_path"])
-                    hf.create_dataset("val_audio_file", data=val_data["file_path"])
-                    hf.create_dataset("test_audio_file", data=test_data["file_path"])
+                    hf.create_dataset(
+                        "train_audio_file",
+                        data=train_data["file_path"].astype("string"),
+                    )
+                    hf.create_dataset(
+                        "val_audio_file", data=val_data["file_path"].astype("string")
+                    )
+                    hf.create_dataset(
+                        "test_audio_file", data=test_data["file_path"].astype("string")
+                    )
 
                 print("Fold ", f, " done")
 

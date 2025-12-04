@@ -8,6 +8,9 @@ The model is trained on healthy patient data while being supervised with manner 
 Parkinsonian (8 classes) and healthy (8 classes). The aim is to observe how the model distinguishes 
 between these classes in a latent space representation.
 
+This international variant mirrors `MARTA_Supervised.py` but injects all healthy LibriSpeech
+spectrograms into the supervised pipeline, treating them the same way Albayzin samples are handled.
+
 Key Features:
 1. Data Processing: Utilizes 'Dataset_AudioFeatures' for loading and preprocessing spectrogram data.
 2. MARTA Model: Constructs and trains a MARTA model with 16 manner classes (split between healthy 
@@ -160,19 +163,35 @@ def main(args, hyperparams):
     italian_data_val = [data for data in val_loader.dataset if data[3] == "italian"]
     italian_data_train = [data for data in train_loader.dataset if data[3] == "italian"]
 
+    # Get all librispeech data (healthy only)
+    librispeech_data_test = [
+        data for data in test_loader.dataset if data[3] == "librispeech"
+    ]
+    librispeech_data_val = [
+        data for data in val_loader.dataset if data[3] == "librispeech"
+    ]
+    librispeech_data_train = [
+        data for data in train_loader.dataset if data[3] == "librispeech"
+    ]
+
     if hyperparams["crosslingual"] == "testing_gita":
         # Train data is everything but gita
         new_train = (
             neurovoz_data_train
             + albayzin_data_train
             + neurovoz_data_test
-            # + italian_data_train
-            # + italian_data_test
+            + librispeech_data_train
         )
-        new_val = neurovoz_data_val + albayzin_data_val  # + italian_data_val
+        new_val = neurovoz_data_val + albayzin_data_val + librispeech_data_val
         # Test is all gita
         gita_data_val = [(data[0], data[1], data[2], data[3]) for data in gita_data_val]
-        new_test = gita_data_test + gita_data_train + gita_data_val + albayzin_data_test
+        new_test = (
+            gita_data_test
+            + gita_data_train
+            + gita_data_val
+            + albayzin_data_test
+            + librispeech_data_test
+        )
 
         print("Crosslingual scenario: everything -> gita")
 
@@ -182,11 +201,9 @@ def main(args, hyperparams):
             gita_data_train
             + gita_data_test
             + albayzin_data_train
-            # + albayzin_data_val
-            # + italian_data_train
-            # + italian_data_test
+            + librispeech_data_train
         )
-        new_val = gita_data_val + albayzin_data_val  # + italian_data_val
+        new_val = gita_data_val + albayzin_data_val + librispeech_data_val
         # Test is all neurovoz
         neurovoz_data_val = [
             (data[0], data[1], data[2], data[3]) for data in neurovoz_data_val
@@ -196,6 +213,7 @@ def main(args, hyperparams):
             + neurovoz_data_train
             + neurovoz_data_val
             + albayzin_data_test
+            + librispeech_data_test
         )
         print("Crosslingual scenario: everything -> neurovoz")
     elif hyperparams["crosslingual"] == "testing_italian":
@@ -207,19 +225,33 @@ def main(args, hyperparams):
             + albayzin_data_test
             + neurovoz_data_train
             + neurovoz_data_test
+            + librispeech_data_train
         )
-        new_val = gita_data_val + albayzin_data_val + neurovoz_data_val
+        new_val = (
+            gita_data_val + albayzin_data_val + neurovoz_data_val + librispeech_data_val
+        )
         # Test is all italian
         italian_data_val = [
             (data[0], data[1], data[2], data[3]) for data in italian_data_val
         ]
-        new_test = italian_data_test + italian_data_train + italian_data_val
+        new_test = (
+            italian_data_test
+            + italian_data_train
+            + italian_data_val
+            + librispeech_data_test
+        )
         print("Crosslingual scenario: everything -> italian")
     else:
         # All stays the same
-        new_train = gita_data_train + neurovoz_data_train + albayzin_data_train
-        new_val = gita_data_val + neurovoz_data_val + albayzin_data_val
-        new_test = gita_data_test + neurovoz_data_test + albayzin_data_test
+        new_train = (
+            gita_data_train + neurovoz_data_train + albayzin_data_train + librispeech_data_train
+        )
+        new_val = (
+            gita_data_val + neurovoz_data_val + albayzin_data_val + librispeech_data_val
+        )
+        new_test = (
+            gita_data_test + neurovoz_data_test + albayzin_data_test + librispeech_data_test
+        )
         print("Multilingual scenario:")
 
     new_train = stratify_per_dataset(new_train)
@@ -256,7 +288,7 @@ def main(args, hyperparams):
         device=device,
         reducer="sum",
         domain_adversarial_bool=hyperparams["domain_adversarial"],
-        datasets=3,  # [neurovoz, albayzin, gita, italian]
+        datasets=3,  # [neurovoz, albayzin, gita, italian, librispeech]
     )
 
     if hyperparams["train"]:
