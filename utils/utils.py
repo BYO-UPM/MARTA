@@ -238,6 +238,7 @@ def plot_logopeda_alb_neuro(
     supervised=False,
     samples=1000,
     path_to_plot="local_results/spectrograms/manner_gmvae_neurovoz",
+    compute_frechet=False,
 ):
     import copy
 
@@ -374,6 +375,17 @@ def plot_logopeda_alb_neuro(
             wandb_flag,
             path_to_plot,
         )
+        if compute_frechet:
+            calculate_frechet_manner_distances(
+                lm_test_original,
+                manner_test,
+                labels_test,
+                dataset_test,
+                pair[0],
+                pair[1],
+                wandb_flag,
+                path_to_plot,
+            )
 
     # # Check the latent space dimension, if its 3D, plot it
     if latent_mu_train.shape[1] == 3:
@@ -1996,6 +2008,243 @@ def calculate_distances_manner(
 
     #     plt.close()
     # plt.close()
+
+
+def calculate_frechet_manner_distances(
+    latent_mu,
+    manner,
+    labels,
+    dataset,
+    dataset_one,
+    dataset_two,
+    wandb_flag,
+    path_to_plot,
+):
+    from scipy.linalg import sqrtm
+
+    print("Calculating Frechet distances...")
+
+    def compute_stats(data):
+        if len(data) == 0:
+            return None
+        mean = np.mean(data, axis=0)
+        cov = np.cov(data, rowvar=False)
+        if cov.ndim == 0:
+            cov = np.array([[cov]])
+        dim = cov.shape[0]
+        cov = cov + np.eye(dim) * 1e-6
+        return mean, cov
+
+    def frechet_distance(stats_a, stats_b):
+        if stats_a is None or stats_b is None:
+            return 0.0
+        mu1, sigma1 = stats_a
+        mu2, sigma2 = stats_b
+        diff = mu1 - mu2
+        cov_prod = sigma1.dot(sigma2)
+        covmean = sqrtm(cov_prod)
+        if not np.isfinite(covmean).all():
+            covmean = sqrtm(cov_prod + np.eye(cov_prod.shape[0]) * 1e-6)
+        if np.iscomplexobj(covmean):
+            covmean = covmean.real
+        return float(np.dot(diff, diff) + np.trace(sigma1 + sigma2 - 2 * covmean))
+
+    unique_manner = np.unique(manner)
+
+    distance_h_h_one = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_p_one = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_p_p_one = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_h_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_p_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_p_p_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_h_one_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_p_one_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_p_p_one_two = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_h_h_compact = np.zeros((len(unique_manner), len(unique_manner)))
+    distance_p_p_compact = np.zeros((len(unique_manner), len(unique_manner)))
+
+    stats_one_h = [
+        compute_stats(latent_mu[(labels == 0) & (manner == m) & (dataset == dataset_one)])
+        for m in unique_manner
+    ]
+    stats_one_p = [
+        compute_stats(latent_mu[(labels == 1) & (manner == m) & (dataset == dataset_one)])
+        for m in unique_manner
+    ]
+    stats_two_h = [
+        compute_stats(latent_mu[(labels == 0) & (manner == m) & (dataset == dataset_two)])
+        for m in unique_manner
+    ]
+    stats_two_p = [
+        compute_stats(latent_mu[(labels == 1) & (manner == m) & (dataset == dataset_two)])
+        for m in unique_manner
+    ]
+    stats_all_h = [
+        compute_stats(latent_mu[(labels == 0) & (manner == m)]) for m in unique_manner
+    ]
+    stats_all_p = [
+        compute_stats(latent_mu[(labels == 1) & (manner == m)]) for m in unique_manner
+    ]
+
+    for i, manner_i in enumerate(unique_manner):
+        for j, manner_j in enumerate(unique_manner):
+            distance_h_h_one[i, j] = frechet_distance(stats_one_h[i], stats_one_h[j])
+            distance_h_p_one[i, j] = frechet_distance(stats_one_h[i], stats_one_p[j])
+            distance_p_p_one[i, j] = frechet_distance(stats_one_p[i], stats_one_p[j])
+
+            distance_h_h_two[i, j] = frechet_distance(stats_two_h[i], stats_two_h[j])
+            distance_h_p_two[i, j] = frechet_distance(stats_two_h[i], stats_two_p[j])
+            distance_p_p_two[i, j] = frechet_distance(stats_two_p[i], stats_two_p[j])
+
+            distance_h_h_one_two[i, j] = frechet_distance(
+                stats_one_h[i], stats_two_h[j]
+            )
+            distance_h_p_one_two[i, j] = frechet_distance(
+                stats_one_h[i], stats_two_p[j]
+            )
+            distance_p_p_one_two[i, j] = frechet_distance(
+                stats_one_p[i], stats_two_p[j]
+            )
+
+            distance_h_h_compact[i, j] = frechet_distance(
+                stats_one_h[i], stats_all_h[j]
+            )
+            distance_p_p_compact[i, j] = frechet_distance(
+                stats_one_p[i], stats_all_p[j]
+            )
+
+    print("Plotting Frechet distances...")
+    import seaborn as sns
+
+    distance_mats = [
+        distance_h_h_one,
+        distance_h_p_one,
+        distance_p_p_one,
+        distance_h_h_two,
+        distance_h_p_two,
+        distance_p_p_two,
+        distance_h_h_one_two,
+        distance_h_p_one_two,
+        distance_p_p_one_two,
+        distance_h_h_compact,
+        distance_p_p_compact,
+    ]
+
+    def title_and_name(idx):
+        if idx == 0:
+            return (
+                "Fréchet of Healthy in "
+                + dataset_one
+                + " vs Healthy in "
+                + dataset_one,
+                "frechet_dist_" + dataset_one + "_h_" + dataset_one + "_h",
+            )
+        if idx == 1:
+            return (
+                "Fréchet of Healthy in "
+                + dataset_one
+                + " vs Parkinsonian in "
+                + dataset_one,
+                "frechet_dist_" + dataset_one + "_h_" + dataset_one + "_p",
+            )
+        if idx == 2:
+            return (
+                "Fréchet of Parkinsonian in "
+                + dataset_one
+                + " vs Parkinsonian in "
+                + dataset_one,
+                "frechet_dist_" + dataset_one + "_p_" + dataset_one + "_p",
+            )
+        if idx == 3:
+            return (
+                "Fréchet of Healthy in "
+                + dataset_two
+                + " vs Healthy in "
+                + dataset_two,
+                "frechet_dist_" + dataset_two + "_h_" + dataset_two + "_h",
+            )
+        if idx == 4:
+            return (
+                "Fréchet of Healthy in "
+                + dataset_two
+                + " vs Parkinsonian in "
+                + dataset_two,
+                "frechet_dist_" + dataset_two + "_h_" + dataset_two + "_p",
+            )
+        if idx == 5:
+            return (
+                "Fréchet of Parkinsonian in "
+                + dataset_two
+                + " vs Parkinsonian in "
+                + dataset_two,
+                "frechet_dist_" + dataset_two + "_p_" + dataset_two + "_p",
+            )
+        if idx == 6:
+            return (
+                "Fréchet of Healthy in "
+                + dataset_one
+                + " vs Healthy in "
+                + dataset_two,
+                "frechet_dist_" + dataset_one + "_h_" + dataset_two + "_h",
+            )
+        if idx == 7:
+            return (
+                "Fréchet of Healthy in "
+                + dataset_one
+                + " vs Parkinsonian in "
+                + dataset_two,
+                "frechet_dist_" + dataset_one + "_h_" + dataset_two + "_p",
+            )
+        if idx == 8:
+            return (
+                "Fréchet of Parkinsonian in "
+                + dataset_one
+                + " vs Parkinsonian in "
+                + dataset_two,
+                "frechet_dist_" + dataset_one + "_p_" + dataset_two + "_p",
+            )
+        if idx == 9:
+            return (
+                "Fréchet of Healthy in " + dataset_one + " compactness",
+                "frechet_dist_" + dataset_one + "_h_compact",
+            )
+        return (
+            "Fréchet of Parkinsonian in " + dataset_one + " compactness",
+            "frechet_dist_" + dataset_one + "_p_compact",
+        )
+
+    axis_labels = [
+        "Plosives",
+        "Plosives\n voiced",
+        "Nasals",
+        "Fricatives",
+        "Liquids",
+        "Vowels",
+        "Affricates",
+        "Silence",
+    ]
+
+    for idx, matrix in enumerate(distance_mats):
+        title, savename = title_and_name(idx)
+        fig, ax = plt.subplots(figsize=(10, 10))
+        sns.heatmap(
+            np.round(matrix, 3),
+            annot=True,
+            ax=ax,
+            vmin=0,
+            annot_kws={"size": 18},
+            cmap="viridis",
+        )
+        ax.set_title(title)
+        ax.set_xticklabels(axis_labels, rotation=45)
+        ax.set_yticklabels(axis_labels)
+        ax.tick_params(axis="both", which="major", labelsize=16)
+        save_path = path_to_plot + "/" + f"{savename}.png"
+        fig.savefig(save_path)
+        if wandb_flag:
+            wandb.log({"test/" + savename: wandb.Image(fig)})
+        plt.close(fig)
+    plt.close()
 
 
 def calculate_euclidean_distances_manner(
