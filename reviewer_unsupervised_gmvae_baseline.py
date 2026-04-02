@@ -23,11 +23,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import random
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -80,7 +79,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Reproduce the unsupervised MARTA analysis with a configurable number of Gaussians."
     )
-    parser.add_argument("--fold", type=int, default=0, help="Fold id to load from local_results/folds.")
+    parser.add_argument(
+        "--fold",
+        type=str,
+        default="0",
+        help="Fold tag appended after 'fold' in the cached filenames, for example '0' or 'first_experiment'.",
+    )
+    parser.add_argument(
+        "--folds-dir",
+        type=str,
+        default=str(Path(PROCESSED_DATA_LOCAL) / "folds"),
+        help="Directory that contains the cached fold artifacts. Recursive lookup is supported.",
+    )
     parser.add_argument("--device", type=str, default=None, help="Torch device, for example cuda:0 or cpu.")
     parser.add_argument("--gpu", type=int, default=0, help="GPU index used when --device is not set.")
     parser.add_argument("--seed", type=int, default=0, help="Random seed used for sampling and t-SNE.")
@@ -172,6 +182,30 @@ def parse_args() -> argparse.Namespace:
         default=1000,
         help="Number of positions sampled when estimating each JSD value.",
     )
+    parser.add_argument(
+        "--train-loader-path",
+        type=str,
+        default=None,
+        help="Optional explicit path to the cached train loader.",
+    )
+    parser.add_argument(
+        "--val-loader-path",
+        type=str,
+        default=None,
+        help="Optional explicit path to the cached validation loader.",
+    )
+    parser.add_argument(
+        "--test-loader-path",
+        type=str,
+        default=None,
+        help="Optional explicit path to the cached test loader.",
+    )
+    parser.add_argument(
+        "--test-data-path",
+        type=str,
+        default=None,
+        help="Optional explicit path to the cached test dataframe.",
+    )
     return parser.parse_args()
 
 
@@ -249,20 +283,63 @@ def make_hyperparams(args: argparse.Namespace, output_dir: Path) -> Dict:
     }
 
 
-def fold_artifact_paths(hyperparams: Dict, fold: int) -> Dict[str, Path]:
-    base = Path(PROCESSED_DATA_LOCAL) / "folds"
+def default_folds_dir() -> Path:
+    return Path(PROCESSED_DATA_LOCAL) / "folds"
+
+
+def resolve_cached_artifact(base_dir: Path, expected_name: str, explicit_path: str | None = None) -> Path:
+    if explicit_path is not None:
+        return Path(explicit_path)
+
+    exact_path = base_dir / expected_name
+    if exact_path.exists():
+        return exact_path
+
+    exact_matches = sorted(base_dir.rglob(expected_name))
+    if len(exact_matches) == 1:
+        print(f"Resolved cached artifact {expected_name} -> {exact_matches[0]}")
+        return exact_matches[0]
+    if len(exact_matches) > 1:
+        raise FileNotFoundError(
+            "Multiple cached artifacts matched "
+            f"{expected_name}: {', '.join(str(path) for path in exact_matches)}. "
+            "Use --folds-dir or the explicit --*-path arguments."
+        )
+
+    fuzzy_matches = sorted(base_dir.rglob(f"*{expected_name}"))
+    if len(fuzzy_matches) == 1:
+        print(f"Resolved cached artifact {expected_name} -> {fuzzy_matches[0]}")
+        return fuzzy_matches[0]
+    if len(fuzzy_matches) > 1:
+        raise FileNotFoundError(
+            "Multiple cached artifacts loosely matched "
+            f"{expected_name}: {', '.join(str(path) for path in fuzzy_matches)}. "
+            "Use --folds-dir or the explicit --*-path arguments."
+        )
+
+    return exact_path
+
+
+def fold_artifact_paths(args: argparse.Namespace, hyperparams: Dict) -> Dict[str, Path]:
+    base = Path(args.folds_dir)
     suffix = (
         f"_supervised_{hyperparams['supervised']}"
         f"_frame_size_{hyperparams['frame_size_ms']}"
         f"spec_winsize_{hyperparams['spectrogram_win_size']}"
         f"hopsize_{hyperparams['hop_size_percent']}"
-        f"fold{fold}.pt"
+        f"fold{args.fold}.pt"
     )
+    names = {
+        "train_loader": f"train_loader{suffix}",
+        "val_loader": f"val_loader{suffix}",
+        "test_loader": f"test_loader{suffix}",
+        "test_data": f"test_data{suffix}",
+    }
     return {
-        "train_loader": base / f"train_loader{suffix}",
-        "val_loader": base / f"val_loader{suffix}",
-        "test_loader": base / f"test_loader{suffix}",
-        "test_data": base / f"test_data{suffix}",
+        "train_loader": resolve_cached_artifact(base, names["train_loader"], args.train_loader_path),
+        "val_loader": resolve_cached_artifact(base, names["val_loader"], args.val_loader_path),
+        "test_loader": resolve_cached_artifact(base, names["test_loader"], args.test_loader_path),
+        "test_data": resolve_cached_artifact(base, names["test_data"], args.test_data_path),
     }
 
 
@@ -271,6 +348,24 @@ def maybe_build_folds(args: argparse.Namespace, hyperparams: Dict, artifact_path
     if have_all_folds and not args.new_data_partition:
         print("Using cached fold artifacts.")
         return
+
+    using_custom_fold_source = (
+        Path(args.folds_dir) != default_folds_dir()
+        or args.train_loader_path is not None
+        or args.val_loader_path is not None
+        or args.test_loader_path is not None
+        or args.test_data_path is not None
+        or args.fold != "0"
+    )
+
+    if using_custom_fold_source:
+        missing = [str(path) for path in artifact_paths.values() if not path.exists()]
+        raise FileNotFoundError(
+            "The requested cached fold artifacts were not found, so the script would fall back to rebuilding "
+            "raw folds. That is disabled for custom fold sources.\nMissing paths:\n- "
+            + "\n- ".join(missing)
+            + "\nPass the correct --folds-dir / --fold tag, or the explicit --*-path options."
+        )
 
     ensure_dir(Path(PROCESSED_DATA_LOCAL))
     ensure_dir(Path(PROCESSED_DATA_LOCAL) / "folds")
@@ -842,7 +937,7 @@ def main() -> None:
     device = resolve_device(args)
     output_dir = make_output_dir(args)
     hyperparams = make_hyperparams(args, output_dir)
-    artifact_paths = fold_artifact_paths(hyperparams, args.fold)
+    artifact_paths = fold_artifact_paths(args, hyperparams)
     ckpt_path = checkpoint_path(output_dir, args)
 
     ensure_dir(output_dir)
